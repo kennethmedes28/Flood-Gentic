@@ -1,0 +1,158 @@
+/*
+ * Glass layer.
+ *
+ * One variable, --g, drives everything: 0 = fully clear, 1 = fully frosted.
+ * It is set on <html> by GlassProvider (see src/context/GlassContext.tsx).
+ */
+
+:root {
+  --g: 0.55;
+
+  /* Text tone: dark navy on frosted glass, white once glass is mostly clear.
+     GlassProvider sets data-glass-tone on <html> (threshold 0.45). */
+  --glass-text: #0b2545;
+  --glass-text-muted: rgba(11, 37, 69, 0.7);
+  --glass-text-shadow: none;
+
+  /* Single calm blue accent. */
+  --glass-accent: #1d6fe8;
+}
+
+html[data-glass-tone="clear"] {
+  --glass-text: #ffffff;
+  --glass-text-muted: rgba(255, 255, 255, 0.85);
+  --glass-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+.glass-panel {
+  color: var(--glass-text);
+  text-shadow: var(--glass-text-shadow);
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, calc(var(--g) * 0.7));
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, calc(var(--g) * 0.6)),
+    rgba(214, 232, 255, calc(var(--g) * 0.5))
+  );
+  box-shadow: 0 8px 32px rgba(10, 40, 90, calc(var(--g) * 0.2));
+  -webkit-backdrop-filter: blur(calc(var(--g) * 26px)) saturate(calc(1 + var(--g) * 0.7));
+  backdrop-filter: blur(calc(var(--g) * 26px)) saturate(calc(1 + var(--g) * 0.7));
+}
+
+/* Browsers without backdrop-filter get a solid translucent panel instead. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-panel {
+    background: rgba(235, 244, 255, calc(0.35 + var(--g) * 0.5));
+  }
+}
+
+/* ---------- Vertical glass slider ---------- */
+
+.glass-slider {
+  /* Vertical range: writing-mode + direction make "up" mean "more frosted". */
+  writing-mode: vertical-lr;
+  direction: rtl;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  width: 44px; /* minimum touch target */
+  height: 220px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.glass-slider::-webkit-slider-runnable-track {
+  width: 8px;
+  border-radius: 999px;
+  /* Top = frosted blue/white, bottom = fades to transparent. */
+  background: linear-gradient(to top, transparent, rgba(255, 255, 255, 0.9) 60%, #8ec1ff);
+}
+
+.glass-slider::-moz-range-track {
+  width: 8px;
+  border-radius: 999px;
+  background: linear-gradient(to top, transparent, rgba(255, 255, 255, 0.9) 60%, #8ec1ff);
+}
+
+.glass-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  margin-left: -10px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid var(--glass-accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.glass-slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid var(--glass-accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.glass-slider:focus-visible {
+  outline: 3px solid var(--glass-accent);
+  outline-offset: 4px;
+  border-radius: 999px;
+}
+
+/* ---------- Scene ---------- */
+
+/* One slow walking sway; the only motion that runs on its own. */
+@keyframes scene-sway {
+  0%, 100% { transform: translate3d(-4px, 0, 0) scale(1.04); }
+  50%      { transform: translate3d(4px, -3px, 0) scale(1.04); }
+}
+
+.scene-video {
+  animation: scene-sway 9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-video {
+    animation: none;
+  }
+}
+
+/*
+ * Accent card (e.g. today's risk).
+ * Its blue follows the slider all the way down: no blue at --g = 0, fully
+ * deep blue at --g = 1. Text stays readable on clear glass through its
+ * shadow, not through a blue floor.
+ */
+.glass-accent {
+  color: #ffffff;
+  background: rgba(29, 111, 232, var(--g));
+  -webkit-backdrop-filter: blur(calc(var(--g) * 12px));
+  backdrop-filter: blur(calc(var(--g) * 12px));
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+}
+
+/*
+ * Fade everything (panels AND text) out as the slider reaches its minimum.
+ * Fully visible from --g = 0.17 upwards, fully invisible at --g = 0, so the
+ * video can be seen with nothing on top. The slider and nav button sit
+ * outside this wrapper and always stay visible.
+ */
+.glass-fade {
+  opacity: min(1, calc(var(--g) * 6));
+}
+
+/*
+ * Hand cursor: while the 3D hand is active, the laser dot is the cursor,
+ * so the normal mouse pointer is hidden (except where typing text).
+ */
+html.hand-cursor,
+html.hand-cursor * {
+  cursor: none !important;
+}
+
+html.hand-cursor input,
+html.hand-cursor textarea {
+  cursor: text !important;
+}
