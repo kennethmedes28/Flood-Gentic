@@ -34,6 +34,10 @@ const HAND_BOTTOM_OFFSET = 0.2
 const MODEL_BEAM_LENGTH = 2.18
 const MODEL_BEAM_HEIGHT = 0.031
 
+/** Alt + arrow keys nudge the hand by this much per press (world units). */
+const KEY_NUDGE = 0.03
+const OFFSET_STORAGE_KEY = "floodguard:hand-offset"
+
 const CURSOR_CLASS = "hand-cursor"
 
 export function HandCursor() {
@@ -110,12 +114,31 @@ export function HandCursor() {
       const forward = new THREE.Vector3(0, 0, -1)
       let pointer: { x: number; y: number } | null = null // pixels
 
+      // How far the user has nudged the hand away from its default spot.
+      let handOffset = { x: 0, y: 0 }
+      try {
+        const saved = window.localStorage.getItem(OFFSET_STORAGE_KEY)
+        if (saved) handOffset = JSON.parse(saved)
+      } catch {
+        // Ignore: the hand starts at its default spot.
+      }
+
+      /** Visible half-height at a depth, for the camera's field of view. */
+      const halfHeightAt = (depth: number) => depth * Math.tan((FIELD_OF_VIEW * Math.PI) / 360)
+
+      /** Keep the hand's origin on screen (95% of the visible area). */
+      function clampHandPosition(position: import("three").Vector3) {
+        const maxY = halfHeightAt(HAND_DEPTH) * 0.95
+        const maxX = maxY * camera.aspect
+        position.x = Math.min(Math.max(position.x, -maxX), maxX)
+        position.y = Math.min(Math.max(position.y, -maxY), maxY)
+      }
+
       /** Place the camera and aim the correct hand at the pointer. */
       function render() {
         if (!pointer) return
         const width = window.innerWidth
         const height = window.innerHeight
-        const halfHeightAt = (depth: number) => depth * Math.tan((FIELD_OF_VIEW * Math.PI) / 360)
         const aspect = width / height
 
         // Pointer in -1..1 screen coordinates.
@@ -141,6 +164,9 @@ export function HandCursor() {
           -HAND_BOTTOM_OFFSET,
           -HAND_DEPTH
         )
+        handPosition.x += handOffset.x
+        handPosition.y += handOffset.y
+        clampHandPosition(handPosition)
         active.aim.position.copy(handPosition)
 
         // The laser runs slightly above the hand's origin, and that offset
@@ -183,6 +209,39 @@ export function HandCursor() {
         renderer.domElement.style.display = "block"
         render()
       }
+      /** Alt + arrow keys move the hand. Plain arrow keys are left alone. */
+      function onKeyDown(event: KeyboardEvent) {
+        if (!event.altKey) return
+        const nudges: Record<string, { x: number; y: number }> = {
+          ArrowLeft: { x: -KEY_NUDGE, y: 0 },
+          ArrowRight: { x: KEY_NUDGE, y: 0 },
+          ArrowUp: { x: 0, y: KEY_NUDGE },
+          ArrowDown: { x: 0, y: -KEY_NUDGE },
+        }
+        const nudge = nudges[event.key]
+        if (!nudge) return
+        event.preventDefault() // Alt+Left/Right would otherwise go back/forward
+
+        // Work out where the hand would be, clamp it, and store the difference.
+        const sideSign = handRef.current === "left" ? -1 : 1
+        const base = new THREE.Vector3(
+          sideSign * HAND_SIDE_OFFSET * halfHeightAt(HAND_DEPTH) * camera.aspect,
+          -HAND_BOTTOM_OFFSET,
+          -HAND_DEPTH
+        )
+        const moved = base.clone()
+        moved.x += handOffset.x + nudge.x
+        moved.y += handOffset.y + nudge.y
+        clampHandPosition(moved)
+        handOffset = { x: moved.x - base.x, y: moved.y - base.y }
+
+        try {
+          window.localStorage.setItem(OFFSET_STORAGE_KEY, JSON.stringify(handOffset))
+        } catch {
+          // Ignore: the position just won't persist.
+        }
+        render()
+      }
       function onPointerLeave() {
         renderer.domElement.style.display = "none"
       }
@@ -190,12 +249,14 @@ export function HandCursor() {
       resize()
       window.addEventListener("resize", resize)
       window.addEventListener("pointermove", onPointerMove)
+      window.addEventListener("keydown", onKeyDown)
       document.documentElement.addEventListener("pointerleave", onPointerLeave)
       document.documentElement.classList.add(CURSOR_CLASS)
 
       cleanup = () => {
         window.removeEventListener("resize", resize)
         window.removeEventListener("pointermove", onPointerMove)
+        window.removeEventListener("keydown", onKeyDown)
         document.documentElement.removeEventListener("pointerleave", onPointerLeave)
         document.documentElement.classList.remove(CURSOR_CLASS)
         renderer.dispose()
