@@ -1,0 +1,195 @@
+"use client"
+
+import { useEffect, useRef } from "react"
+
+/*
+ * 3D hand-with-laser cursor.
+ *
+ * A transparent canvas covers the screen. A hand model sits at the bottom
+ * corner and aims its laser at the mouse position, so the red dot at the end
+ * of the beam is the real cursor. The left-hand model is used while the mouse
+ * is on the left half of the screen, the right-hand model on the right half.
+ *
+ * The models are in metres and point their laser along -Z.
+ */
+
+/** Overall size of the hand. Make this smaller or bigger to resize it. */
+const HAND_SCALE = 0.8
+/** Camera field of view in degrees. */
+const FIELD_OF_VIEW = 45
+/** How far in front of the camera the hand sits. */
+const HAND_DEPTH = 1.0
+/** How far in front of the camera the laser dot lands (the "screen" plane). */
+const TARGET_DEPTH = 1.6
+/** Hand position: fraction of the half-width from the centre, and height below centre. */
+const HAND_SIDE_OFFSET = 0.6
+const HAND_BOTTOM_OFFSET = 0.42
+
+/** In the model files, the laser beam is 2.18 m long and sits 0.03 m above the hand origin. */
+const MODEL_BEAM_LENGTH = 2.18
+const MODEL_BEAM_HEIGHT = 0.03
+
+const CURSOR_CLASS = "hand-cursor"
+
+export function HandCursor() {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    let disposed = false
+    let cleanup = () => {}
+
+    // Load three.js only in the browser, and only when this component mounts.
+    async function setup() {
+      const THREE = await import("three")
+      const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js")
+      if (disposed || !container) return
+
+      // --- Scene basics ---
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+      renderer.domElement.style.display = "none" // shown once the mouse moves
+      container.appendChild(renderer.domElement)
+
+      const scene = new THREE.Scene()
+      const camera = new THREE.PerspectiveCamera(FIELD_OF_VIEW, 1, 0.1, 10)
+      scene.add(new THREE.AmbientLight(0xffffff, 1.6))
+      const sun = new THREE.DirectionalLight(0xffffff, 2)
+      sun.position.set(0.5, 1, 1)
+      scene.add(sun)
+
+      // --- Load both hands ---
+      const loader = new GLTFLoader()
+      let left, right
+      try {
+        ;[left, right] = await Promise.all([
+          loader.loadAsync("/vr-hand-laser-left.glb"),
+          loader.loadAsync("/vr-hand-laser-right.glb"),
+        ])
+      } catch {
+        // Models failed to load: keep the normal mouse cursor.
+        renderer.dispose()
+        renderer.domElement.remove()
+        return
+      }
+      if (disposed) return
+
+      /** One hand: a group that we move and rotate, holding the loaded model. */
+      function buildHand(root: import("three").Object3D) {
+        const aim = new THREE.Group()
+        root.scale.setScalar(HAND_SCALE)
+        aim.add(root)
+        aim.visible = false
+        scene.add(aim)
+        return {
+          aim,
+          beam: root.getObjectByName("LaserBeam"),
+          dot: root.getObjectByName("LaserDot"),
+        }
+      }
+      const hands = {
+        left: buildHand(left.scene),
+        right: buildHand(right.scene),
+      }
+      type Side = keyof typeof hands
+
+      // --- Drawing ---
+      const forward = new THREE.Vector3(0, 0, -1)
+      let pointer: { x: number; y: number } | null = null // pixels
+
+      /** Place the camera and aim the correct hand at the pointer. */
+      function render() {
+        if (!pointer) return
+        const width = window.innerWidth
+        const height = window.innerHeight
+        const halfHeightAt = (depth: number) => depth * Math.tan((FIELD_OF_VIEW * Math.PI) / 360)
+        const aspect = width / height
+
+        // Pointer in -1..1 screen coordinates.
+        const ndcX = (pointer.x / width) * 2 - 1
+        const ndcY = 1 - (pointer.y / height) * 2
+
+        // The point in space that appears exactly under the pointer.
+        const target = new THREE.Vector3(
+          ndcX * halfHeightAt(TARGET_DEPTH) * aspect,
+          ndcY * halfHeightAt(TARGET_DEPTH),
+          -TARGET_DEPTH
+        )
+
+        const side: Side = ndcX < 0 ? "left" : "right"
+        const active = hands[side]
+        hands.left.aim.visible = side === "left"
+        hands.right.aim.visible = side === "right"
+
+        // Bottom corner on the active side. Lower the origin a little so the
+        // beam (which runs slightly above it) passes through the target.
+        const sideSign = side === "left" ? -1 : 1
+        const handPosition = new THREE.Vector3(
+          sideSign * HAND_SIDE_OFFSET * halfHeightAt(HAND_DEPTH) * aspect,
+          -HAND_BOTTOM_OFFSET - MODEL_BEAM_HEIGHT * HAND_SCALE,
+          -HAND_DEPTH
+        )
+        active.aim.position.copy(handPosition)
+
+        // Turn the hand so its laser (-Z) points at the target.
+        const direction = target.clone().sub(handPosition).normalize()
+        active.aim.quaternion.setFromUnitVectors(forward, direction)
+
+        // Stretch the beam and move the dot so it ends exactly on the target.
+        const beamLength = target.distanceTo(handPosition) / HAND_SCALE
+        if (active.beam) active.beam.scale.z = beamLength / MODEL_BEAM_LENGTH
+        if (active.dot) active.dot.position.z = MODEL_BEAM_LENGTH - beamLength
+
+        renderer.render(scene, camera)
+      }
+
+      function resize() {
+        renderer.setSize(window.innerWidth, window.innerHeight)
+        camera.aspect = window.innerWidth / window.innerHeight
+        camera.updateProjectionMatrix()
+        render()
+      }
+
+      // --- Input ---
+      function onPointerMove(event: PointerEvent) {
+        // Touch has no hover, so the hand is only for mouse and pen.
+        if (event.pointerType === "touch") {
+          renderer.domElement.style.display = "none"
+          return
+        }
+        pointer = { x: event.clientX, y: event.clientY }
+        renderer.domElement.style.display = "block"
+        render()
+      }
+      function onPointerLeave() {
+        renderer.domElement.style.display = "none"
+      }
+
+      resize()
+      window.addEventListener("resize", resize)
+      window.addEventListener("pointermove", onPointerMove)
+      document.documentElement.addEventListener("pointerleave", onPointerLeave)
+      document.documentElement.classList.add(CURSOR_CLASS)
+
+      cleanup = () => {
+        window.removeEventListener("resize", resize)
+        window.removeEventListener("pointermove", onPointerMove)
+        document.documentElement.removeEventListener("pointerleave", onPointerLeave)
+        document.documentElement.classList.remove(CURSOR_CLASS)
+        renderer.dispose()
+        renderer.domElement.remove()
+      }
+    }
+
+    setup()
+    return () => {
+      disposed = true
+      cleanup()
+    }
+  }, [])
+
+  // Sits above everything but never blocks clicks.
+  return <div ref={containerRef} className="pointer-events-none fixed inset-0 z-[60]" aria-hidden="true" />
+}
