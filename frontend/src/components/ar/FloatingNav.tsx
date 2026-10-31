@@ -4,10 +4,16 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 
+import { useHand, type Hand } from "@/context/HandContext"
 import { useDraggable } from "@/hooks/useDraggable"
 
-const BUTTON_SIZE = 56
-const MENU_WIDTH = 190
+const BUTTON_SIZE = 68
+const MENU_WIDTH = 210
+
+const HANDS: { value: Hand; label: string }[] = [
+  { value: "left", label: "Left" },
+  { value: "right", label: "Right" },
+]
 
 const PAGES = [
   { href: "/", label: "Live view" },
@@ -23,6 +29,7 @@ const PAGES = [
  */
 export function FloatingNav() {
   const pathname = usePathname()
+  const { hand, setHand } = useHand()
   const [open, setOpen] = useState(false)
   const { position, handlers, onArrowKey } = useDraggable(BUTTON_SIZE, () =>
     setOpen((current) => !current)
@@ -106,6 +113,27 @@ export function FloatingNav() {
               {page.label}
             </Link>
           ))}
+
+          {/* Setting: which hand is used as the cursor. The menu stays open. */}
+          <div className="mt-1 border-t border-white/40 px-2 pt-2" role="group" aria-label="Cursor hand">
+            <p className="mb-1 px-2 text-xs" style={{ color: "var(--glass-text-muted)" }}>
+              Cursor hand
+            </p>
+            <div className="flex gap-1">
+              {HANDS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={hand === option.value}
+                  onClick={() => setHand(option.value)}
+                  className="min-h-11 flex-1 rounded-full text-sm font-medium aria-checked:bg-[#1d6fe8] aria-checked:text-white aria-checked:[text-shadow:none]"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </nav>
       )}
     </>

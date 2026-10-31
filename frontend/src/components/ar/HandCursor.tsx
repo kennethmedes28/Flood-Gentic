@@ -2,37 +2,48 @@
 
 import { useEffect, useRef } from "react"
 
+import { useHand, type Hand } from "@/context/HandContext"
+
 /*
  * 3D hand-with-laser cursor.
  *
  * A transparent canvas covers the screen. A hand model sits at the bottom
  * corner and aims its laser at the mouse position, so the red dot at the end
- * of the beam is the real cursor. The left-hand model is used while the mouse
- * is on the left half of the screen, the right-hand model on the right half.
+ * of the beam is the real cursor. Only one hand is shown: the one picked in
+ * the floating menu (left or right).
  *
  * The models are in metres and point their laser along -Z.
  */
 
 /** Overall size of the hand. Make this smaller or bigger to resize it. */
-const HAND_SCALE = 0.8
+const HAND_SCALE = 1.3
 /** Camera field of view in degrees. */
 const FIELD_OF_VIEW = 45
 /** How far in front of the camera the hand sits. */
 const HAND_DEPTH = 1.0
 /** How far in front of the camera the laser dot lands (the "screen" plane). */
 const TARGET_DEPTH = 1.6
-/** Hand position: fraction of the half-width from the centre, and height below centre. */
+/**
+ * Hand position: fraction of the half-width from the centre, and height below
+ * the centre of the screen. A smaller bottom offset lifts the hand higher.
+ */
 const HAND_SIDE_OFFSET = 0.6
-const HAND_BOTTOM_OFFSET = 0.42
+const HAND_BOTTOM_OFFSET = 0.2
 
 /** In the model files, the laser beam is 2.18 m long and sits 0.03 m above the hand origin. */
 const MODEL_BEAM_LENGTH = 2.18
-const MODEL_BEAM_HEIGHT = 0.03
+const MODEL_BEAM_HEIGHT = 0.031
 
 const CURSOR_CLASS = "hand-cursor"
 
 export function HandCursor() {
   const containerRef = useRef<HTMLDivElement>(null)
+  const { hand } = useHand()
+
+  // The drawing code lives inside the setup effect below, so the current
+  // choice is passed in through refs.
+  const handRef = useRef<Hand>(hand)
+  const redrawRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     const container = containerRef.current
@@ -118,32 +129,41 @@ export function HandCursor() {
           -TARGET_DEPTH
         )
 
-        const side: Side = ndcX < 0 ? "left" : "right"
+        const side: Side = handRef.current
         const active = hands[side]
         hands.left.aim.visible = side === "left"
         hands.right.aim.visible = side === "right"
 
-        // Bottom corner on the active side. Lower the origin a little so the
-        // beam (which runs slightly above it) passes through the target.
+        // Where the hand sits: a fixed spot above the bottom corner on its side.
         const sideSign = side === "left" ? -1 : 1
         const handPosition = new THREE.Vector3(
           sideSign * HAND_SIDE_OFFSET * halfHeightAt(HAND_DEPTH) * aspect,
-          -HAND_BOTTOM_OFFSET - MODEL_BEAM_HEIGHT * HAND_SCALE,
+          -HAND_BOTTOM_OFFSET,
           -HAND_DEPTH
         )
         active.aim.position.copy(handPosition)
 
-        // Turn the hand so its laser (-Z) points at the target.
-        const direction = target.clone().sub(handPosition).normalize()
-        active.aim.quaternion.setFromUnitVectors(forward, direction)
+        // The laser runs slightly above the hand's origin, and that offset
+        // turns with the hand. Aim in a few rounds so the beam line (not the
+        // origin) passes exactly through the target and the dot lands under
+        // the real mouse position, which matters for clicking.
+        const beamOffset = new THREE.Vector3(0, MODEL_BEAM_HEIGHT * HAND_SCALE, 0)
+        const beamStart = handPosition.clone()
+        for (let round = 0; round < 4; round++) {
+          const direction = target.clone().sub(beamStart).normalize()
+          active.aim.quaternion.setFromUnitVectors(forward, direction)
+          beamStart.copy(handPosition).add(beamOffset.clone().applyQuaternion(active.aim.quaternion))
+        }
 
         // Stretch the beam and move the dot so it ends exactly on the target.
-        const beamLength = target.distanceTo(handPosition) / HAND_SCALE
+        const beamLength = target.distanceTo(beamStart) / HAND_SCALE
         if (active.beam) active.beam.scale.z = beamLength / MODEL_BEAM_LENGTH
         if (active.dot) active.dot.position.z = MODEL_BEAM_LENGTH - beamLength
 
         renderer.render(scene, camera)
       }
+
+      redrawRef.current = render
 
       function resize() {
         renderer.setSize(window.innerWidth, window.innerHeight)
@@ -189,6 +209,12 @@ export function HandCursor() {
       cleanup()
     }
   }, [])
+
+  // When the user switches hands, redraw straight away.
+  useEffect(() => {
+    handRef.current = hand
+    redrawRef.current()
+  }, [hand])
 
   // Sits above everything but never blocks clicks.
   return <div ref={containerRef} className="pointer-events-none fixed inset-0 z-[60]" aria-hidden="true" />
