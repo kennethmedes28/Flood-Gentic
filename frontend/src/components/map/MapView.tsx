@@ -97,7 +97,7 @@ export function MapView({ loading = false }: { loading?: boolean }) {
   }
 
   return (
-    <GlassPanel className="flex flex-col p-5">
+    <GlassPanel className="flex flex-1 flex-col p-5">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="font-semibold">Flood map</h2>
         <div className="flex gap-1" role="group" aria-label="Map style">

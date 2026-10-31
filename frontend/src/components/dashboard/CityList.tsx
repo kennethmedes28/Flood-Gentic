@@ -6,7 +6,7 @@ import { CITIES, RISK_STYLE } from "@/data/sample-cities"
 export function CityList({ loading = false }: { loading?: boolean }) {
   if (loading) {
     return (
-      <GlassPanel className="p-5">
+      <GlassPanel className="flex-1 p-5">
         <LoadingLabel>Loading nearby areas</LoadingLabel>
         <Skeleton className="mb-3 h-5 w-32" />
         <div className="flex flex-col gap-2">
@@ -19,7 +19,7 @@ export function CityList({ loading = false }: { loading?: boolean }) {
   }
 
   return (
-    <GlassPanel className="p-5">
+    <GlassPanel className="flex-1 p-5">
       <h2 className="mb-3 font-semibold">Nearby areas</h2>
       <ul className="flex flex-col gap-2">
         {CITIES.map((city) => {
