@@ -10,7 +10,7 @@ export function GlassSlider() {
   const { glass, setGlass } = useGlass()
 
   return (
-    <div className="fixed top-1/2 right-2 z-40 -translate-y-1/2 rounded-full border border-white/60 bg-black/10 py-3">
+    <div className="fixed top-1/2 right-2 z-40 -translate-y-1/2 rounded-full border border-[var(--slider-border)] bg-black/10 py-3">
       <input
         type="range"
         className="glass-slider"

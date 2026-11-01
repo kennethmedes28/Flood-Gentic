@@ -1,6 +1,6 @@
 /** Four corner brackets that frame the screen like a heads-up display. */
 export function HudCorners() {
-  const base = "pointer-events-none fixed z-30 h-8 w-8 border-white/80"
+  const base = "pointer-events-none fixed z-30 h-8 w-8 border-[var(--hud-corner)]"
   return (
     <div aria-hidden="true">
       <span className={`${base} top-3 left-3 rounded-tl-lg border-t-2 border-l-2`} />

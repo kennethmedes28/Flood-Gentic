@@ -16,6 +16,12 @@
 
   /* Single calm blue accent. */
   --glass-accent: #1d6fe8;
+  --accent-rgb: 29, 111, 232;
+
+  /* Small pieces of chrome that change with the look. */
+  --hud-corner: rgba(255, 255, 255, 0.8);
+  --slider-border: rgba(255, 255, 255, 0.6);
+  --slider-track: linear-gradient(to top, transparent, rgba(255, 255, 255, 0.9) 60%, #8ec1ff);
 }
 
 html[data-glass-tone="clear"] {
@@ -65,13 +71,13 @@ html[data-glass-tone="clear"] {
   width: 8px;
   border-radius: 999px;
   /* Top = frosted blue/white, bottom = fades to transparent. */
-  background: linear-gradient(to top, transparent, rgba(255, 255, 255, 0.9) 60%, #8ec1ff);
+  background: var(--slider-track);
 }
 
 .glass-slider::-moz-range-track {
   width: 8px;
   border-radius: 999px;
-  background: linear-gradient(to top, transparent, rgba(255, 255, 255, 0.9) 60%, #8ec1ff);
+  background: var(--slider-track);
 }
 
 .glass-slider::-webkit-slider-thumb {
@@ -127,7 +133,7 @@ html[data-glass-tone="clear"] {
  */
 .glass-accent {
   color: #ffffff;
-  background: rgba(29, 111, 232, var(--g));
+  background: rgba(var(--accent-rgb), var(--g));
   -webkit-backdrop-filter: blur(calc(var(--g) * 12px));
   backdrop-filter: blur(calc(var(--g) * 12px));
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
@@ -155,4 +161,152 @@ html.hand-cursor * {
 html.hand-cursor input,
 html.hand-cursor textarea {
   cursor: text !important;
+}
+
+/*
+ * Enter button on the intro screen, styled after the logo: a plain hexagon
+ * (no outline) filled with a deep purple, the logo's muted purple darkened,
+ * with a soft cyan and magenta glow taken from its bright colours.
+ *
+ * clip-path would cut off a box-shadow, so the glow is a drop-shadow filter
+ * on the button itself.
+ */
+.enter-button {
+  --hex: polygon(18% 0, 82% 0, 100% 50%, 82% 100%, 18% 100%, 0 50%);
+
+  position: absolute;
+  bottom: 3vh; /* low, so it stays clear of the "powered by" credit in the GIF */
+  width: 250px;
+  height: 80px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  filter: drop-shadow(0 0 8px rgba(15, 255, 245, 0.55))
+    drop-shadow(0 0 22px rgba(255, 61, 208, 0.4));
+  transition: transform 0.2s ease, filter 0.2s ease;
+  animation: enter-glow 2.8s ease-in-out infinite;
+}
+
+.enter-button__face {
+  position: absolute;
+  inset: 0;
+  clip-path: var(--hex);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6em;
+  color: #ffffff;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  text-indent: 0.32em; /* balances the trailing letter-spacing so text looks centred */
+  text-transform: uppercase;
+  text-shadow: 0 0 10px #0ffff5;
+  background: linear-gradient(180deg, #3a2447, #1b1228);
+  transition: background 0.2s ease;
+}
+
+.enter-button:hover,
+.enter-button:focus-visible {
+  transform: scale(1.05);
+  filter: drop-shadow(0 0 12px rgba(15, 255, 245, 0.95))
+    drop-shadow(0 0 30px rgba(255, 61, 208, 0.7));
+}
+
+/* A clip-path hides the normal focus outline, so focus shows as a brighter face. */
+.enter-button:hover .enter-button__face,
+.enter-button:focus-visible .enter-button__face {
+  background: linear-gradient(180deg, #5a3670, #2f1d42);
+}
+
+.enter-button:active {
+  transform: scale(0.97);
+}
+
+@keyframes enter-glow {
+  0%, 100% { opacity: 0.92; }
+  50%      { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter-button {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Light haze over the video so text stays readable. */
+.scene-haze {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/*
+ * ---------- Cyberpunk look ----------
+ * Chosen in the floating menu; sets data-look="cyberpunk" on <html>.
+ * Colours come from the logo: neon cyan and magenta on deep purple.
+ * Every glass value still scales with --g, so the slider (and the fully
+ * transparent minimum) work exactly as before.
+ */
+html[data-look="cyberpunk"] {
+  --glass-accent: #ff3dd0;
+  --accent-rgb: 255, 61, 208;
+  --hud-corner: #0ffff5;
+  --slider-border: rgba(15, 255, 245, 0.7);
+  --slider-track: linear-gradient(to top, transparent, #0ffff5 55%, #ff3dd0);
+
+  /* Neon text on dark glass, in both frosted and clear tones. */
+  --glass-text: #e6fffe;
+  --glass-text-muted: rgba(184, 255, 255, 0.75);
+  --glass-text-shadow: 0 0 8px rgba(15, 255, 245, 0.45);
+}
+
+html[data-look="cyberpunk"][data-glass-tone="clear"] {
+  --glass-text: #e6fffe;
+  --glass-text-muted: rgba(184, 255, 255, 0.85);
+  --glass-text-shadow: 0 0 8px rgba(15, 255, 245, 0.7), 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+/* Monospace, slightly spaced type for the whole dashboard. */
+html[data-look="cyberpunk"] .glass-fade {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  letter-spacing: 0.02em;
+}
+
+/* Dark purple glass, sharp corners, thin neon cyan outline with a glow. */
+html[data-look="cyberpunk"] .glass-panel {
+  border-radius: 6px;
+  border: 1px solid rgba(15, 255, 245, calc(var(--g) * 0.8));
+  background: linear-gradient(
+    145deg,
+    rgba(24, 10, 40, calc(var(--g) * 0.78)),
+    rgba(52, 20, 72, calc(var(--g) * 0.62))
+  );
+  box-shadow:
+    0 0 18px rgba(15, 255, 245, calc(var(--g) * 0.22)),
+    inset 0 0 14px rgba(255, 61, 208, calc(var(--g) * 0.12));
+}
+
+/* The accent card turns magenta-to-purple with a pink glow. */
+html[data-look="cyberpunk"] .glass-accent {
+  border-radius: 6px !important;
+  border: 1px solid rgba(255, 140, 255, calc(var(--g) * 0.9));
+  background: linear-gradient(
+    135deg,
+    rgba(255, 61, 208, calc(var(--g) * 0.85)),
+    rgba(142, 106, 156, calc(var(--g) * 0.85))
+  );
+  box-shadow: 0 0 22px rgba(255, 61, 208, calc(var(--g) * 0.5));
+}
+
+/* The video is graded purple, with faint scanlines. */
+html[data-look="cyberpunk"] .scene-haze {
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.12) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, rgba(60, 10, 90, 0.35), rgba(255, 61, 208, 0.12));
+}
+
+/* Dark map tiles to match. */
+html[data-look="cyberpunk"] .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(1.1) saturate(0.7);
 }

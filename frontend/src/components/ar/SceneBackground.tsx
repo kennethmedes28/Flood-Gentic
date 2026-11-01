@@ -59,7 +59,7 @@ export function SceneBackground() {
         </video>
       )}
       {/* Light haze so text stays readable. Kept subtle on purpose. */}
-      <div className="absolute inset-0 bg-white/10" />
+      <div className="scene-haze absolute inset-0" />
     </div>
   )
 }

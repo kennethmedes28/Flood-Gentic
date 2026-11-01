@@ -107,7 +107,7 @@ export function MapView({ loading = false }: { loading?: boolean }) {
               type="button"
               onClick={() => setBasemap(key)}
               aria-pressed={basemap === key}
-              className="min-h-11 rounded-full px-4 text-sm font-medium aria-pressed:bg-[#1d6fe8] aria-pressed:text-white aria-pressed:[text-shadow:none]"
+              className="min-h-11 rounded-full px-4 text-sm font-medium aria-pressed:bg-[var(--glass-accent)] aria-pressed:text-white aria-pressed:[text-shadow:none]"
             >
               {BASEMAPS[key].label}
             </button>
