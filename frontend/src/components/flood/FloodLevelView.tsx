@@ -17,8 +17,8 @@ import { LEVEL_STYLE, describeFlowChange, forecastRainLevel } from "@/lib/flood-
 import { shortDate, weekday } from "@/lib/rain-words"
 import { riskLook } from "@/lib/risk"
 
-/** The river counts as high from this share of days (the backend's flood risk rules use the 95th percentile). */
-const HIGH_RIVER_FROM_PERCENTILE = 0.95
+/** How many recorded days the page shows and compares the river with. */
+const WEEK_DAYS = 7
 
 const MUTED = { color: "var(--glass-text-muted)" }
 
@@ -40,7 +40,8 @@ function summariseForecast(hourly: { time: string; values: Record<string, number
   if (hours.length === 0) return null
 
   const totalMm = hours.reduce((sum, entry) => sum + (entry.values.rainAccumulation ?? 0), 0)
-  const peakMmPerHour = Math.max(...hours.map((entry) => entry.values.rainIntensity ?? 0))
+  // The rain of each hour in mm, from the same figure as the total, so "at most X in one hour" can never exceed the total.
+  const peakMmPerHour = Math.max(...hours.map((entry) => entry.values.rainAccumulation ?? 0))
 
   // The coming day with the highest chance of rain.
   const wettest = daily.reduce<{ time: string; chance: number } | null>((best, entry) => {
@@ -99,7 +100,10 @@ export function FloodLevelView() {
   const level = live.risk
   const risk = riskLook(level)
   const flowChange = describeFlowChange(live.recent.at(-2)?.riverFlowM3s, live.riverFlowM3s)
-  const percentOfDays = live.riverPercentile === null ? null : Math.round(live.riverPercentile * 100)
+  const week = live.recent.slice(-WEEK_DAYS)
+  const weekFlows = week.flatMap((day) => (day.riverFlowM3s === null ? [] : [day.riverFlowM3s]))
+  const weekLow = weekFlows.length > 0 ? Math.min(...weekFlows) : null
+  const weekHigh = weekFlows.length > 0 ? Math.max(...weekFlows) : null
   const dataDay = live.dataDate ? shortDate(live.dataDate) : "unknown date"
 
   return (
@@ -174,19 +178,19 @@ export function FloodLevelView() {
                   </p>
                 </div>
               </div>
-              {percentOfDays !== null && (
+              {weekLow !== null && weekHigh !== null && (
                 <p className="mt-2 text-base" style={MUTED}>
-                  Higher than {percentOfDays}% of the days since 2020 in {shortName(city.name)}.
+                  Over the last {week.length} recorded days: {weekLow.toFixed(1)} to {weekHigh.toFixed(1)} m³/s.{" "}
+                  {live.riverFlowM3s <= weekLow
+                    ? "Today is the lowest of the week."
+                    : live.riverFlowM3s >= weekHigh
+                      ? "Today is the highest of the week."
+                      : ""}
                 </p>
               )}
-              {live.riverPercentile !== null && (
+              {weekLow !== null && weekHigh !== null && (
                 <div className="mt-5">
-                  <FlowGauge
-                    flowM3s={live.riverFlowM3s}
-                    percentile={live.riverPercentile}
-                    highFlowM3s={live.riverHighFlowM3s}
-                    highFromPercentile={HIGH_RIVER_FROM_PERCENTILE}
-                  />
+                  <FlowGauge flowM3s={live.riverFlowM3s} lowM3s={weekLow} highM3s={weekHigh} level={level} />
                 </div>
               )}
             </>
@@ -196,15 +200,15 @@ export function FloodLevelView() {
         <div className="flex flex-col gap-4 lg:col-span-7">
           {/* The recorded days. */}
           <GlassPanel className="p-5">
-            <h2 className="text-lg font-semibold">Last {live.recent.length} recorded days</h2>
+            <h2 className="text-lg font-semibold">Last {week.length} recorded days</h2>
             <p className="text-sm" style={MUTED}>
               River flow in m³/s, and the rain that fell each day (mm)
             </p>
             <div className="mt-3">
-              <FlowChart days={live.recent} highFlowM3s={live.riverHighFlowM3s} />
+              <FlowChart days={week} level={level} />
             </div>
             <div className="mt-2">
-              <RainBars days={live.recent} />
+              <RainBars days={week} />
             </div>
             <p className="mt-1 text-base tabular-nums" style={MUTED}>
               Rain on {dataDay}: {live.rainMm === null ? "not recorded" : `${live.rainMm.toFixed(1)} mm`}

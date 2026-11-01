@@ -36,7 +36,7 @@ flowchart TD
 | `/report` | Incident report form |
 | `/request` | Supply / assistance request form |
 | `/contacts` | Built. 911 first, then the rescue office and fire station of a chosen city, national agencies and hospitals. Numbers are copied exactly from `corpus/ph_emergency_contacts.csv`; only plain numbers are tap-to-call, ranges and text instructions are shown as written |
-| `/flood` | Flood level for any of the 17 cities: flood risk, river flow on a gauge (filled to where today's flow ranks among all days since 2020), the last 14 recorded days of river flow and rain, the rain forecast for the next 24 hours, and what to do. Real data from the backend (`GET /dashboard` and the live weather); there is no water height in the data |
+| `/flood` | Flood level for any of the 17 cities: flood risk, river flow on a gauge (filled to today's flow, with marks at the lowest and highest flow of the last 7 recorded days), the last 7 recorded days of river flow and rain, the rain forecast for the next 24 hours, and what to do. Real data from the backend (`GET /dashboard` and the live weather); there is no water height in the data |
 
 The data of the two pages above is generated, not typed: `scripts/export_frontend_data.py` copies the two CSV files into
 `frontend/src/data/evacuation-centers.ts` and `emergency-contacts.ts`. Run it again when a CSV changes (`--check` tells you if it is out of date).
@@ -192,7 +192,7 @@ No weather service is called. "Today" is the **last recorded day**, which can be
 Limits: no forecast, no current temperature or weather condition (the rain total is turned into words such as "Light rain"),
 and no PAGASA warnings. The risk describes what already happened, not what is coming.
 Rows are matched to cities by name through `ncr_locations.csv`.
-The city list is `data/dashboard-cities.ts`. The `/flood` page uses the same data (plus `river_percentile` and `river_high_flow_m3s`); the contacts and evacuation pages keep their own data.
+The city list is `data/dashboard-cities.ts`. The `/flood` page uses the same data (the API also sends `river_percentile` and `river_high_flow_m3s`, a comparison with all days since 2020, but no page shows them any more); the contacts and evacuation pages keep their own data.
 
 ## Source layout (`frontend/src`)
 

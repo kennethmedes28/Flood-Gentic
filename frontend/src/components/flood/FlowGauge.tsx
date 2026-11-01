@@ -1,4 +1,4 @@
-import { LEVEL_STYLE } from "@/lib/flood-levels"
+import { LEVEL_STYLE, type FloodLevel } from "@/lib/flood-levels"
 
 /** Height of the glass tube. */
 const TUBE_HEIGHT = "h-72"
@@ -6,30 +6,37 @@ const TUBE_HEIGHT = "h-72"
 type FlowGaugeProps = {
   /** River flow in cubic metres per second. */
   flowM3s: number
-  /** 0 to 1: the share of days since 2020 on which this city's flow was lower. */
-  percentile: number
-  /** The flow from which the river counts as high for this city, or null when it is not known. */
-  highFlowM3s: number | null
-  /** The share of days (0 to 1) from which the river counts as high. */
-  highFromPercentile: number
+  /** The lowest and highest flow of the last 7 recorded days (the flow itself is one of the 7). */
+  lowM3s: number
+  highM3s: number
+  /** The flood risk level, which sets the colour of the water. */
+  level: FloodLevel | null
+}
+
+/** A flow as a percentage of the tube, from the bottom. */
+function percentOf(flowM3s: number, maxM3s: number): number {
+  return Math.min(100, Math.max(0, (flowM3s / maxM3s) * 100))
 }
 
 /**
- * A glass tube that shows how high the river is for THIS city: it is filled to the flow's place among all the days since
- * 2020 (half full = a middling day), with a mark where the river counts as high. Raw flow is not used for the height,
- * because storm days are hundreds of times a normal day and a straight scale would leave the water at the very bottom.
- * The flow is written next to the water and the mark is labelled, so the colours are never the only clue.
+ * A glass tube filled up to the river's current flow, with a mark at the lowest and the highest flow of the last 7 days,
+ * so it shows whether the river is up or down compared with the week. The flow is written next to the water and the
+ * marks are labelled, so the colours are never the only clue.
  * This is a flow in m³/s, not a water height: there is no height in the data.
  */
-export function FlowGauge({ flowM3s, percentile, highFlowM3s, highFromPercentile }: FlowGaugeProps) {
-  const isHigh = percentile >= highFromPercentile
-  const color = LEVEL_STYLE[isHigh ? "high" : "low"].color
-  const fillPercent = Math.min(100, Math.max(0, percentile * 100))
-  const markPercent = highFromPercentile * 100
+export function FlowGauge({ flowM3s, lowM3s, highM3s, level }: FlowGaugeProps) {
+  const color = LEVEL_STYLE[level ?? "low"].color
+  // The tube reaches a little above the week's highest flow, so the water never touches the top.
+  const maxM3s = Math.max(highM3s * 1.15, flowM3s * 1.15, 0.1)
+  const fillPercent = percentOf(flowM3s, maxM3s)
+  const sameValue = Math.abs(highM3s - lowM3s) < 0.05 // a flat week: one mark is enough
 
-  const summary =
-    `River flow ${flowM3s.toFixed(1)} cubic metres per second, higher than ${Math.round(percentile * 100)} percent of the days since 2020.` +
-    (highFlowM3s === null ? "" : ` The river counts as high from ${highFlowM3s.toFixed(1)}. It is ${isHigh ? "above" : "below"} that.`)
+  const marks = [
+    { label: "7-day high", flow: highM3s },
+    ...(sameValue ? [] : [{ label: "7-day low", flow: lowM3s }]),
+  ]
+
+  const summary = `River flow ${flowM3s.toFixed(1)} cubic metres per second. Over the last 7 recorded days it ranged from ${lowM3s.toFixed(1)} to ${highM3s.toFixed(1)}.`
 
   return (
     <div className="flex items-stretch justify-center gap-3" role="img" aria-label={summary}>
@@ -43,7 +50,7 @@ export function FlowGauge({ flowM3s, percentile, highFlowM3s, highFromPercentile
         </span>
       </div>
 
-      {/* The tube, with the water and the mark. */}
+      {/* The tube, with the water and the marks. */}
       <div className={`relative w-20 shrink-0 ${TUBE_HEIGHT}`} aria-hidden="true">
         <div className="absolute inset-0 overflow-hidden rounded-[2.5rem] border-2 border-white/70 bg-white/20 shadow-inner">
           <div
@@ -56,20 +63,25 @@ export function FlowGauge({ flowM3s, percentile, highFlowM3s, highFromPercentile
             </svg>
           </div>
         </div>
-        <span className="absolute inset-x-0 border-t-2 border-dashed" style={{ bottom: `${markPercent}%`, borderColor: LEVEL_STYLE.high.color }} />
+        {marks.map((mark) => (
+          <span key={mark.label} className="absolute inset-x-0 border-t-2 border-dashed border-current opacity-60" style={{ bottom: `${percentOf(mark.flow, maxM3s)}%` }} />
+        ))}
       </div>
 
-      {/* Right: what the mark means. */}
-      <div className={`relative w-36 shrink-0 ${TUBE_HEIGHT}`} aria-hidden="true">
-        <span className="absolute left-0 flex translate-y-1/2 flex-col text-sm leading-tight" style={{ bottom: `${markPercent}%` }}>
-          <span className="font-semibold">High river</span>
-          <span style={{ color: "var(--glass-text-muted)" }}>the top {Math.round(100 - markPercent)}% of days</span>
-          {highFlowM3s !== null && (
+      {/* Right: the name and flow of each mark. */}
+      <div className={`relative w-32 shrink-0 ${TUBE_HEIGHT}`} aria-hidden="true">
+        {marks.map((mark) => (
+          <span
+            key={mark.label}
+            className="absolute left-0 flex translate-y-1/2 items-baseline gap-1.5 text-sm"
+            style={{ bottom: `${percentOf(mark.flow, maxM3s)}%` }}
+          >
+            <span className="font-semibold">{mark.label}</span>
             <span className="tabular-nums" style={{ color: "var(--glass-text-muted)" }}>
-              from {highFlowM3s.toFixed(1)} m³/s
+              {mark.flow.toFixed(1)}
             </span>
-          )}
-        </span>
+          </span>
+        ))}
       </div>
     </div>
   )
