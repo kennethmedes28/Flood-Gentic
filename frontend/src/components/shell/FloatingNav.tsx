@@ -2,8 +2,9 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
+import { HelpDialog } from "@/components/shell/HelpDialog"
 import { useHand, type Hand } from "@/context/HandContext"
 import { useLook, type Look } from "@/context/LookContext"
 import { useDraggable } from "@/hooks/useDraggable"
@@ -32,7 +33,7 @@ const PAGES = [
   { href: "/flood", label: "Flood level" },
   { href: "/satellite", label: "Live PAGASA Satellite View" },
   { href: "/evacuation", label: "Evacuation" },
-  { href: "/assistant", label: "Assistant" },
+  { href: "/assistant", label: "AI Agent Flood Assistant" },
   { href: "/contacts", label: "Contacts" },
 ]
 
@@ -45,6 +46,8 @@ export function FloatingNav() {
   const { hand, setHand } = useHand()
   const { look, setLook } = useLook()
   const [open, setOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const menuButton = useRef<HTMLButtonElement>(null)
   const { position, handlers, onArrowKey } = useDraggable(BUTTON_SIZE, () =>
     setOpen((current) => !current)
   )
@@ -71,6 +74,7 @@ export function FloatingNav() {
       {open && <div className="fixed inset-0 z-40" onPointerDown={() => setOpen(false)} />}
 
       <button
+        ref={menuButton}
         type="button"
         className="fixed z-50 flex cursor-grab touch-none items-center select-none active:cursor-grabbing justify-center overflow-hidden rounded-full shadow-lg focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-white"
         style={{
@@ -143,11 +147,29 @@ export function FloatingNav() {
             <span className="sr-only">(opens in a new tab)</span>
           </a>
 
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              setHelpOpen(true)
+            }}
+            className="flex min-h-11 items-center justify-between rounded-full px-4 text-sm font-medium"
+          >
+            Help and access guide
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+              <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+
           {/* Settings. Picking an option keeps the menu open. */}
           <OptionRow label="Theme" options={LOOKS} value={look} onChange={setLook} />
           <OptionRow label="Cursor hand" options={HANDS} value={hand} onChange={setHand} />
         </nav>
       )}
+
+      <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} returnFocusTo={menuButton} />
     </>
   )
 }

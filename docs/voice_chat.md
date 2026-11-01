@@ -1,6 +1,6 @@
 # Voice Chat
 
-How spoken questions reach the chatbot. Status: **speech-to-text backend built, frontend and text-to-speech not built**.
+How spoken questions reach the chatbot. Status: **speech-to-text backend and the microphone button in the assistant built; text-to-speech not built**.
 The chat flow itself is in `docs/backend_architecture.md` section 5; this document covers only the voice path.
 
 ## 1. Flow
@@ -51,8 +51,26 @@ A bad `mode` or `rate` closes the socket with code 1008. One connection is cut o
 | `backend/voice/asr_realtime.py` | `RealtimeTranscriber`: opens Meta's realtime socket, sends the handshake and audio, ends the stream, yields events. `to_client_event()` turns Meta events into the messages above |
 | `backend/voice/websocket_router.py` | `create_voice_router()`: the `/ws/voice` endpoint that relays audio and events. Add it with `app.include_router(create_voice_router())` |
 | `backend/tests/test_voice_websocket.py` | Tests with a fake transcriber (no network) |
+| `frontend/public/voice-pcm-worklet.js` | AudioWorklet on the browser's audio thread: turns microphone audio into 16-bit PCM frames of 1,280 samples (80 ms at 16 kHz) |
+| `frontend/src/hooks/useVoiceTranscription.ts` | Opens the microphone and `/ws/voice`, sends the frames, and hands the partial and final text to the page |
+| `frontend/src/components/assistant/VoiceButton.tsx` | The microphone button next to the message box |
+| `frontend/src/components/assistant/ChatWindow.tsx` | Puts the text into the message box (never sends it by itself) |
 
 Recognition hints sent to Meta: language bias Tagalog and English, and keywords for the NCR city names, PAGASA and NDRRMC.
+
+## 3b. The microphone in the assistant (browser side)
+
+The assistant's message box has a microphone button. Tap it to start speaking and tap it again to stop.
+
+- It connects with `mode=push_to_talk&rate=16000` and sends the end message when the user taps stop, so one tap pair gives one transcript.
+- While the user speaks, the words so far appear in the message box (read-only meanwhile). After the stop, the final text replaces them and the box takes focus so the user can read it, fix it and press Send. **Nothing is sent to the chat automatically**, and anything typed before speaking is kept, with the speech added after it.
+- The button shows its state with an icon and a label, not colour alone: microphone (ready), red stop square with a pulsing ring (listening; still ring if the device asks for less motion), spinner (starting or finishing).
+- Sending is turned off while the microphone is on, so a half-finished transcript is never sent.
+- Each failure has a plain message and returns the button to ready: microphone blocked, no microphone, microphone in use, a page that is not secure (the microphone needs https or localhost), a browser without AudioWorklet, voice service not reachable, and "I didn't hear anything".
+- A recording stops by itself at 110 seconds, before the server's 120-second limit, so the last words still arrive.
+- Typing works exactly as before; the microphone is an extra.
+
+Tested: the browser pipeline against a stand-in server that follows section 2 and with Chromium's fake microphone (frames of 2,560 bytes at 16 kHz arrive; partial and final text land in the box; nothing is sent to `/chat`; typed text is kept; the error messages show), and one short run against the real backend and Meta with the fake microphone's beep (the service accepted the audio and closed cleanly; no speech, so "I didn't hear anything"). **Not tested:** real human speech, Firefox or Safari, a phone, or a page served over https.
 
 ## 4. Meta speech-to-text API (reviewed 2026-10-29)
 
@@ -73,8 +91,6 @@ Wrong flood guidance can cause harm, and speech recognition makes mistakes, so:
 
 ## 6. Not built yet
 
-- The FastAPI app that mounts the router (`main.py` is a stub).
-- The browser side: microphone capture, resampling to 16-bit PCM (an AudioWorklet), the push-to-talk button and transcript display (`docs/frontend_architecture.md`).
 - Spoken replies. Meta's docs reviewed so far only describe speech-to-text; a Filipino voice is unchecked, and the browser's built-in voice is the fallback.
 - An origin check and per-IP rate limit on the socket (planned for `/chat` too).
 - Accuracy tests on recorded English, Tagalog and mixed questions (`docs/evaluation_rubric.md`).

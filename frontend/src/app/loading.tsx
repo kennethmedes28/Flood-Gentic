@@ -1,9 +1,9 @@
-import { SceneBackground } from "@/components/ar/SceneBackground"
-import { GlassPanel } from "@/components/ar/GlassPanel"
-import { LoadingLabel, Skeleton } from "@/components/common/Skeleton"
+import { SceneBackground } from "@/components/shell/SceneBackground"
+import { GlassPanel } from "@/components/ui/GlassPanel"
+import { LoadingLabel, Skeleton } from "@/components/ui/Skeleton"
 import { CityList } from "@/components/dashboard/CityList"
 import { DayStrip } from "@/components/dashboard/DayStrip"
-import { MapView } from "@/components/map/MapView"
+import { MapView } from "@/components/dashboard/MapView"
 import { RainChart } from "@/components/dashboard/RainChart"
 
 /**

@@ -10,6 +10,12 @@ const GATE_GIF = "/flood-gentic_gate_hexlogo.gif"
  * How long the gate animation lasts. A GIF cannot tell us when it ends, so
  * this is the sum of its frame delays (51 frames, 3.32 seconds). Change it if
  * the GIF is replaced.
+ *
+ * The gate GIF must NOT loop (it has no loop marker, so it plays once and
+ * stays on its last frame, the open gate). The timer starts when the image
+ * loads, which can be later than the animation's first frame; with a looping
+ * GIF the animation would wrap back to the closed gate before the dashboard
+ * opens. Export a replacement GIF with looping turned off.
  */
 const GATE_DURATION_MS = 3320
 
@@ -36,6 +42,10 @@ export function IntroGate({ children }: { children: React.ReactNode }) {
     if (phase !== "intro") return
     const preload = new Image()
     preload.src = GATE_GIF
+
+    // The map's code is small: fetch it now so the map can start as soon as the dashboard opens.
+    // (The 37 MB background video is left alone: it would compete with the gate GIF for bandwidth.)
+    void import("leaflet")
   }, [phase])
 
   function startGate() {

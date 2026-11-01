@@ -2,9 +2,13 @@
 
 import { useEffect, useRef, useState } from "react"
 
-import { GlassPanel } from "@/components/ar/GlassPanel"
+import { GlassPanel } from "@/components/ui/GlassPanel"
+import { useVoiceTranscription } from "@/hooks/useVoiceTranscription"
 import { ChatError, sendChatMessage, type Coordinates } from "@/lib/chat-api"
+import { useMediaAttachment, type Attachment } from "@/hooks/useMediaAttachment"
+import { checkMedia, isVideo, MediaCheckError } from "@/lib/media-check-api"
 
+import { InputModeButton, type InputMode } from "./InputModeButton"
 import { MessageBubble, TypingIndicator, type ChatMessage } from "./MessageBubble"
 import { QuickPrompts } from "./QuickPrompts"
 
@@ -17,14 +21,21 @@ const WELCOME: ChatMessage = {
   role: "assistant",
   kind: "normal",
   text:
-    "Hi! I'm the Flood Gentic assistant. Ask me about flood risk, evacuation centers, " +
-    "emergency contacts or what to prepare. You can write in English or Filipino.",
+    "Hi! I'm the AI Agent Flood Assistant. Ask me about flood risk, evacuation centers, " +
+    "emergency contacts or what to prepare. You can write in English or Filipino, " +
+    "or attach a photo or video to check it for flood water.",
 }
 
 let nextId = 0
 function newId() {
   nextId += 1
   return `m${nextId}`
+}
+
+/** What the user typed before speaking, followed by what they said (cut to the length the backend accepts). */
+function withSpeech(typedBefore: string, spoken: string): string {
+  const text = typedBefore.trim() ? `${typedBefore.trimEnd()} ${spoken}` : spoken
+  return text.slice(0, MAX_LENGTH)
 }
 
 /**
@@ -41,7 +52,29 @@ export function ChatWindow() {
   const [locationNote, setLocationNote] = useState("")
   const [draft, setDraft] = useState("")
   const [pending, setPending] = useState(false)
+  const [mode, setMode] = useState<InputMode>("voice")
+  const { attachment, attachError, attachFile, removeAttachment, takeAttachment } = useMediaAttachment()
+  /** Also count people and vehicles / estimate depth: more detail, but more API credit per check. */
+  const [moreDetail, setMoreDetail] = useState(false)
   const endOfMessages = useRef<HTMLDivElement>(null)
+  const inputBox = useRef<HTMLTextAreaElement>(null)
+  /** What was in the message box when the microphone was turned on; the spoken words are added after it. */
+  const typedBeforeSpeaking = useRef("")
+
+  // Speech goes into the message box for the user to read and fix. It is never sent without their say-so.
+  const voice = useVoiceTranscription({
+    onPartial: (spoken) => setDraft(withSpeech(typedBeforeSpeaking.current, spoken)),
+    onFinal: (spoken) => {
+      setDraft(withSpeech(typedBeforeSpeaking.current, spoken))
+      inputBox.current?.focus()
+    },
+  })
+  const voiceActive = voice.status !== "idle"
+
+  function toggleMicrophone() {
+    if (voice.status === "idle") typedBeforeSpeaking.current = draft
+    voice.toggle()
+  }
 
   // Keep the newest message in view.
   useEffect(() => {
@@ -53,9 +86,39 @@ export function ChatWindow() {
     setMessages((current) => [...current, { ...message, id: newId() }])
   }
 
+  /** Check the attached photo or video for flood water. The typed text is only shown as the caption: it is not sent to the chat. */
+  async function sendAttachment(item: Attachment, caption: string) {
+    const video = isVideo(item.file)
+    addMessage({
+      role: "user",
+      kind: "normal",
+      text: caption || (video ? "Check this video for flood water." : "Check this photo for flood water."),
+      media: { url: item.url, isVideo: video },
+    })
+    takeAttachment() // the preview now lives in the message, so its address is not revoked here
+    setDraft("")
+    setPending(true)
+
+    try {
+      const text = await checkMedia(item.file, { people: moreDetail, depth: moreDetail })
+      const note = video ? "\n\n(Only one picture from the middle of the video was checked.)" : ""
+      addMessage({ role: "assistant", kind: "normal", text: text + note })
+    } catch (error) {
+      const text = error instanceof MediaCheckError ? error.message : "Something went wrong. Please try again."
+      addMessage({ role: "assistant", kind: "error", text })
+    } finally {
+      setPending(false)
+    }
+  }
+
   async function send(text: string) {
     const message = text.trim()
-    if (!message || pending) return
+    if (pending || voiceActive) return
+    if (attachment) {
+      await sendAttachment(attachment, message)
+      return
+    }
+    if (!message) return
 
     addMessage({ role: "user", kind: "normal", text: message })
     setDraft("")
@@ -97,6 +160,7 @@ export function ChatWindow() {
   }
 
   function clearConversation() {
+    messages.forEach((message) => message.media && URL.revokeObjectURL(message.media.url))
     setMessages([WELCOME])
     setThreadId(null)
   }
@@ -108,7 +172,7 @@ export function ChatWindow() {
       {/* Header */}
       <GlassPanel className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
         <div>
-          <h1 className="text-lg font-semibold">Flood Assistant</h1>
+          <h1 className="text-lg font-semibold">AI Agent Flood Assistant</h1>
           <p className="text-xs" style={{ color: "var(--glass-text-muted)" }}>
             Metro Manila · English and Filipino
           </p>
@@ -151,6 +215,28 @@ export function ChatWindow() {
 
       {showPrompts && <QuickPrompts onPick={send} disabled={pending} />}
 
+      {/* The photo or video waiting to be checked */}
+      {attachment && (
+        <GlassPanel className="flex flex-wrap items-center gap-3 px-4 py-2">
+          {isVideo(attachment.file) ? (
+            <video src={attachment.url} muted preload="metadata" className="size-12 rounded-lg object-cover" aria-hidden="true" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element -- a local preview of the user's own file
+            <img src={attachment.url} alt="" className="size-12 rounded-lg object-cover" />
+          )}
+          <div className="min-w-0 flex-1 text-sm">
+            <p className="truncate font-medium">{attachment.file.name}</p>
+            <label className="flex min-h-11 items-center gap-2 text-xs">
+              <input type="checkbox" checked={moreDetail} onChange={(event) => setMoreDetail(event.target.checked)} className="size-4" />
+              Also count people and estimate depth (slower, uses more credit)
+            </label>
+          </div>
+          <button type="button" onClick={removeAttachment} className="min-h-11 rounded-full px-4 text-sm font-medium">
+            Remove
+          </button>
+        </GlassPanel>
+      )}
+
       {/* Message box: Enter sends, Shift+Enter adds a new line */}
       <form
         className="flex items-end gap-2"
@@ -161,10 +247,11 @@ export function ChatWindow() {
       >
         <GlassPanel className="flex-1 px-4 py-2">
           <label htmlFor="chat-input" className="sr-only">
-            Message to the assistant
+            Message to the AI Agent Flood Assistant
           </label>
           <textarea
             id="chat-input"
+            ref={inputBox}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -175,7 +262,8 @@ export function ChatWindow() {
             }}
             rows={1}
             maxLength={MAX_LENGTH}
-            placeholder="Ask about floods, evacuation or contacts…"
+            readOnly={voiceActive}
+            placeholder={voice.status === "listening" ? "Listening…" : "Ask about floods, evacuation or contacts…"}
             className="max-h-32 min-h-11 w-full resize-none bg-transparent py-2.5 text-sm outline-none placeholder:text-current placeholder:opacity-60"
             style={{ fieldSizing: "content" } as React.CSSProperties}
           />
@@ -185,9 +273,18 @@ export function ChatWindow() {
             </p>
           )}
         </GlassPanel>
+        <InputModeButton
+          mode={mode}
+          onModeChange={setMode}
+          voiceStatus={voice.status}
+          onVoiceClick={toggleMicrophone}
+          onFilePicked={attachFile}
+          disabled={pending}
+          locked={voiceActive}
+        />
         <button
           type="submit"
-          disabled={pending || !draft.trim()}
+          disabled={pending || voiceActive || (!draft.trim() && !attachment)}
           aria-label="Send message"
           className="flex size-12 shrink-0 items-center justify-center rounded-full bg-[var(--glass-accent)] text-white shadow-lg disabled:opacity-40"
         >
@@ -196,6 +293,25 @@ export function ChatWindow() {
           </svg>
         </button>
       </form>
+
+      {/* What the microphone is doing, or why it stopped. Typing always works. */}
+      {attachError ? (
+        <p className="text-center text-sm" role="alert">
+          {attachError}
+        </p>
+      ) : voice.error ? (
+        <p className="text-center text-sm" role="alert">
+          {voice.error}
+        </p>
+      ) : voiceActive ? (
+        <p className="text-center text-sm" role="status">
+          {voice.status === "listening"
+            ? "Listening… tap the red button when you are done. You can then fix the text before sending."
+            : voice.status === "processing"
+              ? "Turning your speech into text…"
+              : "Starting the microphone…"}
+        </p>
+      ) : null}
 
       <p className="text-center text-xs" style={{ color: "var(--glass-text-muted)" }}>
         Not an official warning. In an emergency call 911 or your local DRRMO.

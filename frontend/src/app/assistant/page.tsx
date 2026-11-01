@@ -1,25 +1,27 @@
-import { FloatingNav } from "@/components/ar/FloatingNav"
-import { GlassSlider } from "@/components/ar/GlassSlider"
-import { HudCorners } from "@/components/ar/HudCorners"
-import { SceneBackground } from "@/components/ar/SceneBackground"
+import { FloatingNav } from "@/components/shell/FloatingNav"
+import { GlassSlider } from "@/components/shell/GlassSlider"
+import { ResizableFrame } from "@/components/shell/ResizableFrame"
+import { SceneBackground } from "@/components/shell/SceneBackground"
 import { ChatWindow } from "@/components/assistant/ChatWindow"
 
 /**
  * The AI assistant: the same video and glass look as the dashboard, with a
- * chat that fills the screen height. The `glass-fade` wrapper fades the
- * chat out when the glass slider is at its minimum, as on the dashboard.
+ * chat that fills the screen height. The frame fades the chat out when the
+ * glass slider is at its minimum, as on the dashboard, and its corner brackets
+ * can be dragged toward the centre to shrink it (see ResizableFrame).
  */
 export default function AssistantPage() {
   return (
-    <main className="h-svh p-4 pr-[68px] sm:p-6 sm:pr-[68px]">
+    <main className="h-svh">
       <SceneBackground />
       <GlassSlider />
       <FloatingNav />
 
-      <div className="glass-fade mx-auto h-full max-w-4xl">
-        <HudCorners />
-        <ChatWindow />
-      </div>
+      <ResizableFrame storageKey="assistant" contentClassName="p-4 pr-[68px] sm:p-6 sm:pr-[68px]" fillHeight>
+        <div className="mx-auto h-full max-w-4xl">
+          <ChatWindow />
+        </div>
+      </ResizableFrame>
     </main>
   )
 }

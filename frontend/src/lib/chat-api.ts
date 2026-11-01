@@ -6,7 +6,7 @@
  * suggested evacuation center.
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 export type Coordinates = { lat: number; lng: number }
 

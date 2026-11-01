@@ -1,5 +1,5 @@
-import { FloatingNav } from "@/components/ar/FloatingNav"
-import { SatelliteView } from "@/components/weather/SatelliteView"
+import { FloatingNav } from "@/components/shell/FloatingNav"
+import { SatelliteView } from "@/components/satellite/SatelliteView"
 
 /** Full-screen live satellite weather, opened from the logo button's menu. */
 export default function SatellitePage() {

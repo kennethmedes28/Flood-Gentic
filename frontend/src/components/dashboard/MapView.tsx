@@ -3,32 +3,24 @@
 import "leaflet/dist/leaflet.css"
 
 import { useEffect, useRef, useState } from "react"
-import type { Map as LeafletMap, TileLayer } from "leaflet"
+import type { CircleMarker, Map as LeafletMap, TileLayer } from "leaflet"
 
-import { GlassPanel } from "@/components/ar/GlassPanel"
-import { LoadingLabel, Skeleton } from "@/components/common/Skeleton"
-import { CITIES, DEFAULT_CENTER, RISK_STYLE } from "@/data/sample-cities"
-
-type Basemap = "street" | "satellite"
-
-/** Free map tiles. Attribution is required by both providers. */
-const BASEMAPS: Record<Basemap, { label: string; url: string; attribution: string }> = {
-  street: {
-    label: "Street",
-    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attribution: "© OpenStreetMap contributors",
-  },
-  satellite: {
-    label: "Satellite",
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
-  },
-}
+import { GlassPanel } from "@/components/ui/GlassPanel"
+import { LoadingLabel, Skeleton } from "@/components/ui/Skeleton"
+import { useCurrentCity } from "@/context/CurrentCityContext"
+import { BASEMAPS, type Basemap } from "@/lib/basemaps"
+import { useDashboardData } from "@/context/DashboardDataContext"
+import { CITIES } from "@/data/dashboard-cities"
+import { describeFlow, RISK_STYLE, riskLook } from "@/lib/risk"
 
 /** Flood map: street or satellite view with one risk marker per city. */
 export function MapView({ loading = false }: { loading?: boolean }) {
+  const { city: current } = useCurrentCity()
+  const { cityData } = useDashboardData()
+  const currentRef = useRef(current) // the map is created once, on the city that is current at that moment
   const mapElement = useRef<HTMLDivElement>(null)
   const map = useRef<LeafletMap | null>(null)
+  const markers = useRef<Map<string, CircleMarker>>(new Map())
   const tileLayer = useRef<TileLayer | null>(null)
   const leaflet = useRef<typeof import("leaflet") | null>(null)
   const [basemap, setBasemap] = useState<Basemap>("street")
@@ -38,6 +30,7 @@ export function MapView({ loading = false }: { loading?: boolean }) {
   useEffect(() => {
     if (loading) return
     let cancelled = false
+    const circles = markers.current // the same Map object for the life of the component
 
     async function createMap() {
       const L = await import("leaflet")
@@ -45,24 +38,18 @@ export function MapView({ loading = false }: { loading?: boolean }) {
       leaflet.current = L
 
       const created = L.map(mapElement.current, {
-        center: [DEFAULT_CENTER.lat, DEFAULT_CENTER.lng],
+        center: [currentRef.current.lat, currentRef.current.lng],
         zoom: 11,
         zoomControl: true,
       })
       map.current = created
 
-      // One circle per city, coloured by risk. The popup repeats the risk as text.
+      // One circle per city. Its colour and popup are filled in below once the live risk is known.
       for (const city of CITIES) {
-        const risk = RISK_STYLE[city.risk]
-        L.circleMarker([city.lat, city.lng], {
-          radius: 12,
-          color: "#ffffff",
-          weight: 2,
-          fillColor: risk.color,
-          fillOpacity: 0.9,
-        })
-          .bindPopup(`<strong>${city.name}</strong><br>${risk.symbol} ${risk.label} risk · ${city.waterLevelM} m (sample)`)
+        const marker = L.circleMarker([city.lat, city.lng], { radius: 12, color: "#ffffff", weight: 2, fillOpacity: 0.9 })
+          .bindPopup(`<strong>${city.name}</strong>`)
           .addTo(created)
+        circles.set(city.name, marker)
       }
       setReady(true)
     }
@@ -72,10 +59,36 @@ export function MapView({ loading = false }: { loading?: boolean }) {
       cancelled = true
       map.current?.remove()
       map.current = null
+      circles.clear()
       tileLayer.current = null
       setReady(false)
     }
   }, [loading])
+
+  // Follow the current city and the live data: colour each circle by its risk, ring the current city, and move the map to it.
+  useEffect(() => {
+    currentRef.current = current
+    if (!ready || !map.current) return
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+
+    for (const city of CITIES) {
+      const live = cityData(city.key)
+      const risk = riskLook(live?.risk)
+      const isCurrent = city.name === current.name
+      const marker = markers.current.get(city.name)
+      marker?.setStyle({
+        radius: isCurrent ? 16 : 12,
+        weight: isCurrent ? 5 : 2,
+        color: isCurrent ? "#1d6fe8" : "#ffffff",
+        fillColor: risk.color,
+      })
+      marker?.setPopupContent(
+        `<strong>${city.name}</strong>${isCurrent ? " · Current location" : ""}<br>${risk.symbol} ${risk.label}${live?.risk ? " risk" : ""} · river ${describeFlow(live?.riverFlowM3s)}`
+      )
+      if (isCurrent) marker?.bringToFront()
+    }
+    map.current.setView([current.lat, current.lng], map.current.getZoom(), { animate: !reducedMotion })
+  }, [current, ready, cityData])
 
   // Swap the base layer whenever the toggle changes.
   useEffect(() => {
@@ -129,7 +142,7 @@ export function MapView({ loading = false }: { loading?: boolean }) {
             {risk.label}
           </li>
         ))}
-        <li style={{ color: "var(--glass-text-muted)" }}>Sample data</li>
+        <li style={{ color: "var(--glass-text-muted)" }}>Rule-based estimate, not official</li>
       </ul>
     </GlassPanel>
   )

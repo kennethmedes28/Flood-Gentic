@@ -2,11 +2,12 @@ import { Geist, Geist_Mono } from "next/font/google"
 
 import "./globals.css"
 import "./glass.css"
-import { HandCursor } from "@/components/ar/HandCursor"
+import { HandCursor } from "@/components/shell/HandCursor"
+import { CurrentCityProvider } from "@/context/CurrentCityContext"
 import { LookProvider } from "@/context/LookContext"
 import { HandProvider } from "@/context/HandContext"
 import { GlassProvider } from "@/context/GlassContext"
-import { ThemeProvider } from "@/components/theme-provider"
+import { ThemeProvider } from "@/context/ThemeProvider"
 import { cn } from "@/lib/utils";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'})
@@ -32,8 +33,10 @@ export default function RootLayout({
           <GlassProvider>
             <LookProvider>
               <HandProvider>
-                {children}
-                <HandCursor />
+                <CurrentCityProvider>
+                  {children}
+                  <HandCursor />
+                </CurrentCityProvider>
               </HandProvider>
             </LookProvider>
           </GlassProvider>

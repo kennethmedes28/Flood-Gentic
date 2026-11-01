@@ -180,6 +180,9 @@ html.hand-cursor textarea {
   height: 80px;
   padding: 0;
   border: 0;
+  /* The button is auto-focused, so the browser would draw its focus ring as a rectangle around the hexagon.
+     Focus is shown by the brighter face, larger size and stronger glow below instead. */
+  outline: none;
   background: none;
   cursor: pointer;
   filter: drop-shadow(0 0 8px rgba(15, 255, 245, 0.55))
@@ -204,20 +207,34 @@ html.hand-cursor textarea {
   text-transform: uppercase;
   text-shadow: 0 0 10px #0ffff5;
   background: linear-gradient(180deg, #3a2447, #1b1228);
-  transition: background 0.2s ease;
+  transition: background 0.2s ease, text-shadow 0.2s ease;
 }
 
-.enter-button:hover,
+/*
+ * Keyboard focus. The button is focused as soon as the screen opens, so this must look different from hover,
+ * or hovering would show nothing new: a slightly brighter face and glow, and no change of size.
+ * (The outline is turned off above because it would be a rectangle.)
+ */
 .enter-button:focus-visible {
-  transform: scale(1.05);
-  filter: drop-shadow(0 0 12px rgba(15, 255, 245, 0.95))
-    drop-shadow(0 0 30px rgba(255, 61, 208, 0.7));
+  filter: drop-shadow(0 0 10px rgba(15, 255, 245, 0.8))
+    drop-shadow(0 0 26px rgba(255, 61, 208, 0.55));
 }
 
-/* A clip-path hides the normal focus outline, so focus shows as a brighter face. */
-.enter-button:hover .enter-button__face,
 .enter-button:focus-visible .enter-button__face {
-  background: linear-gradient(180deg, #5a3670, #2f1d42);
+  background: linear-gradient(180deg, #4a2d5c, #261836);
+}
+
+/* Hover: clearly bigger, a lighter face, white-hot text and a wide, bright glow. Declared after focus so it wins. */
+.enter-button:hover {
+  transform: scale(1.14);
+  filter: drop-shadow(0 0 14px rgba(15, 255, 245, 1))
+    drop-shadow(0 0 34px rgba(255, 61, 208, 0.9))
+    drop-shadow(0 0 64px rgba(15, 255, 245, 0.55));
+}
+
+.enter-button:hover .enter-button__face {
+  background: linear-gradient(180deg, #7a45a0, #3d2458);
+  text-shadow: 0 0 6px #ffffff, 0 0 16px #0ffff5;
 }
 
 .enter-button:active {
@@ -234,6 +251,52 @@ html.hand-cursor textarea {
     animation: none;
     transition: none;
   }
+}
+
+/*
+ * Help and access guide. Unlike .glass-panel it does not depend on --g, so it stays readable when the glass slider
+ * is at its clearest. The Cyberpunk look gets its own colours below.
+ */
+.help-dialog {
+  color: #0b2545;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 12px 40px rgba(10, 40, 90, 0.35);
+
+  /* It still scrolls (wheel, touch, arrow keys, Page Up/Down), but no scrollbar is drawn. */
+  scrollbar-width: none;
+}
+
+.help-dialog::-webkit-scrollbar {
+  display: none;
+}
+
+.help-dialog .help-muted {
+  color: rgba(11, 37, 69, 0.72);
+}
+
+.help-dialog .help-close {
+  background: var(--glass-accent);
+  color: #ffffff;
+}
+
+html[data-look="cyberpunk"] .help-dialog {
+  color: #e6fffe;
+  border-radius: 6px;
+  border-color: rgba(15, 255, 245, 0.7);
+  background: rgba(22, 12, 36, 0.96);
+  box-shadow: 0 0 28px rgba(15, 255, 245, 0.25);
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+html[data-look="cyberpunk"] .help-dialog .help-muted {
+  color: rgba(184, 255, 255, 0.78);
+}
+
+.help-dialog button:focus-visible {
+  outline: 3px solid var(--glass-accent);
+  outline-offset: 2px;
 }
 
 /* Light haze over the video so text stays readable. */
@@ -309,4 +372,20 @@ html[data-look="cyberpunk"] .scene-haze {
 /* Dark map tiles to match. */
 html[data-look="cyberpunk"] .leaflet-tile-pane {
   filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(1.1) saturate(0.7);
+}
+
+/* Flood level gauge: a slow ripple along the water surface. */
+@keyframes water-drift {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+.water-surface {
+  animation: water-drift 6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .water-surface {
+    animation: none;
+  }
 }
