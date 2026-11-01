@@ -83,7 +83,7 @@ def load_records(folder: str, version: tuple) -> dict[str, dict]:
         if key is None:
             continue
         extra = features.get((row["location_id"], row["date"]), {})
-        records.setdefault(key, {"days": [], "rain_3d_sorted": []})["days"].append(
+        records.setdefault(key, {"days": [], "rain_3d_sorted": [], "flow_sorted": []})["days"].append(
             {
                 "date": row["date"],
                 "rain_mm": number(row["precipitation_sum_mm"]),
@@ -101,6 +101,7 @@ def load_records(folder: str, version: tuple) -> dict[str, dict]:
     for record in records.values():
         record["days"].sort(key=lambda day: day["date"])
         record["rain_3d_sorted"] = sorted(day["rain_3d_mm"] for day in record["days"] if day["rain_3d_mm"] is not None)
+        record["flow_sorted"] = sorted(day["river_flow_m3s"] for day in record["days"] if day["river_flow_m3s"] is not None)
     return records
 
 
@@ -142,7 +143,7 @@ def build_city(key: str, record: dict | None) -> dict:
     entry = {
         "city": key, "lat": lat, "lng": lng, "data_date": None,
         "high_c": None, "low_c": None, "rain_mm": None, "wind_kmh": None, "gust_kmh": None,
-        "river_flow_m3s": None, "risk_level": None, "risk_reasons": [], "missing": [], "recent": [],
+        "river_flow_m3s": None, "river_percentile": None, "river_high_flow_m3s": None, "risk_level": None, "risk_reasons": [], "missing": [], "recent": [],
     }
     if not record or not record["days"]:
         entry["missing"].append("recorded weather for this city")
@@ -152,6 +153,9 @@ def build_city(key: str, record: dict | None) -> dict:
     for field in ("high_c", "low_c", "rain_mm", "wind_kmh", "gust_kmh", "river_flow_m3s"):
         entry[field] = latest[field]
     entry["data_date"] = latest["date"]
+    # How high the river is for this city: its place among all days since 2020, and the flow where "high" starts.
+    entry["river_percentile"] = latest["discharge_percentile"]
+    entry["river_high_flow_m3s"] = percentile_value(record["flow_sorted"], RIVER_PERCENTILE)
     entry["risk_level"], entry["risk_reasons"] = risk_from_day(latest, record["rain_3d_sorted"])
     entry["recent"] = [
         {name: day[name] for name in ("date", "rain_mm", "high_c", "low_c", "river_flow_m3s")}

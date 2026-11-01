@@ -58,6 +58,11 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual((city["data_date"], city["high_c"], city["low_c"], city["rain_mm"]), ("2026-10-30", 33.5, 25.4, 1.0))
         self.assertEqual(city["risk_level"], "low")
 
+    def test_says_how_high_the_river_is_for_the_city(self):
+        city = self.ask("?cities=manila", percentile=0.97).json()["cities"][0]
+        self.assertEqual(city["river_percentile"], 0.97)
+        self.assertEqual(city["river_high_flow_m3s"], 10.0)  # the city's flow is the same every day in the fixture
+
     def test_each_city_gets_its_own_rows(self):
         body = self.ask("?cities=manila,marikina").json()
         self.assertEqual([c["river_flow_m3s"] for c in body["cities"]], [10.0, 11.0])  # ids 5 and 6, by name not by position

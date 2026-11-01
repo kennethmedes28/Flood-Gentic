@@ -186,6 +186,8 @@ class DashboardCityOut(BaseModel):
     wind_kmh: float | None = None
     gust_kmh: float | None = None
     river_flow_m3s: float | None = None  # a flow (m3/s), not a water height
+    river_percentile: float | None = None  # 0 to 1: the share of days since 2020 with a lower flow in this city
+    river_high_flow_m3s: float | None = None  # the flow from which the river counts as high for this city
     risk_level: str | None = None  # low, watch, high or critical
     risk_reasons: list[str]
     missing: list[str]
