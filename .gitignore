@@ -12,7 +12,6 @@ uv.lock
 __pycache__/
 *.py[cod]
 .env
-.env.*
 .pytest_cache/
 .mypy_cache/
 .coverage
