@@ -164,7 +164,7 @@ corner does the same on touch screens.
 
 ## Dashboard data (recorded datasets, for now)
 
-The dashboard (`/`) reads `GET /dashboard?cities=manila,quezon city,marikina,pasig` from the backend
+The dashboard (`/`) reads `GET /dashboard?cities=...` (all 17 cities) from the backend
 (`backend/src/api/routers/dashboard.py`, `backend/src/services/dashboard_data.py`), through `lib/dashboard-api.ts` and
 `context/DashboardDataContext.tsx`. The backend reads the CSV files in `datasets/` (`ncr_weather_daily_2020-2026.csv`,
 `ncr_flood_features_daily.csv`, `ncr_locations.csv`; folder can be changed with `DATASETS_DIR`) and re-reads a file when it changes.
@@ -234,3 +234,39 @@ The script (`hooks/`) checks `uv`, `npm`, `curl`, `frontend/node_modules`, free 
 the backend is (`NEXT_PUBLIC_API_URL`) and the backend which page may call it (`CORS_ORIGINS`), prints `/health` once the backend
 answers, and stops both with one Ctrl+C. On Windows `scripts/run_dev.py` stops the programs with `taskkill /T /F` and finds `npm.cmd` itself; this part has not been run on a Windows computer yet.
 Messages sent from the page are real calls: the chat model (`MUSE_API`) and photo checks use API credit.
+
+## Live weather (Tomorrow.io, fetched once a day)
+
+```
+Tomorrow.io --(1 request per city, first request of the Manila day)--> backend --> Supabase table tomorrow_forecast
+                                                                          |
+browser <--- server-sent events: GET /weather/stream (snapshot, then a tick every minute) ---+
+```
+
+- **Once a day:** `backend/src/services/tomorrow_forecast.py` checks which dashboard cities already have a row for today's Manila
+  date and fetches only the missing ones (17 requests, one per city, on the first request of the day; 0 after that). Rows are written with
+  `INSERT ... ON CONFLICT DO NOTHING`, so a stored forecast is never replaced. Table: `backend/sql/003_tomorrow_forecast.sql`
+  (run once on Supabase). A failed fetch stores nothing and is not retried for 30 minutes. Nothing is fetched without the key
+  (`TOMMORROW_IO_API` in `backend/.env`, spelled as in the file; `TOMORROW_IO_API` and the older `TOMMORROW-IO_API` also work). The free plan allows 25 requests
+  per hour and 500 per day.
+- **Why it can be "live" without more requests:** the stored forecast has an entry for every hour of the next 5 days (and 6 daily
+  entries), so the current weather is the stored entry for the current hour.
+- **API:** `GET /weather/forecast` (JSON) and `GET /weather/stream` (SSE: `snapshot` once and again at midnight in Manila, `tick` every
+  minute with the current hour, `end` after 10 minutes, then the browser reconnects; `problem` if the forecast cannot be read). All 17 Metro Manila cities are
+  covered (17 requests a day of the 500 allowed); the first request of a day takes about 20 seconds because it makes them one after the other. The stream's
+  snapshot carries the next 24 hours per city to stay small; `GET /weather/forecast` returns all 120. The key never reaches the browser.
+- **Frontend:** `lib/live-weather-api.ts` (EventSource) and `context/LiveWeatherContext.tsx`, opened when the page opens so the data is
+  ready after the intro. The today card shows the weather now, `DayStrip` switches between the forecast and the last 7 recorded days,
+  and `RainChart` between the next 12 hours and the last 14 days.
+- **Not connected:** the flood risk level still comes from the recorded dataset and does not use this forecast.
+
+### Automatic daily fetch (GitHub Actions)
+
+`.github/workflows/fetch-tomorrow-forecast.yml` runs `scripts/fetch_tomorrow_forecast.py` every day at 16:10 UTC (00:10 in Manila,
+just after the new Manila day starts) and again at 22:10 UTC as a retry. The script uses the same code as the API, so a city that already
+has today's row is skipped and the second run normally makes no Tomorrow.io request. A failed attempt is retried twice; the run is
+marked failed if a city still could not be fetched. It can also be started by hand from the Actions tab ("Run workflow"), or locally with
+`python scripts/fetch_tomorrow_forecast.py [--dry-run]`.
+
+The repository needs these Actions secrets: `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD`, `SUPABASE_POOLER_HOST` (already used by the dataset
+workflow) and **`TOMMORROW_IO_API`** (new, same value as in `backend/.env`).

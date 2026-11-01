@@ -4,13 +4,17 @@ import { LoadingLabel, Skeleton } from "@/components/ui/Skeleton"
 import { useCurrentCity } from "@/context/CurrentCityContext"
 import { useDashboardData } from "@/context/DashboardDataContext"
 import { describeFlow, riskLook } from "@/lib/risk"
+import { useLiveWeather } from "@/context/LiveWeatherContext"
 import { describeRain, shortDate } from "@/lib/rain-words"
+import { describeWeatherCode } from "@/lib/weather-codes"
 
 /** The big card at the top left: the last recorded weather and the flood risk of the current city, from the backend. */
 export function TodayCard() {
   const { city } = useCurrentCity()
   const { status, cityData, error, reload } = useDashboardData()
   const live = cityData(city.key)
+  const { status: streamStatus, forecastFor } = useLiveWeather()
+  const now = forecastFor(city.key)?.now?.values
 
   if (status === "loading") {
     return (
@@ -39,22 +43,51 @@ export function TodayCard() {
 
   const risk = riskLook(live.risk)
   const rain = describeRain(live.rainMm)
-  const degrees = (value: number | null) => (value === null ? "–" : `${Math.round(value)}°`)
+  const degrees = (value: number | null | undefined) => (value === null || value === undefined ? "–" : `${Math.round(value)}°`)
   const day = live.dataDate ? `Latest recorded day · ${shortDate(live.dataDate)}` : "Latest recorded day"
+
+  // Right now (Tomorrow.io, streamed): shown when it has arrived; the recorded day is the fallback.
+  const sky = describeWeatherCode(now?.weatherCode)
+  const windKmh = now?.windSpeed === null || now?.windSpeed === undefined ? null : Math.round(now.windSpeed * 3.6) // m/s to km/h
+  const liveNote =
+    streamStatus === "live" ? "Live" : streamStatus === "connecting" ? "Connecting…" : streamStatus === "reconnecting" ? "Reconnecting…" : "Live weather unavailable"
 
   return (
     <section className="glass-accent order-1 flex flex-col justify-between rounded-[22px] p-6 shadow-lg" aria-label="Today's flood risk">
       <div>
-        <p className="text-sm opacity-90">
-          {city.name} · {day}
+        <p className="flex items-center justify-between gap-2 text-sm opacity-90">
+          <span>{city.name} · {now ? "Now" : day}</span>
+          {now && <span className="text-xs font-semibold">● {liveNote}</span>}
         </p>
-        <p className="mt-2 text-6xl font-light tabular-nums">{degrees(live.highC)}</p>
-        <p className="mt-1 text-sm opacity-90">
-          <span aria-hidden="true">{rain.icon} </span>
-          {rain.text}
-          {live.rainMm !== null && ` (${live.rainMm.toFixed(1)} mm)`} · high {degrees(live.highC)}, low {degrees(live.lowC)}
-        </p>
-        {live.windKmh !== null && <p className="text-xs opacity-90">Wind up to {Math.round(live.windKmh)} km/h</p>}
+        <p className="mt-2 text-6xl font-light tabular-nums">{now ? degrees(now.temperature) : degrees(live.highC)}</p>
+        {now ? (
+          <>
+            <p className="mt-1 text-sm opacity-90">
+              <span aria-hidden="true">{sky.icon} </span>
+              {sky.text}, feels like {degrees(now.temperatureApparent)}
+            </p>
+            <p className="text-xs opacity-90">
+              {now.precipitationProbability ?? "–"}% chance of rain
+              {windKmh !== null && ` · wind ${windKmh} km/h`}
+              {now.humidity !== null && now.humidity !== undefined && ` · humidity ${Math.round(now.humidity)}%`}
+            </p>
+            <p className="mt-1 text-xs opacity-90">
+              Latest recorded day ({shortDate(live.dataDate ?? "")}): <span aria-hidden="true">{rain.icon} </span>
+              {rain.text}
+              {live.rainMm !== null && ` ${live.rainMm.toFixed(1)} mm`}, high {degrees(live.highC)}, low {degrees(live.lowC)}
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="mt-1 text-sm opacity-90">
+              <span aria-hidden="true">{rain.icon} </span>
+              {rain.text}
+              {live.rainMm !== null && ` (${live.rainMm.toFixed(1)} mm)`} · high {degrees(live.highC)}, low {degrees(live.lowC)}
+            </p>
+            {live.windKmh !== null && <p className="text-xs opacity-90">Wind up to {Math.round(live.windKmh)} km/h</p>}
+            <p className="text-xs opacity-90">{liveNote}</p>
+          </>
+        )}
       </div>
       <div className="mt-6">
         <p className="text-2xl font-semibold">

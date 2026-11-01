@@ -1,0 +1,57 @@
+name: Fetch Tomorrow.io forecast
+
+# The forecast is kept once per city per Manila day, and a new Manila day starts at 16:00 UTC (UTC+8, no daylight saving).
+#   16:10 UTC = 00:10 Philippine time: the normal run, just after midnight, so the dashboard has the new day's forecast.
+#   22:10 UTC = 06:10 Philippine time: a second try in case the first one failed. It is harmless otherwise:
+#                the script skips every city that already has today's row and then makes no Tomorrow.io request.
+# GitHub can start scheduled runs a few minutes late.
+on:
+  schedule:
+    - cron: "10 16 * * *"
+    - cron: "10 22 * * *"
+  workflow_dispatch:
+
+# The job only reads the repository: the forecast goes straight from Tomorrow.io to Supabase.
+permissions:
+  contents: read
+
+# Never run two fetches at the same time.
+concurrency:
+  group: fetch-tomorrow-forecast
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install httpx "psycopg[binary]" python-dotenv langsmith
+
+      # Fetches only the cities that have no row for today (Manila date) and stores them. A stored row is never replaced.
+      # A fetch of all 17 cities makes 17 requests and takes about 20 seconds (the free plan allows 25 per hour, 500 per day).
+      # A failed attempt (for example a limit that clears after a pause) is retried twice; cities that were stored by an
+      # earlier attempt are not fetched again.
+      - name: Fetch the forecast into Supabase
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_PASSWORD: ${{ secrets.SUPABASE_PASSWORD }}
+          SUPABASE_POOLER_HOST: ${{ secrets.SUPABASE_POOLER_HOST }}
+          TOMMORROW_IO_API: ${{ secrets.TOMMORROW_IO_API }}
+        run: |
+          for attempt in 1 2 3; do
+            if python scripts/fetch_tomorrow_forecast.py; then
+              exit 0
+            fi
+            echo "Attempt $attempt failed."
+            if [ "$attempt" -lt 3 ]; then
+              sleep 300
+            fi
+          done
+          exit 1

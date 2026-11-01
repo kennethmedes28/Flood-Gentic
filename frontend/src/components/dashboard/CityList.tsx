@@ -1,19 +1,34 @@
 "use client"
 
+import { useState } from "react"
+
 import { GlassPanel } from "@/components/ui/GlassPanel"
 import { LoadingLabel, Skeleton } from "@/components/ui/Skeleton"
 import { useCurrentCity } from "@/context/CurrentCityContext"
 import { useDashboardData } from "@/context/DashboardDataContext"
-import { CITIES } from "@/data/dashboard-cities"
+import { CITIES, type CityReading } from "@/data/dashboard-cities"
+import { distanceKm } from "@/lib/geo"
 import { describeFlow, riskLook } from "@/lib/risk"
+
+/** How many cities are listed until the user asks for all of them. */
+const COLLAPSED_COUNT = 6
+
+/** The current city first, then the others from the nearest to the farthest. */
+function citiesNearestFirst(current: CityReading): CityReading[] {
+  const others = CITIES.filter((city) => city.name !== current.name)
+  others.sort((a, b) => distanceKm(current.lat, current.lng, a.lat, a.lng) - distanceKm(current.lat, current.lng, b.lat, b.lng))
+  return [current, ...others]
+}
 
 /**
  * Pass loading while the city readings are still being fetched.
- * The current city is listed first and marked "Current location"; the others keep their order below it.
+ * The current city is listed first and marked "Current location"; the others follow, nearest first.
+ * Only the first few are shown until "Show all" is pressed.
  */
 export function CityList({ loading = false }: { loading?: boolean }) {
   const { city: current } = useCurrentCity()
   const { status, cityData } = useDashboardData()
+  const [showAll, setShowAll] = useState(false)
 
   if (loading || status === "loading") {
     return (
@@ -21,7 +36,7 @@ export function CityList({ loading = false }: { loading?: boolean }) {
         <LoadingLabel>Loading nearby areas</LoadingLabel>
         <Skeleton className="mb-3 h-5 w-32" />
         <div className="flex flex-col gap-2">
-          {CITIES.map((city) => (
+          {CITIES.slice(0, COLLAPSED_COUNT).map((city) => (
             <Skeleton key={city.name} className="h-11" />
           ))}
         </div>
@@ -33,7 +48,9 @@ export function CityList({ loading = false }: { loading?: boolean }) {
     <GlassPanel className="flex-1 p-5">
       <h2 className="mb-3 font-semibold">Nearby areas</h2>
       <ul className="flex flex-col gap-2">
-        {[current, ...CITIES.filter((city) => city.name !== current.name)].map((city) => {
+        {citiesNearestFirst(current)
+          .slice(0, showAll ? undefined : COLLAPSED_COUNT)
+          .map((city) => {
           const live = cityData(city.key)
           const risk = riskLook(live?.risk)
           const isCurrent = city.name === current.name
@@ -75,6 +92,14 @@ export function CityList({ loading = false }: { loading?: boolean }) {
           )
         })}
       </ul>
+      <button
+        type="button"
+        onClick={() => setShowAll((value) => !value)}
+        aria-expanded={showAll}
+        className="mt-3 min-h-11 rounded-full px-4 text-sm font-medium"
+      >
+        {showAll ? "Show fewer" : `Show all ${CITIES.length} cities`}
+      </button>
     </GlassPanel>
   )
 }

@@ -27,3 +27,13 @@ export function shortDate(date: string): string {
 export function weekday(date: string): string {
   return new Date(`${date}T12:00:00+08:00`).toLocaleDateString("en-PH", { weekday: "short", timeZone: "Asia/Manila" })
 }
+
+/** The Manila calendar day ("2026-11-01") of a UTC time such as "2026-10-31T22:00:00Z". */
+export function manilaDay(isoTime: string): string {
+  return new Date(isoTime).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+}
+
+/** The hour of the day (0-23) in Manila of a UTC time. */
+export function manilaHour(isoTime: string): number {
+  return Number(new Date(isoTime).toLocaleString("en-GB", { hour: "2-digit", hour12: false, timeZone: "Asia/Manila" }))
+}
