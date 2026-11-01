@@ -338,7 +338,14 @@ def build_graph(
         return update
 
     def flood_media_node(state: ChatState) -> dict:
-        """Check the attached photo or video for flood water. The media is cleared so it is only checked once."""
+        """Check the attached photo or video for flood water, and answer what was asked about it.
+
+        A picture sent without words gets the default question, which the fixed report answers with no model call;
+        any other text is the person's own question and goes to the chat model with the picture. The media is cleared
+        so it is only checked once.
+        """
+        question = last_question(state)
+        own_question = None if question in DEFAULT_MEDIA_QUESTIONS.values() else question
         try:
             media = media_from_dict(state["media"])
             reply = answer_flood_media_question(
@@ -346,6 +353,8 @@ def build_graph(
                 make_context(state),
                 estimate_depth=bool(state["media"].get("estimate_depth")),
                 include_people_and_vehicles=bool(state["media"].get("include_people_and_vehicles", True)),
+                question=own_question,
+                llm=llm,
             )
         except ValueError as error:
             logger.warning("Unusable media: %s", error)

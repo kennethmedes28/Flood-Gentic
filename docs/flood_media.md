@@ -158,3 +158,27 @@ muddy river on a normal day. On one real street photo the new setting gave the s
 
 Run it again (from `backend/`): `uv run python ../scripts/evaluate_flood_media.py --dry-run` shows how many SAM requests are needed, and
 `--score-only` scores from the saved answers without any request. The photos go in `evaluation/flood_media/source/Data/raw/{images,masks}`.
+
+## 12. Asking anything about a picture
+
+Words sent with a photo or video are the person's question ("How many cars are stuck?", "Hanggang saan ang baha?"), and they are answered,
+not just the share of water. `agents/flood_media_agent.py`:
+
+1. **SAM measures first**, as before (water, and people and vehicles when the checkbox is ticked). These numbers stay the grounded part of the reply.
+2. **The chat model answers the question.** The project's chat model (`muse-wonder-1.0`, which can read images) gets the photo at most 1024 px wide
+   (for a video, 3 stills taken at a fifth, half and four fifths of it, `video_stills` in `video/video_prepare.py`), the question and the measurements
+   in words, with the rules in `ANSWER_RULES`: answer only what can be seen and say when it cannot; same language as the question; never say a road
+   is safe to cross and never encourage entering flood water; no depth in centimetres unless SAM estimated one (a depth relative to people or cars
+   is allowed, called a rough look); do not identify people or read plates; say "call 911 now" first if someone looks in danger.
+   It is told when people and vehicles were not counted, so "not counted" is not taken as "none there".
+3. **The reply** is the model's answer, then "Measured by the automatic check:" with the fixed bilingual report and the safety text.
+
+A picture sent without words gets the fixed report only, with no model call. If the model fails, answers nothing, or the hourly model budget
+(`MODEL_CALLS_PER_HOUR`) is used up, the fixed report is given instead. Cost: one model call per question, on top of the SAM requests. The progress line says
+"Looking at your photo to answer your question" (or the video equivalent).
+
+**Tried through the real app** with a street photo and the checkbox off, about 16 seconds each:
+"How many robots are there, and can a car drive through this street?" was answered with the three robots and one person it could see, a depth only
+"around the lower legs, as a rough look", and that a picture cannot show whether a car can pass, so not to cross. "Hanggang saan ang baha? Ligtas bang
+lumusong dito?" was answered in Filipino the same way. The model's answers are not deterministic and have not been measured on a labelled set.
+

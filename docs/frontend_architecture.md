@@ -154,7 +154,8 @@ Hovering or focusing it opens a small menu to switch between **Voice** and **Pho
 corner does the same on touch screens.
 
 - **Voice**: speech to text through `/ws/voice` (see `docs/voice_chat.md`). The text lands in the message box.
-- **Photo / video**: opens a file picker. The file shows as a preview with a Remove button; pressing send sends it with the message to
+- **Photo / video**: opens a file picker. Any words sent with it are a question about the picture and are answered by the chat model, with SAM's
+  measurements underneath (`docs/flood_media.md` section 12); the message box hint says so while something is attached. The file shows as a preview with a Remove button; pressing send sends it with the message to
   `POST /chat/stream` (`lib/chat-api.ts`, `lib/media-check-api.ts`). The picture is scaled to 640 px wide JPEG in the browser and sent as
   base64 text in the `image` field. The typed text is the caption and may be empty. The backend checks the picture (valid base64, at most 2 MB, really a JPEG, PNG or WebP), saves it under a random
   name in the upload folder, runs the flood media check, and deletes it when the answer is done. The reply comes back in the same

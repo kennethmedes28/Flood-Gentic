@@ -16,6 +16,7 @@ Example:
 """
 
 import logging
+import re
 import subprocess
 from pathlib import Path
 
@@ -58,3 +59,43 @@ def shrink_video(path: Path) -> Path:
         small.unlink(missing_ok=True)
         return path
     return small
+
+
+STILL_WIDTH = 640  # the width of the stills handed to the chat model, the same as a photo from the page
+
+
+def video_duration_seconds(path: Path) -> float | None:
+    """The length of a video in seconds, read from ffmpeg's description of the file, or None if it cannot be read."""
+    ffmpeg = ffmpeg_path()
+    if ffmpeg is None:
+        return None
+    described = subprocess.run([ffmpeg, "-hide_banner", "-i", str(path)], capture_output=True, text=True, timeout=60)
+    match = re.search(r"Duration: (\d+):(\d+):(\d+(?:\.\d+)?)", described.stderr)  # ffmpeg prints this even when it "fails"
+    if not match:
+        return None
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def video_stills(path: Path, count: int = 3) -> list[bytes]:
+    """A few JPEG stills spread through the video (at a fifth, half and four fifths of it), for a chat model to look at.
+
+    A chat model takes pictures, not videos, so this is how it "sees" a clip. Returns an empty list if no still could be
+    taken; the caller then answers from the measurements alone.
+    """
+    ffmpeg, duration = ffmpeg_path(), video_duration_seconds(path)
+    if ffmpeg is None or not duration:
+        return []
+    stills = []
+    for share in [(index + 1) / (count + 1) for index in range(count)]:
+        command = [
+            ffmpeg, "-loglevel", "error", "-ss", f"{duration * share:.2f}", "-i", str(path), "-frames:v", "1",
+            "-vf", f"scale='min({STILL_WIDTH},iw)':-2", "-f", "image2pipe", "-vcodec", "mjpeg", "-",
+        ]
+        try:
+            taken = subprocess.run(command, capture_output=True, check=True, timeout=60).stdout
+        except (subprocess.SubprocessError, OSError):
+            continue
+        if taken:
+            stills.append(taken)
+    return stills

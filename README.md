@@ -92,8 +92,9 @@ is built for it. These are real prompts the agents answer today.
 ### Check a photo or video
 
 Attach a photo or video of a street in the assistant (hover the round button beside the message box and choose **Photo / video**).
-It reports how much of the picture is covered by flood water and, if you tick the option, how many people and vehicles are in the water
-and a rough depth for a photo. A whole video is analysed, not one frame. It is automatic and unverified, and it never says a road is safe.
+Ask anything about it in the same message ("How many cars are stuck?", "Hanggang saan ang baha?"): the answer comes from a model that looks at the
+picture, followed by the automatic measurements: how much of it is covered by flood water and, if you tick the option, how many people and vehicles
+are in the water and a rough depth for a photo. A whole video is analysed, not one frame. It is automatic and unverified, and it never says a road is safe.
 
 ### Report and share
 

@@ -261,7 +261,13 @@ export function ChatWindow() {
             rows={1}
             maxLength={MAX_LENGTH}
             readOnly={voiceActive}
-            placeholder={voice.status === "listening" ? "Listening…" : "Ask about floods, evacuation or contacts…"}
+            placeholder={
+              voice.status === "listening"
+                ? "Listening…"
+                : attachment
+                  ? "Ask anything about it, e.g. can a car pass? (or just send it)"
+                  : "Ask about floods, evacuation or contacts…"
+            }
             className="max-h-32 min-h-11 w-full resize-none bg-transparent py-2.5 text-sm outline-none placeholder:text-current placeholder:opacity-60"
             style={{ fieldSizing: "content" } as React.CSSProperties}
           />

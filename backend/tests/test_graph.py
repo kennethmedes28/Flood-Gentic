@@ -87,7 +87,7 @@ class MediaTests(unittest.TestCase):
     def test_the_graph_checks_the_media_once_and_passes_the_depth_option(self):
         seen = {}
 
-        def fake_agent(media, context, estimate_depth=False, include_people_and_vehicles=True):
+        def fake_agent(media, context, estimate_depth=False, include_people_and_vehicles=True, **_other_options):
             seen["media"], seen["depth"], seen["people"] = media, estimate_depth, include_people_and_vehicles
             return AgentReply(text="Flood water covers a large part of the picture.")
 
@@ -112,7 +112,7 @@ class MediaTests(unittest.TestCase):
     def test_the_graph_can_be_told_to_look_for_water_only(self):
         seen = {}
 
-        def fake_agent(media, context, estimate_depth=False, include_people_and_vehicles=True):
+        def fake_agent(media, context, estimate_depth=False, include_people_and_vehicles=True, **_other_options):
             seen["people"] = include_people_and_vehicles
             return AgentReply(text="Flood water covers a large part of the picture.")
 
