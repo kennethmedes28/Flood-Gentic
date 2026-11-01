@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 
 import { GlassPanel } from "@/components/ui/GlassPanel"
 import { useVoiceTranscription } from "@/hooks/useVoiceTranscription"
-import { ChatError, sendChatMessage, type Coordinates } from "@/lib/chat-api"
+import { ChatError, sendChatMessageStream, type Coordinates } from "@/lib/chat-api"
 import { useMediaAttachment, type Attachment } from "@/hooks/useMediaAttachment"
 import { checkMedia, isVideo, MediaCheckError } from "@/lib/media-check-api"
 
@@ -52,6 +52,8 @@ export function ChatWindow() {
   const [locationNote, setLocationNote] = useState("")
   const [draft, setDraft] = useState("")
   const [pending, setPending] = useState(false)
+  /** What the assistant is doing right now, shown next to the typing dots. */
+  const [progress, setProgress] = useState("")
   const [mode, setMode] = useState<InputMode>("voice")
   const { attachment, attachError, attachFile, removeAttachment, takeAttachment } = useMediaAttachment()
   /** Also count people and vehicles / estimate depth: more detail, but more API credit per check. */
@@ -98,6 +100,7 @@ export function ChatWindow() {
     takeAttachment() // the preview now lives in the message, so its address is not revoked here
     setDraft("")
     setPending(true)
+    setProgress(video ? "Checking one picture from your video for flood water" : "Checking your photo for flood water")
 
     try {
       const text = await checkMedia(item.file, { people: moreDetail, depth: moreDetail })
@@ -108,6 +111,7 @@ export function ChatWindow() {
       addMessage({ role: "assistant", kind: "error", text })
     } finally {
       setPending(false)
+      setProgress("")
     }
   }
 
@@ -125,7 +129,7 @@ export function ChatWindow() {
     setPending(true)
 
     try {
-      const reply = await sendChatMessage({ message, threadId, location })
+      const reply = await sendChatMessageStream({ message, threadId, location }, (step) => setProgress(step.label))
       setThreadId(reply.threadId)
       addMessage({
         role: "assistant",
@@ -137,6 +141,7 @@ export function ChatWindow() {
       addMessage({ role: "assistant", kind: "error", text })
     } finally {
       setPending(false)
+      setProgress("")
     }
   }
 
@@ -208,7 +213,7 @@ export function ChatWindow() {
           {messages.map((message) => (
             <MessageBubble key={message.id} message={message} />
           ))}
-          {pending && <TypingIndicator />}
+          {pending && <TypingIndicator status={progress || undefined} />}
         </ol>
         <div ref={endOfMessages} />
       </GlassPanel>

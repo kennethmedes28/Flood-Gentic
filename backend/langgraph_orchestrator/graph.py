@@ -507,6 +507,25 @@ class ChatReply:
     blocked: bool = False  # True when the guard stopped the message before the graph ran (see utils/input_guard.py)
 
 
+def prepare_run(question: str, thread_id: str, location: dict | None, media: dict | None) -> tuple[dict, dict]:
+    """The LangGraph config and input for one user message. Shared by ``ask_reply`` and ``ask_stream``."""
+    config = {
+        "configurable": {"thread_id": thread_id},
+        # LangSmith: a readable name, a filter tag, and the conversation id to group the runs of one chat.
+        "run_name": "flood-gentic-chat",
+        "tags": ["flood-gentic"],
+        "metadata": {"thread_id": thread_id, "has_gps": location is not None, "has_media": media is not None},
+    }
+    if media and not question.strip():
+        question = DEFAULT_MEDIA_QUESTIONS.get(media.get("kind"), DEFAULT_MEDIA_QUESTIONS["image"])
+    graph_input: dict = {"messages": [("user", question)]}
+    if media:
+        graph_input["media"] = media
+    if location:
+        graph_input["location"] = location_from_coordinates(location["lat"], location["lng"]).to_dict()
+    return config, graph_input
+
+
 async def ask(
     graph, question: str, thread_id: str, location: dict | None = None, media: dict | None = None
 ) -> str:
@@ -535,19 +554,6 @@ async def ask_reply(
         logger.warning("Blocked a %s message in thread %s", blocked_category, thread_id)  # never the text itself
         return ChatReply(text=blocked_reply(blocked_category), blocked=True)
 
-    config = {
-        "configurable": {"thread_id": thread_id},
-        # LangSmith: a readable name, a filter tag, and the conversation id to group the runs of one chat.
-        "run_name": "flood-gentic-chat",
-        "tags": ["flood-gentic"],
-        "metadata": {"thread_id": thread_id, "has_gps": location is not None, "has_media": media is not None},
-    }
-    if media and not question.strip():
-        question = DEFAULT_MEDIA_QUESTIONS.get(media.get("kind"), DEFAULT_MEDIA_QUESTIONS["image"])
-    graph_input: dict = {"messages": [("user", question)]}
-    if media:
-        graph_input["media"] = media
-    if location:
-        graph_input["location"] = location_from_coordinates(location["lat"], location["lng"]).to_dict()
+    config, graph_input = prepare_run(question, thread_id, location, media)
     result = await graph.ainvoke(graph_input, config)
     return ChatReply(text=result["messages"][-1].content, safe_answer=bool(result.get("safe_answer")))

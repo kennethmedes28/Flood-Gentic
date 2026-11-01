@@ -49,20 +49,29 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
   )
 }
 
-/** Three bouncing dots shown while the assistant is working on a reply. */
-export function TypingIndicator() {
+/**
+ * Three bouncing dots and, when known, what the assistant is doing right now (for example "Checking flood risk").
+ * The sentence is announced to screen readers each time it changes.
+ */
+export function TypingIndicator({ status }: { status?: string }) {
   return (
     <li className="flex justify-start">
-      <div className="glass-panel flex items-center gap-1.5 px-4 py-3" role="status">
-        <span className="sr-only">The assistant is typing</span>
-        {[0, 1, 2].map((dot) => (
-          <span
-            key={dot}
-            aria-hidden="true"
-            className="size-2 animate-bounce rounded-full bg-current motion-reduce:animate-none"
-            style={{ animationDelay: `${dot * 0.15}s` }}
-          />
-        ))}
+      <div className="glass-panel flex items-center gap-3 px-4 py-3" role="status">
+        <span className="sr-only">{status ?? "The assistant is typing"}</span>
+        <span className="flex items-center gap-1.5" aria-hidden="true">
+          {[0, 1, 2].map((dot) => (
+            <span
+              key={dot}
+              className="size-2 animate-bounce rounded-full bg-current motion-reduce:animate-none"
+              style={{ animationDelay: `${dot * 0.15}s` }}
+            />
+          ))}
+        </span>
+        {status && (
+          <span className="text-sm" aria-hidden="true">
+            {status}…
+          </span>
+        )}
       </div>
     </li>
   )

@@ -6,6 +6,7 @@
 Endpoints (see docs/backend_architecture.md section 4):
 
     POST /chat                  one message through the chat graph
+    POST /chat/stream           the same, with progress events first
     POST /reports, GET /reports community flood reports (unverified)
     POST /requests              supply and assistance requests (write only)
     GET  /evacuation-centers    search the centers

@@ -33,14 +33,27 @@ function readDetail(detail: unknown): string | null {
   return null
 }
 
-export async function sendChatMessage(options: {
+type SendOptions = {
   message: string
   threadId: string | null
   location: Coordinates | null
-}): Promise<ChatReply> {
+}
+
+/** What the assistant is doing while it works on a message, as the backend describes it. */
+export type ChatProgress = {
+  /** A sentence for the person waiting, for example "Checking rain, river flow and PAGASA for flood risk". */
+  label: string
+  /** For a message with several topics: the topics being answered. */
+  topics: string[]
+}
+
+const NETWORK_MESSAGE = "I can't reach the assistant right now. Please check your connection and try again."
+
+/** POST the message to one of the chat endpoints and turn a failed answer into a friendly ChatError. */
+async function postMessage(path: string, options: SendOptions, signal?: AbortSignal): Promise<Response> {
   let response: Response
   try {
-    response = await fetch(`${API_URL}/chat`, {
+    response = await fetch(`${API_URL}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -48,9 +61,10 @@ export async function sendChatMessage(options: {
         thread_id: options.threadId,
         location: options.location,
       }),
+      signal,
     })
   } catch {
-    throw new ChatError("I can't reach the assistant right now. Please check your connection and try again.")
+    throw new ChatError(NETWORK_MESSAGE)
   }
 
   if (!response.ok) {
@@ -63,12 +77,74 @@ export async function sendChatMessage(options: {
     }
     throw new ChatError("The assistant is having trouble right now. Please try again in a moment.")
   }
+  return response
+}
 
-  const data = await response.json()
+/** The reply fields of the backend's answer (snake_case) as a ChatReply. */
+function toReply(data: { thread_id: string; reply: string; safe_answer?: boolean; blocked?: boolean }): ChatReply {
   return {
     threadId: data.thread_id,
     text: data.reply,
     safeAnswer: Boolean(data.safe_answer),
     blocked: Boolean(data.blocked),
   }
+}
+
+/** Send a message and wait for the whole reply (POST /chat). */
+export async function sendChatMessage(options: SendOptions): Promise<ChatReply> {
+  const response = await postMessage("/chat", options)
+  return toReply(await response.json())
+}
+
+/** One line of the stream (POST /chat/stream). */
+type StreamEvent =
+  | { type: "status"; label: string; topics?: string[] }
+  | { type: "reply"; thread_id: string; reply: string; safe_answer?: boolean; blocked?: boolean }
+  | { type: "error"; message: string }
+
+/**
+ * Send a message and report progress while the assistant works (POST /chat/stream).
+ *
+ * `onProgress` is called each time the backend says what it is doing. The returned promise gives the final reply.
+ * The reply text itself arrives whole: the agents do not produce it word by word.
+ */
+export async function sendChatMessageStream(
+  options: SendOptions,
+  onProgress: (progress: ChatProgress) => void,
+  signal?: AbortSignal
+): Promise<ChatReply> {
+  const response = await postMessage("/chat/stream", options, signal)
+  if (!response.body) throw new ChatError(NETWORK_MESSAGE)
+
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+  let buffered = ""
+  let reply: ChatReply | null = null
+
+  /** Handle one finished line: progress is passed on, a reply is kept, an error is thrown. */
+  function handleLine(line: string) {
+    if (!line.trim()) return
+    const event = JSON.parse(line) as StreamEvent
+    if (event.type === "status") onProgress({ label: event.label, topics: event.topics ?? [] })
+    else if (event.type === "reply") reply = toReply(event)
+    else if (event.type === "error") throw new ChatError(event.message)
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffered += value
+      const lines = buffered.split("\n")
+      buffered = lines.pop() ?? "" // the last piece may be half a line: wait for the rest
+      lines.forEach(handleLine)
+    }
+    handleLine(buffered)
+  } catch (error) {
+    if (error instanceof ChatError) throw error
+    if (signal?.aborted) throw error
+    throw new ChatError(NETWORK_MESSAGE)
+  }
+
+  if (!reply) throw new ChatError("The assistant couldn't finish. Please try again in a moment.")
+  return reply
 }
