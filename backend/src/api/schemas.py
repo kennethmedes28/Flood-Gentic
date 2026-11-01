@@ -7,7 +7,7 @@ Validation lives here, so the routers stay short. Two rules apply everywhere:
       point outside it would be matched to the nearest Metro Manila city and give a wrong answer.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -158,6 +158,45 @@ class AdvisoriesOut(BaseModel):
     fetched_at: datetime
     advisories: list[AdvisoryOut]
     note: str
+
+
+# --- Dashboard ---------------------------------------------------------------------------------
+
+
+class DayRecordOut(BaseModel):
+    """One recorded day, for the charts."""
+
+    date: str
+    rain_mm: float | None = None
+    high_c: float | None = None
+    low_c: float | None = None
+    river_flow_m3s: float | None = None
+
+
+class DashboardCityOut(BaseModel):
+    """What the dashboard shows for one city, from the last recorded day. A value that is not in the data is null."""
+
+    city: str  # the key used everywhere in the API, e.g. "quezon city"
+    lat: float
+    lng: float
+    data_date: str | None = None  # the day these numbers are from (can be days behind today)
+    high_c: float | None = None
+    low_c: float | None = None
+    rain_mm: float | None = None
+    wind_kmh: float | None = None
+    gust_kmh: float | None = None
+    river_flow_m3s: float | None = None  # a flow (m3/s), not a water height
+    risk_level: str | None = None  # low, watch, high or critical
+    risk_reasons: list[str]
+    missing: list[str]
+    recent: list[DayRecordOut]  # the last days, oldest first
+
+
+class DashboardOut(BaseModel):
+    """Dashboard data from the recorded datasets. Rule-based and unofficial."""
+
+    data_date: date | None = None  # the newest day in the data
+    cities: list[DashboardCityOut]
 
 
 # --- Staff (needs the staff key) -------------------------------------------------------------

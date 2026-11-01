@@ -10,6 +10,7 @@ Endpoints (see docs/backend_architecture.md section 4):
     POST /requests              supply and assistance requests (write only)
     GET  /evacuation-centers    search the centers
     GET  /advisories/latest     current PAGASA bulletins
+    GET  /dashboard             weather, rain, river flow and flood risk per city (recorded datasets)
     GET  /health, /health/ready what works
     /staff/...                  review reports and requests (only when STAFF_API_KEY is set)
     WS   /ws/voice, /ws/camera  live speech-to-text and the webcam flood check
@@ -23,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.api.rate_limit import RateLimiter
-from src.api.routers import advisories, chat, evacuation, health, help_requests, reports, staff
+from src.api.routers import advisories, chat, dashboard, evacuation, health, help_requests, reports, staff
 from src.api.settings import Settings, load_settings
 from src.api.startup import real_services
 from video.camera_router import create_camera_router
@@ -67,7 +68,7 @@ def create_app(settings: Settings | None = None, lifespan=real_services) -> Fast
         allow_headers=["Content-Type"],
     )
 
-    for module in (health, chat, reports, help_requests, evacuation, advisories):
+    for module in (health, chat, reports, help_requests, evacuation, advisories, dashboard):
         app.include_router(module.router)
     if settings.staff_api_key:  # without a key the staff endpoints simply do not exist
         app.include_router(staff.router)
