@@ -19,11 +19,13 @@ import asyncio
 import re
 import threading
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 import numpy as np
 from meta_sam_parser import decode_mask_to_raster
 
 from video.sam_client import ImageInput, SamClient, VideoInput
+from video.video_prepare import shrink_video
 
 WATER_CONCEPT = "flood water"
 PEOPLE_CONCEPT = "person"
@@ -252,11 +254,19 @@ async def analyze_flood_media_async(
     estimate_depth = estimate_depth and isinstance(media, ImageInput)
     include_people_and_vehicles = include_people_and_vehicles or estimate_depth
     media_kind = "video" if isinstance(media, VideoInput) else "image"
-    async with SamClient(api_key) as sam:
-        if isinstance(media, VideoInput) and media.path and not media.file_id:
-            media = VideoInput(file_id=await sam.upload_video(media.path))  # upload once, reuse for each concept
-        concepts = [WATER_CONCEPT] + ([PEOPLE_CONCEPT, VEHICLE_CONCEPT] if include_people_and_vehicles else [])
-        results = await asyncio.gather(*(sam.segment(concept, media) for concept in concepts))
+    small_copy = None  # a shrunk copy of a video file (see video_prepare.py), removed when the answer is in
+    try:
+        async with SamClient(api_key) as sam:
+            if isinstance(media, VideoInput) and media.path and not media.file_id:
+                path = Path(media.path)
+                small = await asyncio.to_thread(shrink_video, path)  # ffmpeg is blocking, so it runs in a thread
+                small_copy = small if small != path else None
+                media = VideoInput(file_id=await sam.upload_video(small))  # upload once, reuse for each concept
+            concepts = [WATER_CONCEPT] + ([PEOPLE_CONCEPT, VEHICLE_CONCEPT] if include_people_and_vehicles else [])
+            results = await asyncio.gather(*(sam.segment(concept, media) for concept in concepts))
+    finally:
+        if small_copy is not None:
+            small_copy.unlink(missing_ok=True)
 
     sizes = [size for size in (frame_size_from_output(r.raw_output) for r in results) if size]
     detections = [to_detections(result) for result in results]
@@ -294,20 +304,24 @@ async def add_depth_estimate(
 
 
 def analyze_flood_media(
-    media: ImageInput | VideoInput, api_key: str, estimate_depth: bool = False
+    media: ImageInput | VideoInput, api_key: str, estimate_depth: bool = False, include_people_and_vehicles: bool = True
 ) -> FloodSceneReport:
-    """Blocking version of ``analyze_flood_media_async`` for the (synchronous) agents."""
+    """Blocking version of ``analyze_flood_media_async`` for the (synchronous) agents.
+
+    ``include_people_and_vehicles=False`` looks for water only: one SAM request instead of three.
+    """
+    options = {"estimate_depth": estimate_depth, "include_people_and_vehicles": include_people_and_vehicles}
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(analyze_flood_media_async(media, api_key, estimate_depth=estimate_depth))
+        return asyncio.run(analyze_flood_media_async(media, api_key, **options))
 
     # Already inside an event loop (for example an async server): run in a helper thread instead.
     outcome = {}
 
     def work() -> None:
         try:
-            outcome["report"] = asyncio.run(analyze_flood_media_async(media, api_key, estimate_depth=estimate_depth))
+            outcome["report"] = asyncio.run(analyze_flood_media_async(media, api_key, **options))
         except BaseException as error:  # handed back to the caller below
             outcome["error"] = error
 

@@ -198,7 +198,8 @@ def check_media_url(url: str) -> str:
 def media_from_dict(media: dict) -> ImageInput | VideoInput:
     """Turn the small dictionary kept in the chat state into the object the media check uses.
 
-    The dictionary is ``{"kind": "image" or "video", "url": ... or "path": ..., "estimate_depth": bool}``.
+    The dictionary is ``{"kind": "image" or "video", "url": ... or "path": ..., "estimate_depth": bool,
+    "include_people_and_vehicles": bool}`` (the last one is optional and true by default; false looks for water only).
     It holds a reference, never the file itself, so the saved conversation stays small. Raises
     ``ValueError`` for anything unusable.
     """
@@ -341,7 +342,10 @@ def build_graph(
         try:
             media = media_from_dict(state["media"])
             reply = answer_flood_media_question(
-                media, make_context(state), estimate_depth=bool(state["media"].get("estimate_depth"))
+                media,
+                make_context(state),
+                estimate_depth=bool(state["media"].get("estimate_depth")),
+                include_people_and_vehicles=bool(state["media"].get("include_people_and_vehicles", True)),
             )
         except ValueError as error:
             logger.warning("Unusable media: %s", error)

@@ -47,6 +47,7 @@ class Settings:
     staff_api_key: str | None = None
     staff_per_minute: int = 60
     weather_per_minute: int = 30
+    media_per_hour: int = 20  # photo checks, which use paid SAM requests
 
 
 def read_bool(name: str, default: bool) -> bool:
@@ -82,4 +83,5 @@ def load_settings() -> Settings:
         staff_api_key=staff_api_key,
         staff_per_minute=int(os.getenv("STAFF_PER_MINUTE", "60")),
         weather_per_minute=int(os.getenv("WEATHER_PER_MINUTE", "30")),
+        media_per_hour=int(os.getenv("MEDIA_PER_HOUR", "20")),
     )

@@ -83,9 +83,38 @@ def test_agent_without_key_or_on_failure(monkeypatch):
     monkeypatch.delenv("MUSE_API", raising=False)
     assert "cannot check pictures" in answer_flood_media_question(ImageInput(url="x"), ChatContext()).text
 
-    def broken(media, api_key, estimate_depth=False):
+    def broken(media, api_key, estimate_depth=False, include_people_and_vehicles=True):
         raise OSError("network down")
 
     monkeypatch.setattr(flood_media_agent, "analyze_flood_media", broken)
     reply = answer_flood_media_question(ImageInput(url="x"), ChatContext(), api_key="key")
     assert "could not check" in reply.text
+
+
+def test_water_only_is_passed_on_to_the_analysis(monkeypatch):
+    """include_people_and_vehicles=False must reach the analysis, because that is what makes it one SAM request instead of three."""
+    seen = {}
+
+    def fake_analysis(media, api_key, estimate_depth=False, include_people_and_vehicles=True):
+        seen["people"], seen["depth"] = include_people_and_vehicles, estimate_depth
+        raise OSError("stop here")  # the answer does not matter, only what was asked for
+
+    monkeypatch.setattr(flood_media_agent, "analyze_flood_media", fake_analysis)
+    answer_flood_media_question(ImageInput(url="x"), ChatContext(), api_key="key", include_people_and_vehicles=False)
+    assert seen == {"people": False, "depth": False}
+    answer_flood_media_question(ImageInput(url="x"), ChatContext(), api_key="key")
+    assert seen["people"] is True  # the default is unchanged for other callers
+
+
+def test_an_error_type_from_the_sam_library_still_gives_the_friendly_answer(monkeypatch):
+    """The SAM stream library wraps failures in its own error type; the person must still get the "could not check" text."""
+
+    class WrappedSamError(Exception):
+        pass
+
+    def broken(media, api_key, estimate_depth=False, include_people_and_vehicles=True):
+        raise WrappedSamError("The Responses event source failed during next.")
+
+    monkeypatch.setattr(flood_media_agent, "analyze_flood_media", broken)
+    reply = answer_flood_media_question(ImageInput(url="x"), ChatContext(), api_key="key")
+    assert "could not check" in reply.text and "911" in reply.text

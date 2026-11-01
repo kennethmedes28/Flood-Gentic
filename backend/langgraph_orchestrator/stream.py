@@ -41,6 +41,8 @@ WORKING_LABELS = {
     chat_graph.OUTSIDE_NODE: "Checking whether your place is covered",
 }
 GENERIC_LABEL = "Working on your question"
+# A whole video is uploaded to SAM and analysed there, which takes much longer than a photo.
+VIDEO_LABEL = "Analysing your video for flood water. This can take a minute or two"
 
 
 async def next_node(graph, question: str, config: dict, media: dict | None) -> str | None:
@@ -49,9 +51,14 @@ async def next_node(graph, question: str, config: dict, media: dict | None) -> s
     Needs the saved conversation (a waiting "which city?" changes where "Marikina" goes), so it asks the
     graph for it. Any failure just means the generic label is shown.
     """
+    values: dict = {}
     try:
         saved = await graph.aget_state(config)
         values = dict(saved.values) if saved and saved.values else {}
+    except Exception:
+        logger.debug("Could not read the saved conversation", exc_info=True)  # the routing below still works without it
+
+    try:
         state = {
             "messages": [HumanMessage(content=question)],
             "pending_intent": values.get("pending_intent"),
@@ -79,7 +86,10 @@ async def ask_stream(
     config, graph_input = chat_graph.prepare_run(question, thread_id, location, media)
 
     node = await next_node(graph, question, config, media)
-    event = {"type": "status", "step": "working", "label": WORKING_LABELS.get(node, GENERIC_LABEL)}
+    label = WORKING_LABELS.get(node, GENERIC_LABEL)
+    if node == chat_graph.FLOOD_MEDIA_NODE and media and media.get("kind") == "video":
+        label = VIDEO_LABEL
+    event = {"type": "status", "step": "working", "label": label}
     if node == chat_graph.MULTI_NODE:
         event["topics"] = [intent for intent, _ in split_by_intent(question) or []]
     yield event

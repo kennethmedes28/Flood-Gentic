@@ -14,6 +14,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from agents.location_agent import NCR_BOUNDS
+from src.services.media_upload import MAX_IMAGE_BASE64_CHARS
 
 OUTSIDE_COVERAGE = (
     "This location is outside Metro Manila, which is all this service covers. "
@@ -61,6 +62,25 @@ class ChatRequest(StrictModel):
     # It must be a UUID so ids cannot be guessed from a pattern.
     thread_id: UUID | None = None
     location: Coordinates | None = None
+
+
+class ChatStreamRequest(StrictModel):
+    """One message for POST /chat/stream: text, a photo, or both."""
+
+    # May be empty when a photo is attached (the photo is then checked with a default question).
+    message: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)] = ""
+    thread_id: UUID | None = None
+    location: Coordinates | None = None
+    # A JPEG, PNG or WebP picture as base64 text. It is checked and limited in src/services/media_upload.py.
+    image: Annotated[str, StringConstraints(max_length=MAX_IMAGE_BASE64_CHARS)] | None = None
+    # With a photo: also count people and vehicles and estimate a rough depth. Slower, and 3 times the cost.
+    detailed: bool = False
+
+    @model_validator(mode="after")
+    def needs_text_or_photo(self):
+        if not self.message and not self.image:
+            raise ValueError("Send a message, a photo, or both.")
+        return self
 
 
 class ChatResponse(BaseModel):

@@ -23,7 +23,7 @@ import os
 from agents.flood_types import AgentReply, ChatContext
 from video.flood_depth import BAND_ANKLE, BAND_CHEST, BAND_KNEE, BAND_NONE, BAND_WAIST
 from video.flood_scene import LEVEL_NONE, LEVEL_SOME, FloodSceneReport, analyze_flood_media
-from video.sam_client import ImageInput, SamError, VideoInput
+from video.sam_client import ImageInput, VideoInput
 from utils.tracing import traced_agent
 
 logger = logging.getLogger(__name__)
@@ -57,19 +57,29 @@ DEPTH_WORDS = {
 
 @traced_agent("flood_media_agent")
 def answer_flood_media_question(
-    media: ImageInput | VideoInput, context: ChatContext, api_key: str | None = None, estimate_depth: bool = False
+    media: ImageInput | VideoInput,
+    context: ChatContext,
+    api_key: str | None = None,
+    estimate_depth: bool = False,
+    include_people_and_vehicles: bool = True,
 ) -> AgentReply:
     """Analyse a photo or video and describe the flood water in it.
 
     ``estimate_depth=True`` (photos only) adds a rough depth from the people standing in the water.
+    ``include_people_and_vehicles=False`` looks for water only, which costs one SAM request instead of three.
     """
     api_key = api_key or os.getenv("MUSE_API")
     if not api_key:
         return AgentReply(text=NO_KEY_ANSWER)
 
     try:
-        report = analyze_flood_media(media, api_key, estimate_depth=estimate_depth)
-    except (SamError, OSError, ValueError) as error:  # OSError covers network problems and unreadable files
+        report = analyze_flood_media(
+            media, api_key, estimate_depth=estimate_depth, include_people_and_vehicles=include_people_and_vehicles
+        )
+    except Exception as error:
+        # SamError (a refused request, a limit), OSError (network problems, unreadable files) and ValueError are the usual
+        # ones. The SAM stream library also wraps them in its own error type, so anything else is treated the same way:
+        # the person gets the friendly "could not check" answer with the 911 line, not a bare error.
         logger.error("Flood media check failed: %s", error)
         return AgentReply(text=FAILED_ANSWER)
 
