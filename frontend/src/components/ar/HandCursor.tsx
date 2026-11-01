@@ -1,5 +1,6 @@
 "use client"
 
+import { usePathname } from "next/navigation"
 import { useEffect, useRef } from "react"
 
 import { useHand, type Hand } from "@/context/HandContext"
@@ -40,7 +41,16 @@ const OFFSET_STORAGE_KEY = "floodguard:hand-offset"
 
 const CURSOR_CLASS = "hand-cursor"
 
+/** Pages that show another site full screen. The frame swallows mouse events, so the hand would freeze there. */
+const PAGES_WITHOUT_HAND = ["/satellite"]
+
 export function HandCursor() {
+  const pathname = usePathname()
+  if (pathname && PAGES_WITHOUT_HAND.includes(pathname)) return null
+  return <HandCursorLayer />
+}
+
+function HandCursorLayer() {
   const containerRef = useRef<HTMLDivElement>(null)
   const { hand } = useHand()
 
