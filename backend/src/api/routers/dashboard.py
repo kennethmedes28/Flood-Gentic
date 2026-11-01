@@ -14,7 +14,7 @@ from src.services.dashboard_data import MAX_CITIES, build_dashboard
 
 router = APIRouter(tags=["dashboard"])
 
-DEFAULT_CITIES = "manila,quezon city,marikina,pasig"
+DEFAULT_CITIES = ",".join(NCR_LOCATIONS)  # all 17 cities of Metro Manila
 
 
 @router.get("/dashboard", response_model=DashboardOut)

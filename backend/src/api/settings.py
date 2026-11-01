@@ -46,6 +46,7 @@ class Settings:
     ors_api_key: str | None = None
     staff_api_key: str | None = None
     staff_per_minute: int = 60
+    weather_per_minute: int = 30
 
 
 def read_bool(name: str, default: bool) -> bool:
@@ -80,4 +81,5 @@ def load_settings() -> Settings:
         ors_api_key=os.getenv("ORS_API_KEY") or None,
         staff_api_key=staff_api_key,
         staff_per_minute=int(os.getenv("STAFF_PER_MINUTE", "60")),
+        weather_per_minute=int(os.getenv("WEATHER_PER_MINUTE", "30")),
     )

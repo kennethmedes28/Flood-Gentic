@@ -199,6 +199,33 @@ class DashboardOut(BaseModel):
     cities: list[DashboardCityOut]
 
 
+# --- Weather forecast (Tomorrow.io, stored in Supabase) -----------------------------------------
+
+
+class ForecastEntryOut(BaseModel):
+    """One hour or one day of the forecast: its start time (UTC) and the values (metric units)."""
+
+    time: str
+    values: dict[str, float | int | None]
+
+
+class CityForecastOut(BaseModel):
+    """The stored forecast of one city, with the entry for the current hour."""
+
+    city: str
+    fetched_on: date  # the Manila day the forecast was fetched
+    fetched_at: datetime
+    now: ForecastEntryOut | None = None  # the current hour, or null when the forecast has run out
+    hourly: list[ForecastEntryOut]
+    daily: list[ForecastEntryOut]
+
+
+class ForecastOut(BaseModel):
+    """Stored forecasts for the requested cities. A city with none yet is left out."""
+
+    cities: list[CityForecastOut]
+
+
 # --- Staff (needs the staff key) -------------------------------------------------------------
 
 ReportStatus = Literal["unverified", "verified", "rejected"]
