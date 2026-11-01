@@ -37,68 +37,36 @@ export const LEVEL_STYLE: Record<FloodLevel, { label: string; symbol: string; co
   },
 }
 
-/** A place where the water height is measured. All values are in metres. */
-export type Station = {
-  id: string
-  /** The river or water body and the city, for the picker. */
-  name: string
-  /** Short name used in sentences. */
-  place: string
-  currentM: number
-  /** How fast the water is rising (positive), falling (negative) or staying (0), in metres per hour. */
-  trendMPerHour: number
-  /** The height at which each level begins. */
-  watchM: number
-  highM: number
-  criticalM: number
-}
+/**
+ * Where each level starts for rain. These are the same limits the backend's flood risk rules use
+ * (backend/agents/flood_risk_agent.py), which follow PAGASA's yellow, orange and red rainfall warnings.
+ */
+const PEAK_RAIN_MM_PER_HOUR = { watch: 7.5, high: 15, critical: 30 }
+const TOTAL_RAIN_MM_PER_DAY = { watch: 40, high: 75, critical: 150 }
 
-/** The level the water is at, for a height in metres. */
-export function levelAt(station: Station, heightM: number): FloodLevel {
-  if (heightM >= station.criticalM) return "critical"
-  if (heightM >= station.highM) return "high"
-  if (heightM >= station.watchM) return "watch"
+/** The level a given amount of rain reaches: low when it is under the first limit. */
+function levelFromLimits(value: number, limits: { watch: number; high: number; critical: number }): FloodLevel {
+  if (value >= limits.critical) return "critical"
+  if (value >= limits.high) return "high"
+  if (value >= limits.watch) return "watch"
   return "low"
 }
 
-/** The scale of the gauge: a little above the critical mark. */
-export function gaugeMaxM(station: Station): number {
-  return Math.ceil(station.criticalM * 1.15)
+/** The rain level of a forecast: the higher of its peak hour (mm per hour) and its total over 24 hours (mm). */
+export function forecastRainLevel(peakMmPerHour: number, totalMm: number): FloodLevel {
+  const fromPeak = levelFromLimits(peakMmPerHour, PEAK_RAIN_MM_PER_HOUR)
+  const fromTotal = levelFromLimits(totalMm, TOTAL_RAIN_MM_PER_DAY)
+  return LEVEL_ORDER.indexOf(fromPeak) >= LEVEL_ORDER.indexOf(fromTotal) ? fromPeak : fromTotal
 }
 
-/** The next level above the current one and the height where it starts, or null when already critical. */
-export function nextLevelUp(station: Station): { level: FloodLevel; atM: number } | null {
-  const now = levelAt(station, station.currentM)
-  if (now === "low") return { level: "watch", atM: station.watchM }
-  if (now === "watch") return { level: "high", atM: station.highM }
-  if (now === "high") return { level: "critical", atM: station.criticalM }
-  return null
-}
-
-/**
- * Hours until the next level if the water keeps rising at today's pace, or null when it is not rising
- * or there is no higher level. This is a straight-line guess, not a forecast.
- */
-export function hoursToNextLevel(station: Station): number | null {
-  const next = nextLevelUp(station)
-  if (!next || station.trendMPerHour <= 0) return null
-  return (next.atM - station.currentM) / station.trendMPerHour
-}
-
-/** "Rising 12 cm per hour", "Falling 3 cm per hour" or "Steady". */
-export function describeTrend(trendMPerHour: number): { word: string; arrow: string; text: string } {
-  const centimetres = Math.round(Math.abs(trendMPerHour) * 100)
-  if (centimetres === 0) return { word: "Steady", arrow: "→", text: "Steady" }
-  return trendMPerHour > 0
-    ? { word: "Rising", arrow: "↗", text: `Rising ${centimetres} cm per hour` }
-    : { word: "Falling", arrow: "↘", text: `Falling ${centimetres} cm per hour` }
-}
-
-/** "about 1 h 40 min" for a number of hours. */
-export function describeDuration(hours: number): string {
-  const totalMinutes = Math.max(1, Math.round(hours * 60))
-  const wholeHours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  if (wholeHours === 0) return `about ${minutes} min`
-  return minutes === 0 ? `about ${wholeHours} h` : `about ${wholeHours} h ${minutes} min`
+/** How the river changed from the day before: "Rising 12% since the day before", "Falling …" or "Steady". */
+export function describeFlowChange(previous: number | null | undefined, latest: number | null | undefined): { arrow: string; text: string } {
+  if (previous === null || previous === undefined || latest === null || latest === undefined || previous <= 0) {
+    return { arrow: "→", text: "Change not known" }
+  }
+  const percent = Math.round(((latest - previous) / previous) * 100)
+  if (Math.abs(percent) < 5) return { arrow: "→", text: "Steady since the day before" }
+  return percent > 0
+    ? { arrow: "↗", text: `Rising ${percent}% since the day before` }
+    : { arrow: "↘", text: `Falling ${Math.abs(percent)}% since the day before` }
 }

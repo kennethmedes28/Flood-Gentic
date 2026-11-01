@@ -22,6 +22,10 @@ export type LiveCity = {
   gustKmh: number | null
   /** River flow in cubic metres per second. It is a flow, not a water height. */
   riverFlowM3s: number | null
+  /** 0 to 1: the share of days since 2020 on which this city's river flow was lower. */
+  riverPercentile: number | null
+  /** The flow from which the river counts as high for this city (its 95th percentile). */
+  riverHighFlowM3s: number | null
   risk: FloodLevel | null
   riskReasons: string[]
   /** What could not be found in the data for this city. */
@@ -46,6 +50,8 @@ type ApiCity = {
   wind_kmh: number | null
   gust_kmh: number | null
   river_flow_m3s: number | null
+  river_percentile: number | null
+  river_high_flow_m3s: number | null
   risk_level: FloodLevel | null
   risk_reasons: string[]
   missing: string[]
@@ -79,6 +85,8 @@ export async function fetchDashboard(cityKeys: string[], signal?: AbortSignal): 
       windKmh: city.wind_kmh,
       gustKmh: city.gust_kmh,
       riverFlowM3s: city.river_flow_m3s,
+      riverPercentile: city.river_percentile,
+      riverHighFlowM3s: city.river_high_flow_m3s,
       risk: city.risk_level,
       riskReasons: city.risk_reasons,
       missing: city.missing,

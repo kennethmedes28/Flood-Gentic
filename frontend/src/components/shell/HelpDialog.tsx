@@ -41,7 +41,7 @@ const SECTIONS: { title: string; points: string[] }[] = [
   {
     title: "Please note",
     points: [
-      "The numbers on the dashboard are sample data for a design preview. They are not an official flood warning.",
+      "The weather now and the forecast come from Tomorrow.io. Rain, river flow and the flood risk level are from the last recorded day, which can be days behind today. None of it is an official flood warning.",
       "For official warnings, see pagasa.dost.gov.ph and ndrrmc.gov.ph. In an emergency, call 911 and your local DRRMO.",
     ],
   },

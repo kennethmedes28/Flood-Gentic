@@ -3,74 +3,144 @@
 import Link from "next/link"
 import { useState } from "react"
 
-import { GlassPanel } from "@/components/ui/GlassPanel"
-import { LevelChart } from "@/components/flood/LevelChart"
+import { FlowChart } from "@/components/flood/FlowChart"
+import { FlowGauge } from "@/components/flood/FlowGauge"
 import { LevelChip } from "@/components/flood/LevelChip"
-import { LevelGauge } from "@/components/flood/LevelGauge"
-import { LEVEL_STYLE, describeDuration, describeTrend, hoursToNextLevel, levelAt, nextLevelUp } from "@/lib/flood-levels"
-import { STATIONS, mostSevereStation, sampleHistory } from "@/data/flood-stations"
+import { RainBars } from "@/components/flood/RainBars"
+import { GlassPanel } from "@/components/ui/GlassPanel"
+import { LoadingLabel, Skeleton } from "@/components/ui/Skeleton"
+import { useCurrentCity } from "@/context/CurrentCityContext"
+import { useDashboardData } from "@/context/DashboardDataContext"
+import { useLiveWeather } from "@/context/LiveWeatherContext"
+import { CITIES } from "@/data/dashboard-cities"
+import { LEVEL_STYLE, describeFlowChange, forecastRainLevel } from "@/lib/flood-levels"
+import { shortDate, weekday } from "@/lib/rain-words"
+import { riskLook } from "@/lib/risk"
+
+/** The river counts as high from this share of days (the backend's flood risk rules use the 95th percentile). */
+const HIGH_RIVER_FROM_PERCENTILE = 0.95
 
 const MUTED = { color: "var(--glass-text-muted)" }
 
 /** Classes shared by the two action buttons in "What to do". */
 const ACTION_BUTTON = "inline-flex min-h-11 items-center justify-center rounded-full px-5 text-base font-semibold [text-shadow:none]"
 
+/** "Marikina City" becomes "Marikina"; "Quezon City" keeps its City, because "Quezon" alone is not its name. */
+function shortName(name: string): string {
+  return name === "Quezon City" ? name : name.replace(/ City$/, "")
+}
+
+/** How many hours of the forecast are added up. */
+const FORECAST_HOURS = 24
+
+/** The next hours of the Tomorrow.io forecast of a city, summed up. Null when there is no forecast. */
+function summariseForecast(hourly: { time: string; values: Record<string, number | null> }[], daily: { time: string; values: Record<string, number | null> }[]) {
+  const now = Date.now()
+  const hours = hourly.filter((entry) => new Date(entry.time).getTime() > now).slice(0, FORECAST_HOURS)
+  if (hours.length === 0) return null
+
+  const totalMm = hours.reduce((sum, entry) => sum + (entry.values.rainAccumulation ?? 0), 0)
+  const peakMmPerHour = Math.max(...hours.map((entry) => entry.values.rainIntensity ?? 0))
+
+  // The coming day with the highest chance of rain.
+  const wettest = daily.reduce<{ time: string; chance: number } | null>((best, entry) => {
+    const chance = entry.values.precipitationProbabilityMax
+    return chance !== null && chance !== undefined && (best === null || chance > best.chance) ? { time: entry.time, chance } : best
+  }, null)
+
+  return { totalMm, peakMmPerHour, hoursCovered: hours.length, wettest, level: forecastRainLevel(peakMmPerHour, totalMm) }
+}
+
 /**
- * The flood level page: pick a station, see its water height on a gauge and over the last 24 hours,
- * what may come next, and what to do. All readings are SAMPLE data (see data/flood-stations.ts).
+ * The flood level page: pick a city and see its flood risk, how high its river is compared with its own history, the last days
+ * of river flow and rain, and what the rain forecast says. The numbers come from the backend (the recorded datasets and the
+ * Tomorrow.io forecast), so they are as recent as the last recorded day, which can be days behind.
  *
- * It opens on the station with the highest level, since that is the one that matters most.
+ * It opens on the current city (see CurrentCityContext), and any of the 17 cities can be picked.
  */
 export function FloodLevelView() {
-  const [stationId, setStationId] = useState(() => mostSevereStation().id)
-  const station = STATIONS.find((candidate) => candidate.id === stationId) ?? STATIONS[0]
+  const { city: currentCity } = useCurrentCity()
+  const { status, cityData, error, reload } = useDashboardData()
+  const { forecastFor } = useLiveWeather()
+  const [chosenKey, setChosenKey] = useState<string | null>(null)
 
-  const level = levelAt(station, station.currentM)
-  const trend = describeTrend(station.trendMPerHour)
-  const nextLevel = nextLevelUp(station)
-  const hoursLeft = hoursToNextLevel(station)
-  const history = sampleHistory(station)
+  const city = CITIES.find((candidate) => candidate.key === (chosenKey ?? currentCity.key)) ?? currentCity
+  const live = cityData(city.key)
+  const stream = forecastFor(city.key)
+  const forecast = stream ? summariseForecast(stream.hourly, stream.daily) : null
+
+  if (status === "loading") {
+    return (
+      <div className="flex flex-col gap-4">
+        <LoadingLabel>Loading flood levels</LoadingLabel>
+        <GlassPanel className="p-5">
+          <Skeleton className="h-7 w-40" />
+          <Skeleton className="mt-4 h-11 w-full" />
+        </GlassPanel>
+        <Skeleton className="h-80 w-full" />
+      </div>
+    )
+  }
+
+  if (!live) {
+    return (
+      <GlassPanel className="p-5">
+        <h1 className="text-xl font-semibold">Flood level</h1>
+        <p className="mt-2 text-base" role="alert">
+          {error || "No flood data for this city yet."}
+        </p>
+        <button type="button" onClick={reload} className="mt-3 min-h-11 rounded-full px-5 text-base font-medium">
+          Try again
+        </button>
+      </GlassPanel>
+    )
+  }
+
+  const level = live.risk
+  const risk = riskLook(level)
+  const flowChange = describeFlowChange(live.recent.at(-2)?.riverFlowM3s, live.riverFlowM3s)
+  const percentOfDays = live.riverPercentile === null ? null : Math.round(live.riverPercentile * 100)
+  const dataDay = live.dataDate ? shortDate(live.dataDate) : "unknown date"
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Title and station picker. The radio buttons give arrow-key movement and a screen-reader group for free. */}
+      {/* Title and city picker. The radio buttons give arrow-key movement and a screen-reader group for free. */}
       <GlassPanel className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold">Flood level</h1>
             <p className="text-base" style={MUTED}>
-              Water height at river stations in Metro Manila.
+              Flood risk and river flow by city in Metro Manila.
             </p>
           </div>
-          <span className="rounded-full border border-current px-3 py-1 text-sm font-medium">Sample readings, not live</span>
+          <span className="rounded-full border border-current px-3 py-1 text-sm font-medium">Recorded up to {dataDay} · not official</span>
         </div>
 
         <fieldset className="mt-4">
-          <legend className="sr-only">Choose a station</legend>
+          <legend className="sr-only">Choose a city</legend>
           <div className="flex flex-wrap gap-2">
-            {STATIONS.map((candidate) => {
-              const candidateLevel = LEVEL_STYLE[levelAt(candidate, candidate.currentM)]
+            {CITIES.map((candidate) => {
+              const candidateRisk = riskLook(cityData(candidate.key)?.risk)
               return (
-                <label key={candidate.id} className="cursor-pointer">
+                <label key={candidate.key} className="cursor-pointer">
                   <input
                     type="radio"
-                    name="station"
-                    value={candidate.id}
-                    checked={candidate.id === station.id}
-                    onChange={() => setStationId(candidate.id)}
+                    name="city"
+                    value={candidate.key}
+                    checked={candidate.key === city.key}
+                    onChange={() => setChosenKey(candidate.key)}
                     className="peer sr-only"
                   />
                   <span className="flex min-h-11 items-center gap-2 rounded-full border border-white/50 px-4 text-base font-medium peer-checked:bg-[var(--glass-accent)] peer-checked:text-white peer-checked:[text-shadow:none] peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--glass-accent)]">
                     <span
                       className="grid size-6 place-items-center rounded-full text-xs text-white [text-shadow:none]"
-                      style={{ background: candidateLevel.color }}
+                      style={{ background: candidateRisk.color }}
                       aria-hidden="true"
                     >
-                      {candidateLevel.symbol}
+                      {candidateRisk.symbol}
                     </span>
-                    {candidate.place}
-                    <span className="tabular-nums opacity-80 max-sm:hidden">{candidate.currentM} m</span>
-                    <span className="sr-only">, {candidateLevel.label} level</span>
+                    {shortName(candidate.name)}
+                    <span className="sr-only">, {candidateRisk.label} risk</span>
                   </span>
                 </label>
               )
@@ -80,70 +150,106 @@ export function FloodLevelView() {
       </GlassPanel>
 
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start">
-        {/* The gauge. */}
+        {/* The river gauge. */}
         <GlassPanel className="p-5 lg:col-span-5">
-          <h2 className="text-lg font-semibold">{station.name}</h2>
+          <h2 className="text-lg font-semibold">{city.name}</h2>
           <p className="text-base" style={MUTED}>
-            {station.place}
+            River flow on {dataDay}
           </p>
 
-          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
-            <p className="text-6xl font-light tabular-nums">
-              {station.currentM}
-              <span className="ml-1 text-2xl">m</span>
-            </p>
-            <div className="flex flex-col items-start gap-1">
-              <LevelChip level={level} />
-              <p className="text-base">
-                <span aria-hidden="true">{trend.arrow} </span>
-                {trend.text}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5">
-            <LevelGauge station={station} />
-          </div>
+          {live.riverFlowM3s === null ? (
+            <p className="mt-3 text-base">No river readings for this city.</p>
+          ) : (
+            <>
+              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+                <p className="text-5xl font-light tabular-nums">
+                  {live.riverFlowM3s.toFixed(1)}
+                  <span className="ml-1 text-xl">m³/s</span>
+                </p>
+                <div className="flex flex-col items-start gap-1">
+                  {level && <LevelChip level={level} />}
+                  <p className="text-base">
+                    <span aria-hidden="true">{flowChange.arrow} </span>
+                    {flowChange.text}
+                  </p>
+                </div>
+              </div>
+              {percentOfDays !== null && (
+                <p className="mt-2 text-base" style={MUTED}>
+                  Higher than {percentOfDays}% of the days since 2020 in {shortName(city.name)}.
+                </p>
+              )}
+              {live.riverPercentile !== null && (
+                <div className="mt-5">
+                  <FlowGauge
+                    flowM3s={live.riverFlowM3s}
+                    percentile={live.riverPercentile}
+                    highFlowM3s={live.riverHighFlowM3s}
+                    highFromPercentile={HIGH_RIVER_FROM_PERCENTILE}
+                  />
+                </div>
+              )}
+            </>
+          )}
         </GlassPanel>
 
         <div className="flex flex-col gap-4 lg:col-span-7">
-          {/* The last 24 hours. */}
+          {/* The recorded days. */}
           <GlassPanel className="p-5">
-            <h2 className="text-lg font-semibold">Last 24 hours</h2>
+            <h2 className="text-lg font-semibold">Last {live.recent.length} recorded days</h2>
             <p className="text-sm" style={MUTED}>
-              Water height in metres, with the point where each level starts
+              River flow in m³/s, and the rain that fell each day (mm)
             </p>
             <div className="mt-3">
-              <LevelChart station={station} />
+              <FlowChart days={live.recent} highFlowM3s={live.riverHighFlowM3s} />
+            </div>
+            <div className="mt-2">
+              <RainBars days={live.recent} />
             </div>
             <p className="mt-1 text-base tabular-nums" style={MUTED}>
-              Lowest {Math.min(...history).toFixed(1)} m · Highest {Math.max(...history).toFixed(1)} m
+              Rain on {dataDay}: {live.rainMm === null ? "not recorded" : `${live.rainMm.toFixed(1)} mm`}
             </p>
           </GlassPanel>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            {/* What may come next. */}
+            {/* What the rain forecast says. */}
             <GlassPanel className="p-5">
-              <h2 className="text-lg font-semibold">What may come next</h2>
-              <p className="mt-2 text-base leading-relaxed">
-                {nextLevel === null
-                  ? "The water is already at the Critical level."
-                  : hoursLeft === null
-                    ? `The water is not rising toward the ${LEVEL_STYLE[nextLevel.level].label} level (${nextLevel.atM} m).`
-                    : `If it keeps rising at this pace, it reaches the ${LEVEL_STYLE[nextLevel.level].label} level (${nextLevel.atM} m) in ${describeDuration(hoursLeft)}.`}
-              </p>
-              <p className="mt-2 text-sm" style={MUTED}>
-                A straight-line guess from the recent pace, not a forecast.
-              </p>
+              <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold">
+                What may come next
+                {forecast && <LevelChip level={forecast.level} className="!px-2 !py-0.5 !text-xs" />}
+              </h2>
+              {forecast ? (
+                <>
+                  <p className="mt-2 text-base leading-relaxed">
+                    About {forecast.totalMm.toFixed(1)} mm of rain is forecast in the next {forecast.hoursCovered} hours, at most{" "}
+                    {forecast.peakMmPerHour.toFixed(1)} mm in one hour.
+                    {forecast.wettest &&
+                      ` The highest chance of rain is ${weekday(new Date(forecast.wettest.time).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }))}, ${Math.round(forecast.wettest.chance)}%.`}
+                  </p>
+                  <p className="mt-2 text-sm" style={MUTED}>
+                    The level uses the same rain limits as the flood risk rules. It is a forecast, not a warning, and it is not
+                    part of the risk level shown above.
+                  </p>
+                </>
+              ) : (
+                <p className="mt-2 text-base">The rain forecast isn&apos;t available right now.</p>
+              )}
             </GlassPanel>
 
             {/* What to do. */}
             <GlassPanel className="p-5">
-              <h2 className="flex items-center gap-2 text-lg font-semibold">
+              <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold">
                 What to do
-                <LevelChip level={level} className="!px-2 !py-0.5 !text-xs" />
+                {level && <LevelChip level={level} className="!px-2 !py-0.5 !text-xs" />}
               </h2>
-              <p className="mt-2 text-base leading-relaxed">{LEVEL_STYLE[level].advice}</p>
+              <p className="mt-2 text-base leading-relaxed">{level ? LEVEL_STYLE[level].advice : "The flood risk could not be worked out. Check pagasa.dost.gov.ph."}</p>
+              {live.riskReasons.length > 0 && (
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm" style={MUTED}>
+                  {live.riskReasons.map((reason) => (
+                    <li key={reason}>{reason}</li>
+                  ))}
+                </ul>
+              )}
               <div className="mt-4 flex flex-wrap gap-2">
                 <a href="tel:911" className={`${ACTION_BUTTON} bg-[var(--glass-accent)] text-white`}>
                   Call 911 if in danger
@@ -160,14 +266,15 @@ export function FloodLevelView() {
       <GlassPanel className="p-5 text-sm">
         <p className="font-semibold">Disclaimer</p>
         <p className="mt-1" style={MUTED}>
-          Sample data for design preview only. Not an official flood warning. For official warnings, see pagasa.dost.gov.ph
-          and ndrrmc.gov.ph.
+          River flow, rain and the risk level are from the last recorded day in the project dataset, which can be days behind today.
+          The risk is a rule-based estimate, not an official flood warning. Flow is in m³/s: there is no water height in the data.
+          The rain forecast is from Tomorrow.io. For official warnings, see pagasa.dost.gov.ph and ndrrmc.gov.ph.
         </p>
       </GlassPanel>
 
-      {/* Tells screen-reader users what changed when they pick another station. */}
+      {/* Tells screen-reader users what changed when they pick another city. */}
       <p className="sr-only" role="status">
-        Showing {station.name}, {station.place}: {station.currentM} metres, {LEVEL_STYLE[level].label} level, {trend.text.toLowerCase()}.
+        Showing {city.name}: {risk.label} {level ? "risk" : ""}, river flow {live.riverFlowM3s === null ? "unknown" : `${live.riverFlowM3s.toFixed(1)} cubic metres per second`}.
       </p>
     </div>
   )
