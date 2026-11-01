@@ -154,13 +154,25 @@ Hovering or focusing it opens a small menu to switch between **Voice** and **Pho
 corner does the same on touch screens.
 
 - **Voice**: speech to text through `/ws/voice` (see `docs/voice_chat.md`). The text lands in the message box.
-- **Photo / video**: opens a file picker. The file shows as a preview with a Remove button; pressing send checks it
-  through `/ws/camera` (`lib/media-check-api.ts`). Photos are scaled to 640 px wide JPEG; a video is reduced to **one
-  picture from its middle**, and the reply says so. Any typed text is only the caption of the message: `/chat` does not
-  take media.
-- Each check calls the vision model on the backend and costs API credit. By default only water is checked; the
-  "count people and estimate depth" checkbox (off by default) triples the cost and adds the local depth model.
-- Errors (unreadable file, backend down, checks too close together) appear as an assistant error message.
+- **Photo / video**: opens a file picker. The file shows as a preview with a Remove button; pressing send sends it with the message to
+  `POST /chat/stream` (`lib/chat-api.ts`, `lib/media-check-api.ts`). The picture is scaled to 640 px wide JPEG in the browser and sent as
+  base64 text in the `image` field. The typed text is the caption and may be empty. The backend checks the picture (valid base64, at most 2 MB, really a JPEG, PNG or WebP), saves it under a random
+  name in the upload folder, runs the flood media check, and deletes it when the answer is done. The reply comes back in the same
+  conversation and the progress line says "Checking your photo or video for flood water".
+- **Videos are analysed whole**, not through one frame. The browser sends the file itself as the body of `POST /chat/stream/video`
+  (`sendChatVideoStream`; message, thread, location and `detailed` go in the query string), up to 200 MB (`MAX_VIDEO_BYTES`), as MP4, MOV or
+  WebM (checked on the first bytes, written to the upload folder piece by piece, deleted afterwards). The backend first shrinks a copy to 480 px wide
+  and 4 frames per second with the ffmpeg that comes with `imageio-ffmpeg` (`backend/video/video_prepare.py`), because the library that reads
+  SAM's answer decodes masks in plain Python: a 12 second 1080p clip took over 5 minutes and timed out, the shrunk copy takes about 20 seconds.
+  Measured: a 5 MB, 12 second clip took 22 s; a 35 MB, 36 second clip (144 frames) took 75 s. The progress line says "Analysing your
+  video for flood water. This can take a minute or two". Videos share the photo rate limit. With "count people and vehicles" on, a video
+  costs 3 SAM requests; depth is only estimated for photos. If ffmpeg is missing the original is analysed, which is slow for large clips.
+- Each check calls the vision model on the backend and costs API credit. By default only water is checked (1 SAM request). The "count people
+  and vehicles and estimate a rough depth" checkbox (off by default) sends `detailed: true`: 3 requests plus the local depth model. Photo checks
+  have their own rate limit (`MEDIA_PER_HOUR`, default 20), and a request to the other chat endpoints that declares a body over about 2.8 MB is refused with 413 (only the video endpoint takes more).
+- Errors (unreadable file, picture too large, backend down, too many checks) appear as an assistant error message; if the vision service fails
+  the reply says the picture could not be checked and repeats the 911 line.
+- `/ws/camera` (live webcam checks) is still available but the assistant page no longer uses it. `POST /chat` (not streamed) takes text only.
 
 ## Dashboard data (recorded datasets, for now)
 

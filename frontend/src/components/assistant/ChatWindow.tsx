@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react"
 
 import { GlassPanel } from "@/components/ui/GlassPanel"
 import { useVoiceTranscription } from "@/hooks/useVoiceTranscription"
-import { ChatError, sendChatMessageStream, type Coordinates } from "@/lib/chat-api"
-import { useMediaAttachment, type Attachment } from "@/hooks/useMediaAttachment"
-import { checkMedia, isVideo, MediaCheckError } from "@/lib/media-check-api"
+import { ChatError, sendChatMessageStream, sendChatVideoStream, type Coordinates } from "@/lib/chat-api"
+import { useMediaAttachment } from "@/hooks/useMediaAttachment"
+import { checkVideoSize, isVideo, MediaCheckError, preparePhotoForChat } from "@/lib/media-check-api"
 
 import { InputModeButton, type InputMode } from "./InputModeButton"
 import { MessageBubble, TypingIndicator, type ChatMessage } from "./MessageBubble"
@@ -88,48 +88,39 @@ export function ChatWindow() {
     setMessages((current) => [...current, { ...message, id: newId() }])
   }
 
-  /** Check the attached photo or video for flood water. The typed text is only shown as the caption: it is not sent to the chat. */
-  async function sendAttachment(item: Attachment, caption: string) {
-    const video = isVideo(item.file)
+  /**
+   * Send the message, with the attached photo or video if there is one. A photo is made small in the browser and goes
+   * to the backend with the message; a video is sent whole and analysed in full, which takes longer. Either way the
+   * backend checks it for flood water and answers in the same conversation. The text is then the caption: it may be empty.
+   */
+  async function send(text: string) {
+    const message = text.trim()
+    if (pending || voiceActive) return
+    const item = attachment
+    if (!message && !item) return
+
+    const video = item ? isVideo(item.file) : false
     addMessage({
       role: "user",
       kind: "normal",
-      text: caption || (video ? "Check this video for flood water." : "Check this photo for flood water."),
-      media: { url: item.url, isVideo: video },
+      text: message || (video ? "Check this video for flood water." : "Check this photo for flood water."),
+      media: item ? { url: item.url, isVideo: video } : undefined,
     })
     takeAttachment() // the preview now lives in the message, so its address is not revoked here
     setDraft("")
     setPending(true)
-    setProgress(video ? "Checking one picture from your video for flood water" : "Checking your photo for flood water")
 
     try {
-      const text = await checkMedia(item.file, { people: moreDetail, depth: moreDetail })
-      const note = video ? "\n\n(Only one picture from the middle of the video was checked.)" : ""
-      addMessage({ role: "assistant", kind: "normal", text: text + note })
-    } catch (error) {
-      const text = error instanceof MediaCheckError ? error.message : "Something went wrong. Please try again."
-      addMessage({ role: "assistant", kind: "error", text })
-    } finally {
-      setPending(false)
-      setProgress("")
-    }
-  }
-
-  async function send(text: string) {
-    const message = text.trim()
-    if (pending || voiceActive) return
-    if (attachment) {
-      await sendAttachment(attachment, message)
-      return
-    }
-    if (!message) return
-
-    addMessage({ role: "user", kind: "normal", text: message })
-    setDraft("")
-    setPending(true)
-
-    try {
-      const reply = await sendChatMessageStream({ message, threadId, location }, (step) => setProgress(step.label))
+      const onProgress = (step: { label: string }) => setProgress(step.label)
+      let reply
+      if (item && video) {
+        checkVideoSize(item.file)
+        setProgress("Uploading your video") // the upload itself has no progress lines: they start when it arrives
+        reply = await sendChatVideoStream(item.file, { message, threadId, location, detailed: moreDetail }, onProgress)
+      } else {
+        const image = item ? await preparePhotoForChat(item.file) : undefined
+        reply = await sendChatMessageStream({ message, threadId, location, image, detailed: moreDetail }, onProgress)
+      }
       setThreadId(reply.threadId)
       addMessage({
         role: "assistant",
@@ -137,8 +128,8 @@ export function ChatWindow() {
         kind: reply.blocked ? "blocked" : reply.safeAnswer ? "safe" : "normal",
       })
     } catch (error) {
-      const text = error instanceof ChatError ? error.message : "Something went wrong. Please try again."
-      addMessage({ role: "assistant", kind: "error", text })
+      const known = error instanceof ChatError || error instanceof MediaCheckError
+      addMessage({ role: "assistant", kind: "error", text: known ? error.message : "Something went wrong. Please try again." })
     } finally {
       setPending(false)
       setProgress("")
@@ -233,7 +224,9 @@ export function ChatWindow() {
             <p className="truncate font-medium">{attachment.file.name}</p>
             <label className="flex min-h-11 items-center gap-2 text-xs">
               <input type="checkbox" checked={moreDetail} onChange={(event) => setMoreDetail(event.target.checked)} className="size-4" />
-              Also count people and estimate depth (slower, uses more credit)
+              {isVideo(attachment.file)
+                ? "Also count people and vehicles (slower, uses 3 times the credit)"
+                : "Also count people and vehicles and estimate a rough depth (slower, uses 3 times the credit)"}
             </label>
           </div>
           <button type="button" onClick={removeAttachment} className="min-h-11 rounded-full px-4 text-sm font-medium">

@@ -34,9 +34,14 @@ function readDetail(detail: unknown): string | null {
 }
 
 type SendOptions = {
+  /** The text of the message. May be empty when a picture is attached. */
   message: string
   threadId: string | null
   location: Coordinates | null
+  /** A JPEG picture as base64 text, to be checked for flood water (see media-check-api.ts). */
+  image?: string
+  /** With a picture: also count people and vehicles and estimate a rough depth. Slower and costs more. */
+  detailed?: boolean
 }
 
 /** What the assistant is doing while it works on a message, as the backend describes it. */
@@ -49,6 +54,22 @@ export type ChatProgress = {
 
 const NETWORK_MESSAGE = "I can't reach the assistant right now. Please check your connection and try again."
 
+/** Turn a failed answer into a friendly ChatError. Does nothing when the answer is fine. */
+async function throwIfFailed(response: Response): Promise<void> {
+  if (response.ok) return
+  if (response.status === 429) {
+    throw new ChatError("You're sending messages too fast. Please wait a moment and try again.")
+  }
+  if (response.status === 413) {
+    throw new ChatError("That file is too large. Please choose a smaller one.")
+  }
+  if (response.status === 422) {
+    const body = await response.json().catch(() => null)
+    throw new ChatError(readDetail(body?.detail) ?? "That message couldn't be sent. Please change it and try again.")
+  }
+  throw new ChatError("The assistant is having trouble right now. Please try again in a moment.")
+}
+
 /** POST the message to one of the chat endpoints and turn a failed answer into a friendly ChatError. */
 async function postMessage(path: string, options: SendOptions, signal?: AbortSignal): Promise<Response> {
   let response: Response
@@ -60,6 +81,7 @@ async function postMessage(path: string, options: SendOptions, signal?: AbortSig
         message: options.message,
         thread_id: options.threadId,
         location: options.location,
+        ...(options.image ? { image: options.image, detailed: Boolean(options.detailed) } : {}),
       }),
       signal,
     })
@@ -67,16 +89,7 @@ async function postMessage(path: string, options: SendOptions, signal?: AbortSig
     throw new ChatError(NETWORK_MESSAGE)
   }
 
-  if (!response.ok) {
-    if (response.status === 429) {
-      throw new ChatError("You're sending messages too fast. Please wait a moment and try again.")
-    }
-    if (response.status === 422) {
-      const body = await response.json().catch(() => null)
-      throw new ChatError(readDetail(body?.detail) ?? "That message couldn't be sent. Please change it and try again.")
-    }
-    throw new ChatError("The assistant is having trouble right now. Please try again in a moment.")
-  }
+  await throwIfFailed(response)
   return response
 }
 
@@ -113,7 +126,46 @@ export async function sendChatMessageStream(
   onProgress: (progress: ChatProgress) => void,
   signal?: AbortSignal
 ): Promise<ChatReply> {
-  const response = await postMessage("/chat/stream", options, signal)
+  return readReplyStream(await postMessage("/chat/stream", options, signal), onProgress, signal)
+}
+
+/**
+ * Send a video (POST /chat/stream/video) and report progress while it is analysed.
+ *
+ * The video is the request body itself, so it is streamed from the file and never held in memory as text; the
+ * message, conversation and location go in the query string. The backend analyses the whole video, which can take a
+ * minute or two, and answers with the same progress lines as a text message.
+ */
+export async function sendChatVideoStream(
+  video: File,
+  options: Omit<SendOptions, "image">,
+  onProgress: (progress: ChatProgress) => void,
+  signal?: AbortSignal
+): Promise<ChatReply> {
+  const query = new URLSearchParams({ message: options.message, detailed: String(Boolean(options.detailed)) })
+  if (options.threadId) query.set("thread_id", options.threadId)
+  if (options.location) {
+    query.set("lat", String(options.location.lat))
+    query.set("lng", String(options.location.lng))
+  }
+
+  let response: Response
+  try {
+    response = await fetch(`${API_URL}/chat/stream/video?${query}`, {
+      method: "POST",
+      headers: { "Content-Type": video.type || "video/mp4" },
+      body: video,
+      signal,
+    })
+  } catch {
+    throw new ChatError(NETWORK_MESSAGE)
+  }
+  await throwIfFailed(response)
+  return readReplyStream(response, onProgress, signal)
+}
+
+/** Read the lines of a chat stream: progress is passed on, and the reply is returned. */
+async function readReplyStream(response: Response, onProgress: (progress: ChatProgress) => void, signal?: AbortSignal): Promise<ChatReply> {
   if (!response.body) throw new ChatError(NETWORK_MESSAGE)
 
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
