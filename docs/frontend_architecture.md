@@ -200,3 +200,37 @@ data/           static data only: dashboard cities, evacuation centers, emergenc
 
 Rule of thumb: components draw, hooks and context hold state, `lib` computes and talks to the backend, `data` is just values.
 Imports use the `@/` alias (for example `@/lib/risk`).
+
+## Chat progress (streaming)
+
+The assistant page sends messages to `POST /chat/stream` (`lib/chat-api.ts: sendChatMessageStream`). The backend answers with one
+JSON object per line (`application/x-ndjson`):
+
+```
+{"type":"status","step":"checking","label":"Checking your message"}
+{"type":"status","step":"working","label":"Checking rain, river flow and PAGASA for flood risk"}
+{"type":"reply","thread_id":"…","reply":"…","safe_answer":false,"blocked":false}      (or {"type":"error","message":"…"})
+```
+
+The label under the typing dots changes with each status line, and screen readers announce it. The "working" label names the agent
+that will really answer: it comes from the graph's own keyword routing (`backend/langgraph_orchestrator/stream.py`), so it costs
+nothing. A message with several topics also lists them. Photo/video checks show their own label.
+
+Limit: the **words of the reply are not streamed** (the agents return the whole answer at once), only what the assistant is doing.
+`POST /chat` still works unchanged. The guard that blocks secrets runs first in both.
+
+## Running both locally
+
+```
+hooks/run_all.sh            # FastAPI on :8000 and Next.js on :3000, output marked [backend] / [frontend]
+hooks/run_all.sh --memory   # chats kept in memory instead of Postgres
+hooks/run_all.sh --no-reload --backend-port 8001 --frontend-port 3001
+hooks/run_all.sh --help
+hooks\run_all.bat    # Windows (same options)
+python scripts/run_dev.py   # the same thing as a Python program, with the same options
+```
+
+The script (`hooks/`) checks `uv`, `npm`, `curl`, `frontend/node_modules`, free ports and `backend/.env`, tells the frontend where
+the backend is (`NEXT_PUBLIC_API_URL`) and the backend which page may call it (`CORS_ORIGINS`), prints `/health` once the backend
+answers, and stops both with one Ctrl+C. On Windows `scripts/run_dev.py` stops the programs with `taskkill /T /F` and finds `npm.cmd` itself; this part has not been run on a Windows computer yet.
+Messages sent from the page are real calls: the chat model (`MUSE_API`) and photo checks use API credit.
