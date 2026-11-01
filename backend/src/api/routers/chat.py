@@ -53,9 +53,9 @@ async def chat_stream(request: Request, body: ChatStreamRequest, graph=Depends(g
     reply are not streamed, because the agents produce the whole answer at once.
 
     With ``image`` (a JPEG, PNG or WebP picture as base64 text) the picture is checked for flood water and the
-    reply describes it. ``message`` is then optional. The check uses paid SAM requests: one for water only, three
-    with ``detailed`` (which also counts people and vehicles and estimates a rough depth), so photo checks have their
-    own, lower rate limit. The picture is deleted as soon as the answer is done.
+    reply describes it. ``message`` is then optional. The check uses paid SAM requests: 4 for water only (two
+    phrases, on the photo and on a mirrored copy), 6 with ``detailed`` (which also counts people and vehicles and estimates
+    a rough depth), so photo checks have their own, lower rate limit. The picture is deleted as soon as the answer is done.
     """
     thread_id = str(body.thread_id) if body.thread_id else str(uuid4())
     location = body.location.model_dump() if body.location else None
@@ -91,13 +91,13 @@ async def chat_stream_video(
     thread_id: UUID | None = Query(default=None),
     lat: float | None = Query(default=None),
     lng: float | None = Query(default=None),
-    detailed: bool = Query(default=False, description="Also count people and vehicles: three times the SAM requests."),
+    detailed: bool = Query(default=False, description="Also count people and vehicles: 4 SAM requests instead of 2."),
 ) -> StreamingResponse:
     """The same as POST /chat/stream with a video: the video itself is the request body.
 
     Send it with its own ``Content-Type`` (``video/mp4``, ``video/quicktime`` or ``video/webm``); ``message``,
     ``thread_id``, ``lat``, ``lng`` and ``detailed`` go in the query string. The whole video is analysed by SAM (not
-    one frame), which can take a minute or two for a long clip, and uses paid SAM requests: one for water only, three
+    one frame), which can take a minute or two for a long clip, and uses paid SAM requests: 2 for water only (two phrases), 4
     with ``detailed``. Videos share the photo checks' rate limit. The video is deleted as soon as the answer is done.
     The answer is the same lines as POST /chat/stream.
     """

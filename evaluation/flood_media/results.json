@@ -1,0 +1,245 @@
+{
+  "photos": 60,
+  "tune_photos": [
+    "1037",
+    "1001",
+    "16",
+    "10",
+    "25",
+    "3024",
+    "3002",
+    "3098",
+    "39",
+    "2021",
+    "1051",
+    "3081",
+    "3073",
+    "3001",
+    "1071",
+    "3055",
+    "1024",
+    "1072",
+    "1025",
+    "3049",
+    "1033",
+    "3019",
+    "1008",
+    "33",
+    "27",
+    "3066",
+    "26",
+    "31",
+    "2040",
+    "2050"
+  ],
+  "check_photos": [
+    "2002",
+    "3086",
+    "2019",
+    "3068",
+    "3034",
+    "8",
+    "3046",
+    "1046",
+    "3035",
+    "1019",
+    "1054",
+    "3076",
+    "2049",
+    "2011",
+    "3006",
+    "1038",
+    "3071",
+    "1067",
+    "3",
+    "1031",
+    "2016",
+    "1079",
+    "3023",
+    "2044",
+    "1061",
+    "2031",
+    "28",
+    "1063",
+    "13",
+    "1050"
+  ],
+  "concepts_tried": [
+    "flood water",
+    "muddy water",
+    "water",
+    "flooded road"
+  ],
+  "rows": [
+    {
+      "name": "today's setting",
+      "setting": "\"flood water\", vote 1, confidence 0.5 (1 requests)",
+      "concepts": [
+        "flood water"
+      ],
+      "mirror": false,
+      "votes": 1,
+      "confidence": 0.5,
+      "requests_per_photo": 1,
+      "tune": {
+        "iou": 0.7996,
+        "precision": 0.9765,
+        "recall": 0.8145,
+        "coverage_error": 0.0648
+      },
+      "check": {
+        "iou": 0.7226,
+        "precision": 0.9723,
+        "recall": 0.7373,
+        "coverage_error": 0.0842
+      }
+    },
+    {
+      "name": "best with 1 request(s)",
+      "setting": "\"flood water\", vote 1, confidence 0.3 (1 requests)",
+      "concepts": [
+        "flood water"
+      ],
+      "mirror": false,
+      "votes": 1,
+      "confidence": 0.3,
+      "requests_per_photo": 1,
+      "tune": {
+        "iou": 0.7996,
+        "precision": 0.9765,
+        "recall": 0.8145,
+        "coverage_error": 0.0648
+      },
+      "check": {
+        "iou": 0.7226,
+        "precision": 0.9723,
+        "recall": 0.7373,
+        "coverage_error": 0.0842
+      }
+    },
+    {
+      "name": "best with 2 request(s)",
+      "setting": "\"flood water\" + \"muddy water\", vote 1, confidence 0.3 (2 requests)",
+      "concepts": [
+        "flood water",
+        "muddy water"
+      ],
+      "mirror": false,
+      "votes": 1,
+      "confidence": 0.3,
+      "requests_per_photo": 2,
+      "tune": {
+        "iou": 0.8139,
+        "precision": 0.9747,
+        "recall": 0.8303,
+        "coverage_error": 0.0575
+      },
+      "check": {
+        "iou": 0.7516,
+        "precision": 0.9667,
+        "recall": 0.7695,
+        "coverage_error": 0.0722
+      }
+    },
+    {
+      "name": "best with 3 request(s)",
+      "setting": "\"flood water\" + \"muddy water\" + \"flooded road\", vote 1, confidence 0.3 (3 requests)",
+      "concepts": [
+        "flood water",
+        "muddy water",
+        "flooded road"
+      ],
+      "mirror": false,
+      "votes": 1,
+      "confidence": 0.3,
+      "requests_per_photo": 3,
+      "tune": {
+        "iou": 0.8149,
+        "precision": 0.9745,
+        "recall": 0.8314,
+        "coverage_error": 0.057
+      },
+      "check": {
+        "iou": 0.7525,
+        "precision": 0.9662,
+        "recall": 0.7706,
+        "coverage_error": 0.0719
+      }
+    },
+    {
+      "name": "best with 4 request(s)",
+      "setting": "\"flood water\" + \"muddy water\", mirrored, vote 1, confidence 0.3 (4 requests)",
+      "concepts": [
+        "flood water",
+        "muddy water"
+      ],
+      "mirror": true,
+      "votes": 1,
+      "confidence": 0.3,
+      "requests_per_photo": 4,
+      "tune": {
+        "iou": 0.8217,
+        "precision": 0.9722,
+        "recall": 0.8403,
+        "coverage_error": 0.0528
+      },
+      "check": {
+        "iou": 0.7636,
+        "precision": 0.964,
+        "recall": 0.7835,
+        "coverage_error": 0.0669
+      }
+    },
+    {
+      "name": "best with 6 request(s)",
+      "setting": "\"flood water\" + \"muddy water\" + \"water\", mirrored, vote 1, confidence 0.3 (6 requests)",
+      "concepts": [
+        "flood water",
+        "muddy water",
+        "water"
+      ],
+      "mirror": true,
+      "votes": 1,
+      "confidence": 0.3,
+      "requests_per_photo": 6,
+      "tune": {
+        "iou": 0.8225,
+        "precision": 0.9717,
+        "recall": 0.8415,
+        "coverage_error": 0.0522
+      },
+      "check": {
+        "iou": 0.7642,
+        "precision": 0.9632,
+        "recall": 0.7847,
+        "coverage_error": 0.0662
+      }
+    },
+    {
+      "name": "best with 8 request(s)",
+      "setting": "\"flood water\" + \"muddy water\" + \"water\" + \"flooded road\", mirrored, vote 1, confidence 0.3 (8 requests)",
+      "concepts": [
+        "flood water",
+        "muddy water",
+        "water",
+        "flooded road"
+      ],
+      "mirror": true,
+      "votes": 1,
+      "confidence": 0.3,
+      "requests_per_photo": 8,
+      "tune": {
+        "iou": 0.8232,
+        "precision": 0.9715,
+        "recall": 0.8424,
+        "coverage_error": 0.0519
+      },
+      "check": {
+        "iou": 0.7649,
+        "precision": 0.9627,
+        "recall": 0.7857,
+        "coverage_error": 0.0659
+      }
+    }
+  ]
+}

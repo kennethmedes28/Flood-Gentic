@@ -24,15 +24,20 @@ import logging
 import os
 import time
 from collections.abc import Awaitable, Callable
+from functools import partial
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from agents.flood_media_agent import format_report
 from agents.flood_types import ChatContext
-from video.flood_scene import FloodSceneReport, analyze_flood_media_async
+from video.flood_scene import WATER_CONCEPT, FloodSceneReport, analyze_flood_media_async
 from video.sam_client import ImageInput, SamError
 
 logger = logging.getLogger(__name__)
+
+# The webcam sends a frame every few seconds, so it keeps to one water request per frame: no extra phrases and no
+# mirrored copy (the chat's photo check uses those, see WATER_CONCEPTS in flood_scene.py).
+WEBCAM_ANALYZE = partial(analyze_flood_media_async, water_concepts=(WATER_CONCEPT,), mirror_photo=False)
 
 MIN_SECONDS_BETWEEN_CHECKS = 3.0
 MAX_SESSION_SECONDS = 300
@@ -42,7 +47,7 @@ CLOSE_INTERNAL_ERROR = 1011
 Analyzer = Callable[..., Awaitable[FloodSceneReport]]
 
 
-def create_camera_router(analyze: Analyzer = analyze_flood_media_async) -> APIRouter:
+def create_camera_router(analyze: Analyzer = WEBCAM_ANALYZE) -> APIRouter:
     """Build the router. Tests pass their own ``analyze`` function to avoid real SAM calls."""
     router = APIRouter()
 

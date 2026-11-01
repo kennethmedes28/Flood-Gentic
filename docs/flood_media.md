@@ -90,7 +90,7 @@ The `/assistant` page sends photos and videos to the chat, which hands them to t
 
 - **Photo:** scaled to 640 px wide JPEG in the browser and sent as base64 in the `image` field of `POST /chat/stream` (up to 2 MB, checked on its first bytes).
 - **Video:** sent whole as the body of `POST /chat/stream/video` (MP4, MOV or WebM, up to 200 MB, checked on its first bytes). The progress line says "Analysing your video for flood water. This can take a minute or two".
-- **What the checkbox does:** off (the default) looks for water only, one SAM request; on (`detailed`) also counts people and vehicles, three requests, and for a photo adds the depth estimate.
+- **What the checkbox does:** off (the default) looks for water only: 4 SAM requests for a photo, 2 for a video (see section 11). On (`detailed`) it also counts people and vehicles, 2 more requests, and for a photo adds the depth estimate.
 - **Files:** saved under a random name in `MEDIA_UPLOAD_DIR` with owner-only permissions, deleted when the answer is done. Photo and video checks share the `MEDIA_PER_HOUR` limit (default 20).
 - **Why a video is shrunk first:** SAM returns a mask for every frame, and the library that reads the answer (`meta_sam_parser`) decodes each mask in plain Python at about one microsecond per pixel.
   A 12 second 1080p clip took over five minutes and the connection timed out, although SAM itself answered in 17 seconds. `video/video_prepare.py` makes a copy at most 480 px wide and 4 frames per second,
@@ -121,3 +121,40 @@ The `/assistant` page sends photos and videos to the chat, which hands them to t
 - Using the water coverage as an input to the flood risk agent or to the flooded areas that routes avoid.
 - Tuning the thresholds and measuring accuracy on a labelled set of Philippine flood photos (`docs/evaluation_rubric.md`).
 - Depth accuracy: photos with a measured depth (a gauge or marked pole in view) to compare against; using the dry people in a scene to calibrate the scale; vehicles and fixed objects as extra rulers; depth for videos (only photos today).
+
+## 11. Augmented SAM (no training)
+
+SAM 3.1 is Meta's hosted model, so its weights cannot be fine-tuned from here. Instead the water check asks it more than once and
+combines the answers (`video/flood_scene.py`):
+
+- **Several phrases** (`WATER_CONCEPTS`): "flood water" and "muddy water". SAM finds different parts of the water depending on the words.
+- **A mirrored photo** (`MIRROR_PHOTOS`): the photo is also checked mirrored left to right, and the masks are mirrored back. Photos with an EXIF
+  rotation tag are not mirrored, because the two views might not line up. Videos are never mirrored.
+- **A vote** (`WATER_VOTES_NEEDED`, 1): a spot is water when at least that many of the requests found it.
+- **Cost:** a photo check is 4 water requests instead of 1, a video 2; they run at the same time, so a photo took about 1 second longer
+  (4.2 s against 3.0 s). The live webcam check keeps to 1 request per frame (`WEBCAM_ANALYZE` in `video/camera_router.py`).
+
+**How the settings were chosen.** `scripts/evaluate_flood_media.py` scores every combination of phrases ("flood water", "muddy water", "water",
+"flooded road"), mirroring, vote and confidence cut-off against hand-drawn water masks. It used 60 photos of the public "Flood Area Segmentation"
+set (290 flood photos with masks), chose on 30 and checked on the other 30, at 640 px wide as the page sends them. Every SAM answer is saved in
+`evaluation/flood_media/cache/` (not in git, like the photos), so scoring again costs nothing. Overlap (IoU) with the hand-drawn water, on the check half:
+
+| Setting | SAM requests per photo | IoU | Precision | Recall |
+|---|---|---|---|---|
+| "flood water" (before) | 1 | 0.723 | 0.972 | 0.737 |
+| + "muddy water" | 2 | 0.752 | 0.967 | 0.769 |
+| + mirrored photo (now the default) | 4 | 0.764 | 0.964 | 0.783 |
+| all four phrases, mirrored | 8 | 0.765 | 0.963 | 0.786 |
+
+SAM is precise (what it marks is water about 97% of the time) but misses about a quarter of the water; each extra request finds some of what
+the others missed, so the vote is 1. More than 4 requests stopped paying off. The confidence cut-off gave the same result at 0.3 and 0.5 and a worse
+one at 0.7, so it stays at 0.5 (which also keeps the people and vehicle counts as they were).
+
+**Limits of this measurement.** Almost all photos in that set are taken from the air (drones, helicopters); people send street-level photos. The
+ranking of the settings should carry over, but the "some" (3%) and "widespread" (20%) cut-offs were not tuned, because the share of a picture covered by
+water depends on the viewpoint. Every photo in the set shows a flood, so false alarms on dry streets were not measured; "muddy water" could mark a
+muddy river on a normal day. On one real street photo the new setting gave the same 16% as before. A labelled set of Philippine street-level photos
+(`docs/evaluation_rubric.md`) would allow tuning the cut-offs and measuring false alarms.
+
+Run it again (from `backend/`): `uv run python ../scripts/evaluate_flood_media.py --dry-run` shows how many SAM requests are needed, and
+`--score-only` scores from the saved answers without any request. The photos go in `evaluation/flood_media/source/Data/raw/{images,masks}`.

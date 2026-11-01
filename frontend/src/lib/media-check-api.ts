@@ -3,7 +3,8 @@
  *
  * A photo is made smaller first and goes to the backend as text with the chat message (POST /chat/stream, see
  * chat-api.ts). A video is not touched here: it is sent whole (sendChatVideoStream) and analysed in full.
- * Each check costs API credit on the backend, and counting people and vehicles costs three times as much.
+ * Each check costs API credit on the backend: 4 SAM requests for a photo (two water phrases, on the photo and on a mirrored
+ * copy) and 2 for a video; counting people and vehicles adds 2 more.
  */
 
 /** The biggest video the backend accepts, in megabytes (see MAX_VIDEO_BYTES in backend/src/services/media_upload.py). */

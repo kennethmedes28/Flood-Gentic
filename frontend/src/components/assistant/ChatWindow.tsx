@@ -225,8 +225,8 @@ export function ChatWindow() {
             <label className="flex min-h-11 items-center gap-2 text-xs">
               <input type="checkbox" checked={moreDetail} onChange={(event) => setMoreDetail(event.target.checked)} className="size-4" />
               {isVideo(attachment.file)
-                ? "Also count people and vehicles (slower, uses 3 times the credit)"
-                : "Also count people and vehicles and estimate a rough depth (slower, uses 3 times the credit)"}
+                ? "Also count people and vehicles (slower, uses twice the credit)"
+                : "Also count people and vehicles and estimate a rough depth (slower, uses more credit)"}
             </label>
           </div>
           <button type="button" onClick={removeAttachment} className="min-h-11 rounded-full px-4 text-sm font-medium">

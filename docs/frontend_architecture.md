@@ -166,9 +166,10 @@ corner does the same on touch screens.
   SAM's answer decodes masks in plain Python: a 12 second 1080p clip took over 5 minutes and timed out, the shrunk copy takes about 20 seconds.
   Measured: a 5 MB, 12 second clip took 22 s; a 35 MB, 36 second clip (144 frames) took 75 s. The progress line says "Analysing your
   video for flood water. This can take a minute or two". Videos share the photo rate limit. With "count people and vehicles" on, a video
-  costs 3 SAM requests; depth is only estimated for photos. If ffmpeg is missing the original is analysed, which is slow for large clips.
-- Each check calls the vision model on the backend and costs API credit. By default only water is checked (1 SAM request). The "count people
-  and vehicles and estimate a rough depth" checkbox (off by default) sends `detailed: true`: 3 requests plus the local depth model. Photo checks
+  costs 4 SAM requests instead of 2; depth is only estimated for photos. If ffmpeg is missing the original is analysed, which is slow for large clips.
+- Each check calls the vision model on the backend and costs API credit. By default only water is checked: 4 SAM requests for a photo (two phrases, on the photo
+  and on a mirrored copy; see `docs/flood_media.md` section 11). The "count people and vehicles and estimate a rough depth" checkbox (off by default)
+  sends `detailed: true`: 2 more requests plus the local depth model. Photo checks
   have their own rate limit (`MEDIA_PER_HOUR`, default 20), and a request to the other chat endpoints that declares a body over about 2.8 MB is refused with 413 (only the video endpoint takes more).
 - Errors (unreadable file, picture too large, backend down, too many checks) appear as an assistant error message; if the vision service fails
   the reply says the picture could not be checked and repeats the 911 line.

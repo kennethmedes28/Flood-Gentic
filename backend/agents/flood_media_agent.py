@@ -66,7 +66,9 @@ def answer_flood_media_question(
     """Analyse a photo or video and describe the flood water in it.
 
     ``estimate_depth=True`` (photos only) adds a rough depth from the people standing in the water.
-    ``include_people_and_vehicles=False`` looks for water only, which costs one SAM request instead of three.
+    ``include_people_and_vehicles=False`` looks for water only. Water is asked for with two phrases, and for a photo also
+    on a mirrored copy (see ``WATER_CONCEPTS`` in ``video/flood_scene.py``): 4 SAM requests for a photo, 2 for a video.
+    Counting people and vehicles adds 2 more.
     """
     api_key = api_key or os.getenv("MUSE_API")
     if not api_key:

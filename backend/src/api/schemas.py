@@ -73,7 +73,7 @@ class ChatStreamRequest(StrictModel):
     location: Coordinates | None = None
     # A JPEG, PNG or WebP picture as base64 text. It is checked and limited in src/services/media_upload.py.
     image: Annotated[str, StringConstraints(max_length=MAX_IMAGE_BASE64_CHARS)] | None = None
-    # With a photo: also count people and vehicles and estimate a rough depth. Slower, and 3 times the cost.
+    # With a photo: also count people and vehicles and estimate a rough depth. Slower: 6 SAM requests instead of 4.
     detailed: bool = False
 
     @model_validator(mode="after")

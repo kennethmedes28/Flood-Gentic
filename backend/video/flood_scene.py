@@ -1,10 +1,22 @@
 """Turn SAM 3.1 detections into a short flood summary of a photo or video.
 
-Three things are looked for, one SAM request each (SAM takes one phrase per request):
+Three things are looked for, one SAM request per phrase (SAM takes one phrase per request):
 
-    * "flood water"  - how much of the picture is covered, and in how many frames
+    * water          - how much of the picture is covered, and in how many frames
     * "person"       - how many people, and how many stand in the water
     * "vehicle"      - how many vehicles, and how many sit in the water
+
+Water is found with "augmented" SAM: no training, but several requests whose masks are combined.
+
+    * Several phrases (``WATER_CONCEPTS``): SAM finds different parts of the water depending on the words
+      ("flood water" misses some muddy or still water that "muddy water" finds).
+    * A mirrored copy of a photo (``MIRROR_PHOTOS``): SAM is asked again on the left-right mirrored picture and the
+      masks are mirrored back, which fills gaps that one view misses.
+    * A vote (``WATER_VOTES_NEEDED``): a spot counts as water when that many of the requests agree on it.
+
+The settings were chosen by measuring them against labelled flood photos (``scripts/evaluate_flood_media.py``).
+Every phrase is one paid SAM request, and mirroring doubles them for photos; the requests run at the same time,
+so the wait hardly grows.
 
 The result is a ``FloodSceneReport``. It is only what the camera shows: it cannot tell how DEEP the
 water is or whether a road is safe, and a photo can be old or from somewhere else. Treat it as
@@ -18,7 +30,7 @@ unverified evidence, never as an official warning.
 import asyncio
 import re
 import threading
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -28,6 +40,15 @@ from video.sam_client import ImageInput, SamClient, VideoInput
 from video.video_prepare import shrink_video
 
 WATER_CONCEPT = "flood water"
+# The phrases water is asked for, and whether a photo is also checked mirrored (see the top of this file).
+# Measured on 60 labelled flood photos (30 to choose, 30 to check; scripts/evaluate_flood_media.py), as the overlap (IoU)
+# with the hand-drawn water: "flood water" alone 0.723; + "muddy water" 0.752; + the mirrored photo 0.764 (4 requests);
+# all four phrases tried, mirrored, 0.765 (8 requests), so more requests stop paying off here. SAM is precise
+# (about 97% of what it marks is water) but misses water; each extra request finds some of what the others missed,
+# which is why the vote is 1 (any request that found it). The confidence cut-off made no difference between 0.3 and 0.5.
+WATER_CONCEPTS: tuple[str, ...] = (WATER_CONCEPT, "muddy water")
+MIRROR_PHOTOS = True
+WATER_VOTES_NEEDED = 1  # a spot is water when at least this many of the water requests found it
 PEOPLE_CONCEPT = "person"
 VEHICLE_CONCEPT = "vehicle"
 
@@ -61,6 +82,7 @@ class Detection:
     confidence: float | None
     raster: bytes | None = None  # mask pixels, row by row, 0 or 1; covers the box
     mask_size: tuple[int, int] | None = None  # (rows, columns) of ``raster``
+    variant: str = ""  # which water request found it (phrase, and "mirrored" for the mirrored photo); used for the vote
 
 
 @dataclass
@@ -99,8 +121,8 @@ def frame_size_from_output(raw_output: str) -> tuple[int, int] | None:
     return (int(match.group(1)), int(match.group(2))) if match else None
 
 
-def to_detections(result) -> list[Detection]:
-    """Pair each box with its mask (same object and frame) and drop weak matches."""
+def to_detections(result, min_confidence: float = MIN_CONFIDENCE, variant: str = "") -> list[Detection]:
+    """Pair each box with its mask (same object and frame) and drop matches below ``min_confidence``."""
     masks = {}
     for record in result.records:
         if record.kind == "mask":
@@ -110,7 +132,7 @@ def to_detections(result) -> list[Detection]:
     for record in result.records:
         if record.kind != "box":
             continue
-        if record.confidence is not None and record.confidence < MIN_CONFIDENCE:
+        if record.confidence is not None and record.confidence < min_confidence:
             continue
         frame = _frame_index(record)
         detection = Detection(
@@ -118,6 +140,7 @@ def to_detections(result) -> list[Detection]:
             frame=frame,
             box=(record.left, record.top, record.right, record.bottom),
             confidence=record.confidence,
+            variant=variant,
         )
         mask_record = masks.get((record.object_id, frame))
         if mask_record is not None:
@@ -129,6 +152,35 @@ def to_detections(result) -> list[Detection]:
 
 def _frame_index(record) -> int:
     return record.frame.frame_index if record.frame is not None else 0
+
+
+def mirror_back(detection: Detection, frame_width: int) -> Detection:
+    """A detection from the mirrored photo, turned back to the original's left and right."""
+    left, top, right, bottom = detection.box
+    raster = detection.raster
+    if raster is not None and detection.mask_size is not None:
+        rows, columns = detection.mask_size
+        raster = np.frombuffer(raster, dtype=np.uint8).reshape(rows, columns)[:, ::-1].tobytes()
+    return replace(detection, box=(frame_width - right, top, frame_width - left, bottom), raster=raster)
+
+
+def mirrored_photo(photo: ImageInput) -> ImageInput | None:
+    """The photo mirrored left to right, as JPEG bytes, or None when it cannot be mirrored safely.
+
+    A photo with an EXIF rotation tag is skipped: SAM may turn the original by that tag while the mirrored copy
+    (saved without it) would not be, and the two views would no longer line up.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    with Image.open(BytesIO(photo.read_bytes())) as picture:
+        if picture.getexif().get(0x0112, 1) != 1:  # 0x0112 is the EXIF orientation tag
+            return None
+        mirrored = picture.convert("RGB").transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        output = BytesIO()
+        mirrored.save(output, format="JPEG", quality=92)
+    return ImageInput(data=output.getvalue(), mime_type="image/jpeg")
 
 
 # --- Measuring ---------------------------------------------------------------
@@ -179,26 +231,42 @@ def share_in_water(grid: np.ndarray, box: tuple[float, float, float, float], fra
     return float(region.mean()) if region.size else 0.0
 
 
+def water_grid(detections: list[Detection], frame_size: tuple[int, int], votes_needed: int = 1) -> np.ndarray:
+    """The water cells of one frame: a cell is water when at least ``votes_needed`` water requests found it."""
+    by_variant: dict[str, np.ndarray] = {}
+    for detection in detections:
+        grid = by_variant.setdefault(detection.variant, np.zeros(grid_shape(frame_size), dtype=bool))
+        paint_water(grid, detection, frame_size)
+    if not by_variant:
+        return np.zeros(grid_shape(frame_size), dtype=bool)
+    votes = np.sum(list(by_variant.values()), axis=0)
+    return votes >= votes_needed
+
+
 def build_report(
     media_kind: str,
     frame_size: tuple[int, int] | None,
     water: list[Detection],
     people: list[Detection],
     vehicles: list[Detection],
+    water_votes_needed: int = 1,
 ) -> FloodSceneReport:
-    """Combine the detections of the three concepts into one report."""
+    """Combine the detections of the three concepts into one report.
+
+    ``water`` may hold the masks of several water requests (see ``WATER_CONCEPTS``); a spot counts as water when
+    ``water_votes_needed`` of them found it.
+    """
     notes = ["Automatic check of the picture only: road safety cannot be judged from it, and any water depth is a rough guess."]
     frames = sorted({d.frame for d in water + people + vehicles})
     if frame_size is None:  # SAM found nothing at all, so there is nothing to measure
         return FloodSceneReport(media_kind, 1, 0.0, 0.0, 0.0, LEVEL_NONE, 0, 0, 0, 0,
                                 notes + ["No flood water, people or vehicles were found."])
 
-    frames_checked = max(frames) + 1 if media_kind == "video" else 1
+    # A video where every match was too weak has no frames left; it still counts as one frame checked, with no water.
+    frames_checked = max(frames) + 1 if media_kind == "video" and frames else 1
     coverage_by_frame, grids = {}, {}
     for frame in {d.frame for d in water}:
-        grid = np.zeros(grid_shape(frame_size), dtype=bool)
-        for detection in (d for d in water if d.frame == frame):
-            paint_water(grid, detection, frame_size)
+        grid = water_grid([d for d in water if d.frame == frame], frame_size, water_votes_needed)
         grids[frame] = grid
         coverage_by_frame[frame] = float(grid.mean())
 
@@ -242,18 +310,29 @@ async def analyze_flood_media_async(
     api_key: str,
     include_people_and_vehicles: bool = True,
     estimate_depth: bool = False,
+    water_concepts: tuple[str, ...] | None = None,
+    mirror_photo: bool | None = None,
+    water_votes_needed: int | None = None,
 ) -> FloodSceneReport:
-    """Ask SAM for water, people and vehicles (in parallel) and summarise what it found.
+    """Ask SAM for water, people and vehicles (all at the same time) and summarise what it found.
 
-    With ``include_people_and_vehicles=False`` only the water is looked for: one SAM request
-    instead of three, which is what a repeating webcam check uses to keep the cost down.
+    Water is asked for with every phrase in ``water_concepts`` (default ``WATER_CONCEPTS``) and, for a photo, also on
+    a mirrored copy when ``mirror_photo`` is on (default ``MIRROR_PHOTOS``); the masks are combined by a vote
+    (``water_votes_needed``, default ``WATER_VOTES_NEEDED``). See the top of this file.
+
+    With ``include_people_and_vehicles=False`` only the water is looked for, which is what a repeating webcam
+    check uses to keep the cost down.
 
     ``estimate_depth=True`` (photos only) also runs the depth model and adds a rough water depth
     to the report. It needs people in the picture, so it always looks for them.
     """
+    water_concepts = tuple(water_concepts or WATER_CONCEPTS)
+    mirror_photo = MIRROR_PHOTOS if mirror_photo is None else mirror_photo
+    water_votes_needed = WATER_VOTES_NEEDED if water_votes_needed is None else water_votes_needed
     estimate_depth = estimate_depth and isinstance(media, ImageInput)
     include_people_and_vehicles = include_people_and_vehicles or estimate_depth
     media_kind = "video" if isinstance(media, VideoInput) else "image"
+
     small_copy = None  # a shrunk copy of a video file (see video_prepare.py), removed when the answer is in
     try:
         async with SamClient(api_key) as sam:
@@ -262,18 +341,38 @@ async def analyze_flood_media_async(
                 small = await asyncio.to_thread(shrink_video, path)  # ffmpeg is blocking, so it runs in a thread
                 small_copy = small if small != path else None
                 media = VideoInput(file_id=await sam.upload_video(small))  # upload once, reuse for each concept
-            concepts = [WATER_CONCEPT] + ([PEOPLE_CONCEPT, VEHICLE_CONCEPT] if include_people_and_vehicles else [])
-            results = await asyncio.gather(*(sam.segment(concept, media) for concept in concepts))
+
+            # The water requests: every phrase on the media, and on the mirrored photo when that is on.
+            water_jobs = [(concept, media, False) for concept in water_concepts]
+            if mirror_photo and isinstance(media, ImageInput):
+                mirrored = await asyncio.to_thread(mirrored_photo, media)
+                if mirrored is not None:
+                    water_jobs += [(concept, mirrored, True) for concept in water_concepts]
+            other_concepts = [PEOPLE_CONCEPT, VEHICLE_CONCEPT] if include_people_and_vehicles else []
+
+            results = await asyncio.gather(
+                *(sam.segment(concept, job_media) for concept, job_media, _ in water_jobs),
+                *(sam.segment(concept, media) for concept in other_concepts),
+            )
     finally:
         if small_copy is not None:
             small_copy.unlink(missing_ok=True)
 
     sizes = [size for size in (frame_size_from_output(r.raw_output) for r in results) if size]
-    detections = [to_detections(result) for result in results]
-    water, people, vehicles = detections + [[]] * (3 - len(detections))
-    report = build_report(media_kind, sizes[0] if sizes else None, water, people, vehicles)
-    if estimate_depth and sizes:
-        await add_depth_estimate(report, media, water, people, sizes[0])
+    frame_size = sizes[0] if sizes else None
+
+    water: list[Detection] = []
+    for (concept, _, is_mirrored), result in zip(water_jobs, results):
+        found = to_detections(result, variant=f"{concept}|mirrored" if is_mirrored else concept)
+        if is_mirrored and frame_size is not None:
+            found = [mirror_back(detection, frame_size[0]) for detection in found]
+        water += found
+    others = [to_detections(result) for result in results[len(water_jobs):]]
+    people, vehicles = (others + [[], []])[:2]
+
+    report = build_report(media_kind, frame_size, water, people, vehicles, water_votes_needed)
+    if estimate_depth and frame_size:
+        await add_depth_estimate(report, media, water, people, frame_size)
     return report
 
 
@@ -308,7 +407,7 @@ def analyze_flood_media(
 ) -> FloodSceneReport:
     """Blocking version of ``analyze_flood_media_async`` for the (synchronous) agents.
 
-    ``include_people_and_vehicles=False`` looks for water only: one SAM request instead of three.
+    ``include_people_and_vehicles=False`` looks for water only (2 people-and-vehicle requests fewer).
     """
     options = {"estimate_depth": estimate_depth, "include_people_and_vehicles": include_people_and_vehicles}
     try:
