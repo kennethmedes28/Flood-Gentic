@@ -40,6 +40,9 @@ Sizes in code are counted in **words** (about 1.3 tokens per word): manuals use 
 50 overlap, advisories 300 with 30. PDF text is read page by page; a page with fewer than 50
 characters is treated as a scan and read with Tesseract OCR (`loaders.py`).
 
+The NDRRMC IRR scan is the exception: it has a stamp printed over the text and was re-ingested with a better reader and
+full metadata (agency, trust tier, issue date, page numbers). See "Scanned document: the NDRRMC IRR" below.
+
 ### Chunking decision flow
 
 ```mermaid
@@ -330,6 +333,45 @@ Tie into `docs/evaluation_rubric.md`.
 - Ablation to justify each stage: dense only, BM25 only, hybrid, hybrid + rerank.
 - Tune chunk sizes, `k`, RRF weights, and the rerank threshold on this set.
 
+## Scanned document: the NDRRMC IRR
+
+`notebooks/ingestion/ndrrmc_irr_reingest.ipynb` redoes `corpus/20260914-NDRRMC-IRR-RA12287.pdf` and shows every step
+(helper code: `scripts/ocr_tools.py`). It was written on 1 November 2026 after the first ingestion
+(Tesseract only, no metadata) produced chunks with no agency, trust level, date or page.
+
+What it does:
+
+1. **Removes the blue "CERTIFIED TRUE COPY" stamp** from the page image (every coloured pixel is painted in the paper colour).
+2. **Reads each page with two readers and merges them word by word**: Tesseract on the stamp-free page, and GOT-OCR-2.0
+   (`stepfun-ai/GOT-OCR-2.0-hf`, run on the GPU in three bands per page). Where they differ, the word found in a
+   dictionary built from the other corpus PDFs wins. GOT-OCR sometimes repeats itself (pages 9 and 12 came out 7 times too
+   long), so its text is ignored when it is more than 1.4 times as long as Tesseract's. Ligatures ("ﬁ") are turned into letters.
+3. **Cuts the page footer and stamp leftovers** (everything from "Page N of 17" to the end of the page).
+4. **Adds metadata**: `agency` NDRRMC, `trust_tier` official, `issued_at` 2026-09-14 (the stamp on the last page), `title`,
+   `page` and `page_end` for every chunk.
+5. **Chunks with the project's `chunk_document`**, then **tests the chunks against the old ones** and writes them: the
+   document's 18 old chunks were replaced by 20 new ones in one transaction (the old ones are saved in
+   `notebooks/ingestion/_cache/old_chunks_backup.json`), and a new FAISS run was saved so `scripts/load_to_supabase.py`
+   does not bring the old chunks back. Writing needs `REINGEST_WRITE=1`.
+
+Measured results:
+
+| | old pipeline | new |
+|---|---|---|
+| Word error on 3 pages checked by hand (1, 16, 17) | 7.6 % | 2.1 % |
+| Character error on the same pages | 4.8 % | 1.1 % |
+| Right passage ranked first, full search, 21 questions | 18 | 17 |
+| Right passage in the top 3, full search, 21 questions | 19 | 19 |
+| Questions naming the law ("IRR of RA 12287"), ranked first | 5 of 7 | 4 of 7 |
+
+The reading is clearly better, and every chunk now has its metadata and page. **Search did not improve**: the old
+chunks were as good, or slightly better, on questions that name the law. The first chunks of the new text are short and
+repeat "IRR" and "RA 12287", so they outrank the real answer for some questions. Two chunk layouts were tried
+(rule titles as headings, or plain text); plain text did better and is what is stored. A source label shows the page the
+chunk **starts** on, so a chunk that starts on page 15 and ends on page 16 is cited as page 15.
+
+Only three pages were checked by hand and the search test has 21 questions, so small differences are not conclusive.
+
 ## 9. Open risks
 
 - **Filipino tokenization**: no mature BM25 tokenizer; validate against the golden set.
@@ -337,7 +379,8 @@ Tie into `docs/evaluation_rubric.md`.
   candidates or using a hosted reranker.
 - **In-process BM25 index**: rebuilt on ingest and duplicated per replica. Fine for MVP; revisit with ParadeDB / OpenSearch if it grows.
 - **Scanned documents**: OCR text has noise (logos, stamps) and is English only. Check OCR'd
-  chunks by eye before trusting citations from them.
+  chunks by eye before trusting citations from them. The plain `loaders.py` pipeline still reads scans with Tesseract only;
+  the IRR was re-ingested with a notebook (see below), and any other scan would need the same treatment.
 - **Table-like manual pages**: checklists and blank forms make low-value chunks that can rank high.
 - **Numeric location data**: embeddings are weak on coordinates and elevations; prefer a
   structured lookup by city for flood-risk logic.
