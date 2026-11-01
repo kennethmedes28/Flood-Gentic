@@ -174,7 +174,6 @@ frontend/                Next.js app (React 19, Tailwind 4): dashboard, flood le
   src/app/               one folder per page
   src/components/        ui, shell (frame, menu, cursor), and one folder per page
   src/context  hooks  lib  data/    state, reusable logic, plain functions and API clients, static data
-frontend_streamlit/      sample Streamlit dashboard
 corpus/                  source documents and CSVs (evacuation centers, hotlines, locations)
 datasets/                daily NCR weather and flood-feature CSVs (the dashboard reads them for now)
 scripts/                 data loading, the daily dataset update, the Tomorrow.io fetch, run_dev.py
@@ -224,13 +223,6 @@ Messages sent from the assistant are real calls: the chat model and photo or vid
 ```bash
 make test                # backend unit tests
 make check               # backend tests, then the frontend type check and lint
-```
-
-### Try the sample Streamlit dashboard
-
-```bash
-pip install -r frontend_streamlit/requirements.txt
-streamlit run frontend_streamlit/app.py
 ```
 
 ### The API
