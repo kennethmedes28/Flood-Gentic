@@ -207,7 +207,7 @@ components/
 context/        React providers: current city, dashboard data, glass level, hand, look, theme
 hooks/          reusable stateful logic: useVoiceTranscription, useMediaAttachment, useResizableFrame, ...
 lib/            plain functions and types, no React: API clients (*-api.ts), flood-levels, risk, city-lookup, geo, ...
-data/           static data only: dashboard cities, evacuation centers, emergency contacts, sample flood stations
+data/           static data only: dashboard cities, evacuation centers, emergency contacts
 ```
 
 Rule of thumb: components draw, hooks and context hold state, `lib` computes and talks to the backend, `data` is just values.

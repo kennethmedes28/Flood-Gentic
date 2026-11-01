@@ -12,10 +12,11 @@ avoids flooded streets, hotlines, and weather from PAGASA and Open-Meteo.
 
 When the data is missing or unreliable, it says so and gives a fixed safety answer. It does not guess.
 
-> **Status: early.** The agents, chat graph, retrieval, voice, flood-photo checks and the HTTP API are built and tested.
-> The Next.js frontend is not built yet; a Streamlit dashboard is included as a sample.
-> Before saving reports, run the table scripts once (see [Create the missing tables](#create-the-missing-tables)).
-> See [docs/backend_architecture.md](docs/backend_architecture.md).
+> **Status: working prototype.** The agents, chat graph, retrieval, voice, flood photo and video checks, the HTTP API and the
+> Next.js frontend are built and tested. The frontend has a dashboard, a flood level page, evacuation centers, emergency
+> contacts, a PAGASA satellite page and the AI Agent Flood Assistant (text, voice, photo and video).
+> Before saving reports and forecasts, run the table scripts once (see [Create the missing tables](#create-the-missing-tables)).
+> See [docs/backend_architecture.md](docs/backend_architecture.md) and [docs/frontend_architecture.md](docs/frontend_architecture.md).
 
 ## Why this matters
 
@@ -52,10 +53,10 @@ A person, such as a barangay or DRRMO, makes the real decisions.
 
 | Who | How it helps | Status |
 |---|---|---|
-| A resident in a flooded area | Nearest safe evacuation center, hotlines, safety steps, and a route that avoids floodwater | Built (API and agents) |
-| A family preparing before a storm | Flood risk for their area, forecasts, and checklists from the preparedness manuals | Built (API and agents) |
+| A resident in a flooded area | Nearest safe evacuation center, hotlines, safety steps, and a route that avoids floodwater | Built |
+| A family preparing before a storm | Flood risk for their area, the weather now and the forecast, river flow, and checklists from the preparedness manuals | Built |
 | A neighbour who sees a flooded street | Report it, so routes avoid it | Built; needs the `reports` table to be created |
-| Someone with a photo or video of flooding | Checks for flood water and gives a rough depth | Built (API and agents) |
+| Someone with a photo or video of flooding | Attach it in the assistant: it checks the whole picture or video for flood water, and can count people and give a rough depth for a photo | Built |
 | Barangay and DRRMO staff | A live list of reports and supply requests, with verify, reject and assign | API built (`/staff`, shared key); no staff screen yet |
 | Relief volunteers | Matching needs with available supplies and centers | Planned |
 
@@ -88,6 +89,12 @@ is built for it. These are real prompts the agents answer today.
 | `Ano ang dapat ihanda bago bumaha?` | Steps and checklists from the preparedness manual, with the sources listed under the answer |
 | `What is the process of relief goods?` | What the documents say, which documents they came from, and what they do not cover |
 
+### Check a photo or video
+
+Attach a photo or video of a street in the assistant (hover the round button beside the message box and choose **Photo / video**).
+It reports how much of the picture is covered by flood water and, if you tick the option, how many people and vehicles are in the water
+and a rough depth for a photo. A whole video is analysed, not one frame. It is automatic and unverified, and it never says a road is safe.
+
 ### Report and share
 
 | Ask | You get |
@@ -119,7 +126,8 @@ finishes the centers.
 what to do, instead of a guess.
 
 Most answers use fixed rules and no model, so they are fast, free per question, and the same every time.
-Only weather, preparedness and photo or video questions use a chat model.
+Only weather and preparedness questions use a chat model; photo and video checks use the SAM vision model. While the assistant works,
+the page shows what it is doing ("Checking rain, river flow and PAGASA for flood risk").
 
 ## How an answer is chosen
 
@@ -154,29 +162,34 @@ gets the "not covered" reply.
 
 ```
 backend/                 Python app (uv project)
-  agents/                one module per agent: evacuation, flood risk, route, report, weather, location, ...
-  langgraph_orchestrator/ chat graph, keyword routing, start-up
-  src/api/               the HTTP API: app, routers, request models, rate limits
+  agents/                one module per agent: evacuation, flood risk, route, report, weather, location, flood media ...
+  langgraph_orchestrator/ chat graph, keyword routing, progress events for the stream
+  src/api/               the HTTP API: app, routers (chat, dashboard, weather, reports ...), request models, rate limits
+  src/services/          dashboard data from the datasets, the daily Tomorrow.io forecast, photo and video uploads
   src/rag/               document ingestion and retrieval (vector + keyword search, reranking)
-  voice/  video/         speech-to-text WebSocket; flood photo and video checks
+  voice/  video/         speech-to-text WebSocket; flood photo and video checks (video is shrunk before SAM reads it)
   sql/                   table scripts to run once in Supabase
   tests/                 unit tests (no network, browser or model needed)
-corpus/                  source documents and CSVs (evacuation centers, hotlines, locations)
-datasets/                daily NCR weather and flood-feature CSVs
-scripts/                 data loading and the daily dataset update
-docs/                    architecture, evaluation and deployment notes
-frontend/                Next.js app (not built yet)
+frontend/                Next.js app (React 19, Tailwind 4): dashboard, flood level, evacuation, contacts, satellite, assistant
+  src/app/               one folder per page
+  src/components/        ui, shell (frame, menu, cursor), and one folder per page
+  src/context  hooks  lib  data/    state, reusable logic, plain functions and API clients, static data
 frontend_streamlit/      sample Streamlit dashboard
-.github/workflows/       scheduled dataset update
+corpus/                  source documents and CSVs (evacuation centers, hotlines, locations)
+datasets/                daily NCR weather and flood-feature CSVs (the dashboard reads them for now)
+scripts/                 data loading, the daily dataset update, the Tomorrow.io fetch, run_dev.py
+hooks/                   run_all.sh and run_all.bat: start the backend and the frontend together
+Makefile                 shortcuts: make run, make test, make check
+docs/                    architecture, evaluation and deployment notes
+.github/workflows/       scheduled dataset update and daily forecast fetch
 ```
 
 ## Getting started
 
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.11+, [uv](https://docs.astral.sh/uv/) and Node.js (for the frontend).
 
 ```bash
-cd backend
-uv sync                  # heavy: includes torch and faiss-gpu
+make install             # backend: uv sync (heavy: includes torch and faiss-gpu); frontend: npm install
 ```
 
 Create `backend/.env` (it is gitignored; never commit it) with these variables:
@@ -185,6 +198,7 @@ Create `backend/.env` (it is gitignored; never commit it) with these variables:
 |---|---|
 | `MUSE_API` | The chat model, speech-to-text and the flood photo and video check |
 | `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD`, `SUPABASE_POOLER_HOST` | Database connection |
+| `TOMMORROW_IO_API` | The Tomorrow.io weather forecast, fetched once a day and stored in Supabase (the spelling is the one the code reads) |
 | `LANGSMITH_KEY`, `LANGSMITH_TRACE`, `LANGSMITH_PROJECT` | Optional tracing |
 | `HF_TOKEN` | Embedding model download in `scripts/ingest_corpus.py` |
 
@@ -192,32 +206,42 @@ Other keys that appear in the docs ([deployment guide](docs/deployment_workflow_
 that are not wired up yet: `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_ACCESS_TOKEN`,
 `GROQ_API_KEY` and `LLAMAINDEX_API_KEY`.
 
+### Run the app
+
+```bash
+make run                 # backend on :8000 and frontend on :3000 together; Ctrl+C stops both
+make run-memory          # the same, with conversations kept in memory instead of Postgres
+make backend             # only the API (then open http://127.0.0.1:8000/docs)
+make frontend            # only the Next.js app
+```
+
+Then open http://localhost:3000. On Windows use `hooks\run_all.bat` (same options; see [docs/frontend_architecture.md](docs/frontend_architecture.md)).
+The script checks the tools and ports, prints the backend's `/health` so a missing database or key is obvious, and stops both programs together.
+Messages sent from the assistant are real calls: the chat model and photo or video checks use API credit.
+
 ### Run the tests
 
 ```bash
-cd backend
-uv run python -m unittest discover -s tests -v
+make test                # backend unit tests
+make check               # backend tests, then the frontend type check and lint
 ```
 
-### Try the dashboard
+### Try the sample Streamlit dashboard
 
 ```bash
 pip install -r frontend_streamlit/requirements.txt
 streamlit run frontend_streamlit/app.py
 ```
 
-### Run the API
-
-```bash
-cd backend
-uv run uvicorn main:app --reload        # then open http://127.0.0.1:8000/docs
-```
-
-For local work without the Postgres conversation store, add `CHECKPOINTER=memory` (conversations are then lost on restart).
+### The API
 
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/chat` | One message in, one reply out. Send back the returned `thread_id` to continue the conversation. `blocked` is true when the message was stopped by the input guard |
+| POST | `/chat/stream` | The same, as one JSON line per step: what the assistant is doing, then the reply. Also takes a photo as base64 (`image`) |
+| POST | `/chat/stream/video` | A video as the request body (MP4, MOV or WebM, up to 200 MB); the whole video is analysed for flood water |
+| GET | `/dashboard` | Weather, rain, river flow and a flood risk level for each of the 17 cities, from the last recorded day |
+| GET | `/weather/forecast`, `/weather/stream` | The Tomorrow.io forecast, stored once a day; the stream sends it live as server-sent events |
 | POST, GET | `/reports` | Submit or list community flood reports (unverified) |
 | POST | `/requests` | Submit a supply or assistance request (write only) |
 | GET, PATCH | `/staff/...` | Staff only: summary counts, the full lists, and verifying, rejecting or assigning items. Needs `STAFF_API_KEY` |
@@ -232,7 +256,8 @@ curl -s localhost:8000/chat -H 'Content-Type: application/json' \
 ```
 
 Optional settings (environment variables): `CORS_ORIGINS`, `CHECKPOINTER` (`postgres` or `memory`), `ENABLE_RAG`,
-`TRUST_PROXY_HEADERS`, `CHAT_PER_MINUTE`, `REPORTS_PER_HOUR`, `REQUESTS_PER_HOUR`, `ORS_API_KEY`, `STAFF_API_KEY`, `STAFF_PER_MINUTE`.
+`TRUST_PROXY_HEADERS`, `CHAT_PER_MINUTE`, `REPORTS_PER_HOUR`, `REQUESTS_PER_HOUR`, `MEDIA_PER_HOUR` (photo and video checks, which cost SAM credit),
+`WEATHER_PER_MINUTE`, `ORS_API_KEY`, `STAFF_API_KEY`, `STAFF_PER_MINUTE`, `MEDIA_UPLOAD_DIR`, `DATASETS_DIR`.
 
 ### Monitor reports and requests (staff)
 
@@ -251,8 +276,9 @@ See [docs/backend_architecture.md](docs/backend_architecture.md) section 4.
 
 ### Create the missing tables
 
-`reports` and `requests` do not exist in Supabase yet. Run these once, in order, in the Supabase SQL editor:
-`backend/sql/000_reports.sql`, `backend/sql/001_reports_geo.sql`, `backend/sql/002_requests.sql`.
+`reports`, `requests` and `tomorrow_forecast` do not exist in Supabase until you create them. Run these once, in order, in the Supabase SQL editor:
+`backend/sql/000_reports.sql`, `backend/sql/001_reports_geo.sql`, `backend/sql/002_requests.sql`, `backend/sql/003_tomorrow_forecast.sql`
+(the forecast script also creates its own table if it is missing).
 
 ## Data
 
@@ -263,7 +289,16 @@ checkout are involved. It also fetches the last 7 days again every night and rep
 The workflow needs the repository secrets `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD` and `SUPABASE_POOLER_HOST`.
 Details: [docs/dataset_updates.md](docs/dataset_updates.md).
 
-To run the same update yourself: `uv run python ../scripts/update_supabase_from_open_meteo.py` from `backend/`
+**Weather forecast.** [`fetch-tomorrow-forecast.yml`](.github/workflows/fetch-tomorrow-forecast.yml) fetches the Tomorrow.io forecast for the
+17 cities once a day, just after midnight Philippine time, and stores it in Supabase. A city that already has today's forecast is skipped and a
+stored forecast is never replaced, so the API and the workflow never fetch the same day twice (17 of the 500 free requests a day). It needs the
+repository secret `TOMMORROW_IO_API` as well as the three Supabase ones. Run it yourself with `python scripts/fetch_tomorrow_forecast.py [--dry-run]`.
+
+**What the pages show.** The dashboard and flood level pages read the weather and river flow from the datasets in `datasets/` (the last recorded day,
+which can be days behind) and the weather now and the forecast from the stored Tomorrow.io rows. The flood risk level is a rule-based estimate from the
+recorded day and does not use the forecast.
+
+To run the dataset update yourself: `uv run python ../scripts/update_supabase_from_open_meteo.py` from `backend/`
 (add `--dry-run` to only see the plan, or `--refresh-days 7` to re-fetch the last 7 days). The CSV files in `datasets/` are no longer updated by the workflow; refresh them
 with `scripts/update_open_meteo_datasets.py` before using `scripts/load_to_supabase.py`.
 
@@ -296,7 +331,9 @@ do not walk or drive through floodwater. Official sources: [pagasa.dost.gov.ph](
 
 ## Roadmap
 
-- Build the Next.js frontend, with streaming replies, sources as a separate field, and photo or video upload on `/chat`.
+- Show the sources of an answer as a separate field, and stream the words of a reply as they are written (today the page streams what the assistant is doing).
+- Make the flood risk level use the forecast, and read the dashboard from the Supabase tables instead of the CSV files.
+- Add real water-height readings and official alarm levels, so the flood level page can show a height and not only river flow.
 - Add a staff screen with a personal login per staff member, so every review is attributed.
 - Add CI (tests, lint, secret scanning) and an alert when the nightly dataset update fails.
 - Extend data beyond Metro Manila, starting with Cavite, Rizal and Bulacan.

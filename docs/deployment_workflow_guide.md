@@ -7,10 +7,12 @@ How Flood-Gentic is configured, run and kept up to date. The target architecture
 
 | What | How | Where |
 |---|---|---|
-| Daily weather datasets (CSV files and Supabase tables) | GitHub Actions, every day at 00:00 Philippine time | `.github/workflows/update-datasets.yml`, details in `docs/dataset_updates.md` |
+| Daily weather datasets (Supabase tables) | GitHub Actions, every day at 20:00 Philippine time | `.github/workflows/update-datasets.yml`, details in `docs/dataset_updates.md` |
+| Daily weather forecast (Tomorrow.io, table `tomorrow_forecast`) | GitHub Actions, every day at 00:10 Philippine time, with a retry at 06:10 | `.github/workflows/fetch-tomorrow-forecast.yml`, runs `scripts/fetch_tomorrow_forecast.py` |
+| Running the app locally | `make run`, or `hooks/run_all.sh` (Linux and macOS), `hooks\run_all.bat` (Windows) | `scripts/run_dev.py` starts the API and the frontend and stops both together |
 | Everything else (corpus ingestion, FAISS runs, location chunks) | Run by hand from `scripts/` | section 4 below |
 
-The Railway API service, the ingestion worker and the Vercel frontend are planned but not set up: `backend/main.py` is still a stub.
+The API (`backend/main.py`) and the Next.js frontend run locally with `make run`. The Railway API service, the ingestion worker and the Vercel frontend are planned but not set up.
 
 ## 2. Configuration
 
@@ -20,7 +22,9 @@ Secrets live in `backend/.env` (gitignored; never commit it). Variable names onl
 |---|---|
 | `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD`, `SUPABASE_POOLER_HOST` | Postgres connection through the Supabase transaction pooler (port 6543). `SUPABASE_DB_URL` can be set instead as one connection string |
 | `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_ACCESS_TOKEN` | Supabase REST and management access; not used by the current code. The secret key bypasses row-level security, so keep it out of the browser |
-| `MUSE_API` | Muse Spark chat models and the Muse speech-to-text (`api.meta.ai`) |
+| `MUSE_API` | Muse Spark chat models, the Muse speech-to-text and the SAM photo and video check (`api.meta.ai`) |
+| `TOMMORROW_IO_API` | The Tomorrow.io forecast key (also a repository secret for the forecast workflow). The spelling is the one the code reads |
+| `MEDIA_PER_HOUR`, `WEATHER_PER_MINUTE`, `MEDIA_UPLOAD_DIR`, `DATASETS_DIR` | Optional: photo and video check limit, forecast limit, where uploads are kept briefly, and which folder the dashboard reads the datasets from |
 | `ORS_API_KEY` | OpenRouteService routing for the route agent |
 | `HF_TOKEN`, `EMBEDDING_MODEL` | Downloading and choosing the embedding model |
 | `DEPTH_MODEL` | Optional: the metric depth model for the flood depth estimate (default Depth Anything V2 Metric Outdoor Small, about 100 MB, downloaded on first use) |
@@ -30,18 +34,18 @@ Secrets live in `backend/.env` (gitignored; never commit it). Variable names onl
 `backend/.env.example` lists the Supabase names, but the `.env.*` rule in `.gitignore` also ignores it, so it is not in the repository.
 Remove that rule's effect for the example file (for example with `!.env.example`) if you want it shared.
 
-## 3. Daily dataset workflow
+## 3. Daily workflows
 
-`update-datasets.yml` runs `cron: "0 16 * * *"` (16:00 UTC = 00:00 Philippine time, no daylight saving) and can be started by hand
-with **Run workflow**. GitHub may start it a few minutes late.
+**Datasets.** `update-datasets.yml` runs `cron: "0 12 * * *"` (12:00 UTC = 20:00 Philippine time, no daylight saving) and can be started by hand with **Run workflow**.
+GitHub may start it a few minutes late. It runs `scripts/update_supabase_from_open_meteo.py`, which reads the last day of every location from Supabase, fetches only the missing finished days
+from Open-Meteo and writes them in one transaction. It commits nothing to the repository. Details, retries and failure handling: `docs/dataset_updates.md` section 6.
 
-Steps: install `pandas`, `httpx`, `psycopg[binary]`, `python-dotenv` → `scripts/update_open_meteo_datasets.py` (fetch missing days)
-→ `scripts/sync_datasets_to_supabase.py` (append only the new rows) → commit the two CSV files back to the branch.
+**Forecast.** `fetch-tomorrow-forecast.yml` runs at 16:10 UTC (00:10 Philippine time, just after the new Manila day starts) and again at 22:10 UTC as a retry. It runs
+`scripts/fetch_tomorrow_forecast.py`, which fetches only the cities that have no forecast stored for today, so the second run normally makes no request. The run is marked failed if a city
+could not be fetched.
 
-Set up once, in the repository's Settings, Secrets and variables, Actions: `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD`, `SUPABASE_POOLER_HOST`.
-The commit step needs `contents: write` (already set in the file); if branch protection blocks the push, allow the Actions bot to
-bypass it or remove that step. If the Supabase step fails nothing is committed, so the next run fetches the same days again.
-Check a run under the repository's Actions tab; the log shows how many rows were added to each table.
+Set up once, in the repository's Settings, Secrets and variables, Actions: `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD`, `SUPABASE_POOLER_HOST` and, for the forecast, `TOMMORROW_IO_API`.
+Check a run under the repository's Actions tab; the log shows how many rows were added or which cities were fetched.
 
 ## 4. Manual jobs (run from `backend/`)
 

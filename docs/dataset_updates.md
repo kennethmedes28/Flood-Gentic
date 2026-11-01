@@ -153,6 +153,13 @@ Nothing is written when a run fails (both tables are written in one transaction)
 again. Open the failed run in the Actions tab, read the log of the "Update Supabase from Open-Meteo" step, and use
 **Re-run failed jobs** once the cause (for example an Open-Meteo limit) has cleared.
 
+### The weather forecast (a separate workflow)
+
+`.github/workflows/fetch-tomorrow-forecast.yml` is not part of this dataset update. It fetches the Tomorrow.io forecast for the 17 cities and stores it in the Supabase table
+`tomorrow_forecast`, at most once per city per Manila day (cron `10 16 * * *` = 00:10 Philippine time, and `10 22 * * *` as a retry). A city that already has today's row is skipped and a stored row
+is never replaced. It needs the repository secret `TOMMORROW_IO_API` in addition to the three above, and runs `scripts/fetch_tomorrow_forecast.py` (`--dry-run` shows what is missing).
+The dashboard and flood level pages read the recorded datasets in `datasets/` for rain and river flow and this table for the weather now; see `docs/frontend_architecture.md`.
+
 ## 7. Reading the data in the weather agent
 
 `backend/agents/fetch_supabase_open_meteo_datasets.py` combines the live forecast with the stored history.

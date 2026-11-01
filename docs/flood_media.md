@@ -84,27 +84,40 @@ People are used only if they are at least 20 pixels tall, standing-shaped, not c
 
 Turning it on: `analyze_flood_media(media, api_key, estimate_depth=True)`, `answer_flood_media_question(..., estimate_depth=True)`, or `?depth=1` on `/ws/camera` (the demo page has a checkbox).
 
-## 7. In the chat graph
+## 7. From the assistant page
+
+The `/assistant` page sends photos and videos to the chat, which hands them to this agent (the page no longer uses the webcam socket):
+
+- **Photo:** scaled to 640 px wide JPEG in the browser and sent as base64 in the `image` field of `POST /chat/stream` (up to 2 MB, checked on its first bytes).
+- **Video:** sent whole as the body of `POST /chat/stream/video` (MP4, MOV or WebM, up to 200 MB, checked on its first bytes). The progress line says "Analysing your video for flood water. This can take a minute or two".
+- **What the checkbox does:** off (the default) looks for water only, one SAM request; on (`detailed`) also counts people and vehicles, three requests, and for a photo adds the depth estimate.
+- **Files:** saved under a random name in `MEDIA_UPLOAD_DIR` with owner-only permissions, deleted when the answer is done. Photo and video checks share the `MEDIA_PER_HOUR` limit (default 20).
+- **Why a video is shrunk first:** SAM returns a mask for every frame, and the library that reads the answer (`meta_sam_parser`) decodes each mask in plain Python at about one microsecond per pixel.
+  A 12 second 1080p clip took over five minutes and the connection timed out, although SAM itself answered in 17 seconds. `video/video_prepare.py` makes a copy at most 480 px wide and 4 frames per second,
+  without sound, with the ffmpeg that the `imageio-ffmpeg` package bundles, uploads that copy to SAM and removes it afterwards. Water covers large areas, so the result is the same.
+  If ffmpeg is missing the original is used, which is slow for large clips.
+- **Measured through the real stack:** a 5 MB, 12 second clip took 22 seconds (47 frames, about 29% water); a 35 MB, 36 second clip took 75 seconds (144 frames, about 40% water). Both with water only.
+
+## 8. In the chat graph
 
 `ask(graph, question, thread_id, media={...})` in `langgraph_orchestrator/graph.py` sends a photo or video with a message. The `media` dictionary is
-`{"kind": "image" or "video", "url": "https://..." or "path": "...", "estimate_depth": True/False}`:
+`{"kind": "image" or "video", "url": "https://..." or "path": "...", "estimate_depth": True/False, "include_people_and_vehicles": True/False}` (the last one is optional and true by default; false looks for water only):
 
 - A message with media goes to the `flood_media` node (an emergency message still wins and gets the fixed emergency reply). An empty question is replaced by a default one.
 - Only one of `url` or `path`. A URL must be `https` and public (localhost, private and link-local addresses are refused). A path must be a file inside the upload folder (`MEDIA_UPLOAD_DIR`, default `<temp dir>/flood_gentic_uploads`). Anything else gets a polite "I could not use that file" reply.
 - The state keeps only this small reference, and every node clears it, so the file is checked once and is not repeated on the next message.
 - Tested end to end through the graph: a photo saved in the upload folder gave the water, people and depth text; a path outside the folder was refused.
 
-## 8. Safety rules
+## 9. Safety rules
 
 - The result is unverified evidence. It never overrides PAGASA or NDRRMC information, and it never says a road is safe. A depth, when asked for, is shown as a guess with its range.
 - Every reply says it is an automatic check, that the picture may be old, that any depth is only a guess, and to call 911 if someone is in danger.
 - A place given by the user is repeated as "not confirmed from the picture". The picture does not set the user's location.
 
-## 9. Not built yet
+## 10. Not built yet
 
-- The upload endpoint: the chat graph now takes a photo or video (below), but nothing saves a user's upload yet. The endpoint must check the file's size and type, save it into the upload folder, and set the `media` dictionary itself, never from what the user typed.
+- Per-person limits: the photo and video limit is per client address and shared by everyone behind it.
 - Saving a result as a community report (`reports` table) with the picture's evidence.
 - Using the water coverage as an input to the flood risk agent or to the flooded areas that routes avoid.
-- A check of what the user uploads (size, type, content) and a per-user limit, since every check costs SAM requests.
 - Tuning the thresholds and measuring accuracy on a labelled set of Philippine flood photos (`docs/evaluation_rubric.md`).
 - Depth accuracy: photos with a measured depth (a gauge or marked pole in view) to compare against; using the dry people in a scene to calibrate the scale; vehicles and fixed objects as extra rulers; depth for videos (only photos today).

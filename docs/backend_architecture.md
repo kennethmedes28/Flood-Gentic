@@ -3,8 +3,9 @@
 Design for the Flood-Gentic backend (FastAPI + LangGraph on Railway, data in Supabase).
 Status: **partly built**. Built: the flood agents, the LangGraph chat graph with a Postgres checkpointer, the RAG package
 (chunking, embeddings, FAISS and pgvector stores, retrieval), the FastAPI app and its routers (`src/api/`), the realtime voice WebSocket,
-the staff endpoints for reviewing reports and requests, and the dataset update scripts. Not built yet: streaming and a source list on `/chat`,
-media upload, per-person staff accounts, and a scheduled ingestion worker. Retrieval details live in `docs/ingestion_details.md`, voice in `docs/voice_chat.md`, the weather
+the staff endpoints for reviewing reports and requests, the dataset update scripts, a streamed chat with progress lines and photo and video upload
+(`/chat/stream`, `/chat/stream/video`), the dashboard and the Tomorrow.io forecast (`/dashboard`, `/weather/*`), and the Next.js frontend
+(`docs/frontend_architecture.md`). Not built yet: a source list on `/chat`, streaming the words of a reply, per-person staff accounts, and a scheduled ingestion worker. Retrieval details live in `docs/ingestion_details.md`, voice in `docs/voice_chat.md`, the weather
 datasets in `docs/dataset_updates.md`; this document covers everything around them.
 
 ## 1. Goals and constraints
@@ -93,7 +94,12 @@ Keep each module small and single-purpose; routers contain no business logic. Re
 
 | Method | Path | Purpose | State |
 |---|---|---|---|
-| POST | `/chat` | Ask a question; returns the reply, a `thread_id` and the `safe_answer` flag | **Built** (JSON; no streaming or source list yet) |
+| POST | `/chat` | Ask a question; returns the reply, a `thread_id` and the `safe_answer` flag | **Built** (JSON; no source list yet) |
+| POST | `/chat/stream` | The same, as one JSON line per step (`status` lines that say what the assistant is doing, then `reply` or `error`). Optional `image` (JPEG, PNG or WebP as base64, up to 2 MB) is checked for flood water and `detailed` adds people, vehicles and a rough depth | **Built** (the words of the reply are not streamed: the agents return the whole answer) |
+| POST | `/chat/stream/video` | The video is the request body (MP4, MOV or WebM, up to 200 MB); `message`, `thread_id`, `lat`, `lng` and `detailed` go in the query string. The whole video is analysed (shrunk first, see `docs/flood_media.md`), and the answer is the same lines as `/chat/stream` | **Built** |
+| GET | `/dashboard` | Weather, rain, river flow and a rule-based flood risk level for each city (default: all 17), from the last recorded day in `datasets/`; also where the river flow ranks among all recorded days | **Built** (reads CSV files, no network) |
+| GET | `/weather/forecast` | The stored Tomorrow.io forecast (120 hours, 6 days) with the entry for the current hour | **Built** (needs the `tomorrow_forecast` table and `TOMMORROW_IO_API`) |
+| GET | `/weather/stream` | The same as server-sent events: a `snapshot`, then a `tick` every minute with the current hour; the browser reconnects after 10 minutes | **Built** |
 | POST | `/reports` | Submit a community incident report | **Built** (needs the `reports` table) |
 | GET | `/reports` | List recent reports (filter by city, hazard); rejected ones and phone-like digits are hidden | **Built** (needs the `reports` table) |
 | POST | `/requests` | Submit a supply / assistance request. Write only: it can hold a phone number | **Built** (needs the `requests` table) |
@@ -111,8 +117,13 @@ How the API behaves:
 - **Coverage:** every position must lie inside Metro Manila. A GPS point outside it is a 422 that says so and gives 911; it is not matched to the nearest city.
 - **Errors:** a person in a flood can see them, so each one that is not a plain validation error says what to do next (911, barangay, DRRMO).
   Validation errors list where the problem is and what it is, but never repeat the value that was sent.
-- **Limits:** `/chat`, `/reports` and `/requests` are limited per client address (`CHAT_PER_MINUTE`, `REPORTS_PER_HOUR`, `REQUESTS_PER_HOUR`).
-  The limiter lives in one process; use a shared limit if the API runs on several replicas.
+- **Limits:** `/chat`, `/reports`, `/requests` and `/weather/*` are limited per client address (`CHAT_PER_MINUTE`, `REPORTS_PER_HOUR`, `REQUESTS_PER_HOUR`, `WEATHER_PER_MINUTE`).
+  A photo or video check has its own, lower limit (`MEDIA_PER_HOUR`, default 20), because each one costs paid SAM requests. A request that declares a body over about 2.8 MB
+  is refused with 413, except `/chat/stream/video`, which takes up to 200 MB. The limiter lives in one process; use a shared limit if the API runs on several replicas.
+- **Uploads:** a photo or video is checked on its first bytes (not on what the browser claims), saved under a random name in `MEDIA_UPLOAD_DIR` with owner-only
+  permissions, handed to the chat graph, and deleted as soon as the answer is done, also when the browser disconnects. `src/services/media_upload.py`.
+- **Forecast once a day:** the first request of a Manila day fetches the cities that have no stored forecast yet (17 Tomorrow.io requests, about 20 seconds), later requests only read
+  Supabase, and a stored row is never replaced. A failed fetch stores nothing and is not retried for 30 minutes. `src/services/tomorrow_forecast.py`, and the daily workflow `fetch-tomorrow-forecast.yml`.
 - **Conversations:** `thread_id` must be a UUID. Without one, `/chat` starts a new conversation and returns the id to send back.
 - **Soft failures:** without `MUSE_API` the weather and document answers fail but everything that needs no model keeps working;
   if document search cannot start, the document agent gives the fixed safe answer.
@@ -121,12 +132,16 @@ How the API behaves:
   which slows guessing. There is one shared key and no accounts, so a status change records what changed but not who changed it.
 - **Review rules:** a rejected report is hidden from `GET /reports`, from routing and from the evacuation filter. A report or request stays
   `unverified` until a person changes it; nothing changes status on its own.
-- **Settings:** `CORS_ORIGINS`, `CHECKPOINTER` (`postgres` or `memory`), `ENABLE_RAG`, `TRUST_PROXY_HEADERS`, `STAFF_API_KEY`, `STAFF_PER_MINUTE`, `ORS_API_KEY`; see `src/api/settings.py`.
+- **Settings:** `CORS_ORIGINS`, `CHECKPOINTER` (`postgres` or `memory`), `ENABLE_RAG`, `TRUST_PROXY_HEADERS`, `STAFF_API_KEY`, `STAFF_PER_MINUTE`, `ORS_API_KEY`, `MEDIA_PER_HOUR`, `WEATHER_PER_MINUTE`;
+  also `MEDIA_UPLOAD_DIR`, `DATASETS_DIR` and the key `TOMMORROW_IO_API` (read directly, not through `settings.py`); see `src/api/settings.py`.
+- **Known issue:** `agents/flood_risk_agent.py` (`load_history`) maps the dataset's `location_id` to a city by the order of `NCR_LOCATIONS`, but the dataset numbers its locations alphabetically
+  (`datasets/ncr_locations.csv`: 0 is Caloocan, 5 is Manila). The "soaked ground" and "high river" history the chat's risk answer compares with can therefore belong to another city.
+  `src/services/dashboard_data.py` matches by name through `ncr_locations.csv` and is not affected.
 
 Run it with `uv run uvicorn main:app --reload` and open `/docs` for the interactive documentation.
 
-Request and response bodies are Pydantic models. Every chat response includes `sources`
-(title, agency, issued time, link) so the UI can show provenance.
+Request and response bodies are Pydantic models. The chat response is planned to include `sources`
+(title, agency, issued time, link) so the UI can show provenance; it does not yet.
 
 ## 5. Chat flow (LangGraph)
 
@@ -304,6 +319,7 @@ separate `id` column and no `capacity` column.
 | `chunks` | Created and filled (461 rows, 1024-dimension vectors, HNSW index). One table keyed by `(doc_id, chunk_idx)`; there is no separate `documents` table, so source, type, trust tier, hazard, city and validity live in the `metadata` column |
 | `ncr_locations`, `ncr_weather_daily`, `ncr_flood_features_daily` | Created and filled by `scripts/load_to_supabase.py` and kept current by the daily workflow (`docs/dataset_updates.md`) |
 | `evacuation_centers` | Created and filled (102 rows, 17 cities); joins to `ncr_locations` on `location_id`; read by the evacuation and route agents and by `GET /evacuation-centers` |
+| `tomorrow_forecast` | Created by `sql/003_tomorrow_forecast.sql` (or by `scripts/fetch_tomorrow_forecast.py`). One row per city per Manila day (`(city, fetched_on)` is the primary key) with the hourly and daily forecast as JSON. Written at most once per city per day, never replaced; read by `/weather/*` |
 | `reports` | **Does not exist yet.** Queried by the report agent, the route agent and `/reports`. Create it with `sql/000_reports.sql`, then `sql/001_reports_geo.sql` |
 | `requests` | **Does not exist yet.** Written by `POST /requests`. Create it with `sql/002_requests.sql` |
 | `conversations`, `messages` | Not created. Conversation state is saved by the LangGraph checkpointer instead |
@@ -315,7 +331,7 @@ All the tables above have row-level security on with no policies: only the backe
 Today these are run by hand from `scripts/`: `ingest_corpus.py` (chunk, embed, save a FAISS run and optionally write Supabase),
 `refresh_location_chunks.py` (re-embed only the location chunks when `corpus/ncr_locations.csv` changes) and
 `load_to_supabase.py` (one-time load of the datasets and a FAISS run). The daily weather datasets are updated by a GitHub
-Actions workflow (`docs/dataset_updates.md`). Scheduled workers (separate Railway service or cron) for the full pipeline
+Actions workflow (`docs/dataset_updates.md`), and the Tomorrow.io forecast by a second one, `fetch-tomorrow-forecast.yml`, once a day. Scheduled workers (separate Railway service or cron) for the full pipeline
 (fetch, clean, chunk, enrich, embed, upsert, then rebuild the BM25 index) are still planned. Schedules and expiry rules are in
 `docs/ingestion_details.md` section 5. Jobs are idempotent (upsert on `doc_id` + `chunk_idx`) and should log counts of fetched, new, skipped and failed items.
 
