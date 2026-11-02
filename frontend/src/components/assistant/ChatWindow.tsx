@@ -110,7 +110,7 @@ export function ChatWindow() {
     addMessage({
       role: "user",
       kind: "normal",
-      text: message || (video ? "Check this video for flood water." : "Check this photo for flood water."),
+      text: message, // a photo or video sent without a caption shows just the picture, with no default sentence
       media: item ? { url: item.url, isVideo: video } : undefined,
     })
     takeAttachment() // the preview now lives in the message, so its address is not revoked here

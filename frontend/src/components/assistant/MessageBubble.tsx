@@ -40,16 +40,16 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
         )}
         {message.media &&
           (message.media.isVideo ? (
-            <video src={message.media.url} muted controls preload="metadata" className="mb-2 max-h-48 rounded-xl" aria-label="Video you attached" />
+            <video src={message.media.url} muted controls preload="metadata" className={`max-h-48 rounded-xl ${message.text ? "mb-2" : ""}`} aria-label="Video you attached" />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element -- a local preview of the user's own file
-            <img src={message.media.url} alt="Photo you attached" className="mb-2 max-h-48 rounded-xl" />
+            <img src={message.media.url} alt="Photo you attached" className={`max-h-48 rounded-xl ${message.text ? "mb-2" : ""}`} />
           ))}
         {message.resultImage && (
           // eslint-disable-next-line @next/next/no-img-element -- served by the backend, so the Next image loader is not needed
           <img src={message.resultImage} alt="Your photo with the detected objects marked" className="mb-2 max-h-96 rounded-xl" />
         )}
-        <p className="break-words whitespace-pre-wrap">{message.text}</p>
+        {message.text && <p className="break-words whitespace-pre-wrap">{message.text}</p>}
       </div>
     </li>
   )
