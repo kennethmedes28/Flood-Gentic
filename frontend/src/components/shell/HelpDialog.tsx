@@ -23,6 +23,7 @@ const SECTIONS: { title: string; points: string[] }[] = [
     title: "The hand cursor",
     points: [
       "On most pages the pointer is a 3D hand with a red laser dot. The dot is where you point and click. Choose the Left or Right hand in the menu.",
+      "Prefer the normal pointer? Set “Hand cursor” to Off in the menu. It is remembered on this device.",
       "Hold Alt and press the arrow keys to move the hand out of the way.",
       "The PAGASA satellite page uses your normal pointer.",
     ],

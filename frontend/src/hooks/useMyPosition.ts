@@ -34,7 +34,7 @@ export function useMyPosition() {
               ? "Location not shared, so the list has no distances."
               : "Couldn't find your location. Please try again.",
         }),
-      { timeout: 10_000 }
+      { timeout: 10_000, maximumAge: 60_000 }
     )
   }, [])
 

@@ -1,0 +1,10 @@
+{
+  "cars1": "car_detected/cars-detected-1.png",
+  "childs-1": "child_detected/childs-detected-1.png",
+  "childs-2": "child_detected/childs-detected-2.png",
+  "childs-3": "child_detected/childs-detected-3.png",
+  "humans2": "human_detected/humans-detected-2.png",
+  "humans3": "human_detected/humans-detected-3.png",
+  "humans4": "human_detected/humans-detected-4.png",
+  "humans5": "human_detected/humans-detected-5.png"
+}

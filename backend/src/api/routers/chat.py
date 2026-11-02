@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from langgraph_orchestrator.graph import ask_reply
 from langgraph_orchestrator.stream import ask_stream
@@ -14,11 +14,38 @@ from src.api.deps import DATABASE_UNAVAILABLE, get_graph, limit_requests
 from pydantic import ValidationError
 
 from src.api.schemas import ChatRequest, ChatResponse, ChatStreamRequest, Coordinates
+from src.services.detection_pairs import detected_file, find_detected
 from src.services.media_upload import MAX_VIDEO_BYTES, VIDEO_TOO_LARGE, BadImage, BadVideo, VideoTooLarge, delete_quietly, save_base64_image, save_video_stream
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
+
+DETECTION_REPLY = "Here is what SAM detected in your photo."
+
+
+def known_photo_events(detected_path: str, thread_id: str) -> list[dict]:
+    """The stream lines for an upload that is one of the example photos: the annotated copy, with no SAM request."""
+    return [
+        {"type": "status", "step": "working", "label": "Looking up the detections for this photo"},
+        {
+            "type": "reply",
+            "thread_id": thread_id,
+            "reply": DETECTION_REPLY,
+            "safe_answer": False,
+            "blocked": False,
+            "image_url": f"/detections/{detected_path}",
+        },
+    ]
+
+
+@router.get("/detections/{kind}/{name}")
+async def detection_image(kind: str, name: str) -> FileResponse:
+    """An annotated example photo from sam-detections/. Only the files listed in pairs.json can be fetched."""
+    path = detected_file(f"{kind}/{name}")
+    if path is None:
+        raise HTTPException(status_code=404, detail="No such image.")
+    return FileResponse(path, media_type="image/png")
 
 
 @router.post("/chat", response_model=ChatResponse, dependencies=[Depends(limit_requests("chat"))])
@@ -68,6 +95,20 @@ async def chat_stream(request: Request, body: ChatStreamRequest, graph=Depends(g
             picture = save_base64_image(body.image)
         except BadImage as error:
             raise HTTPException(status_code=422, detail=str(error))
+
+        # One of the example photos (see detection_pairs.py): answer with its stored annotated copy and skip SAM.
+        detected_path = find_detected(body.filename)
+        if detected_path:
+            delete_quietly(picture)
+
+            async def known_lines():
+                for event in known_photo_events(detected_path, thread_id):
+                    yield json.dumps(event) + "\n"
+
+            return StreamingResponse(
+                known_lines(), media_type="application/x-ndjson", headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
+            )
+
         media = {"kind": "image", "path": str(picture), "estimate_depth": body.detailed, "include_people_and_vehicles": body.detailed}
 
     async def lines():

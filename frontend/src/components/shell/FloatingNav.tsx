@@ -17,6 +17,11 @@ const HANDS: { value: Hand; label: string }[] = [
   { value: "right", label: "Right" },
 ]
 
+const CURSOR_STATES: { value: "on" | "off"; label: string }[] = [
+  { value: "on", label: "On" },
+  { value: "off", label: "Off" },
+]
+
 const LOOKS: { value: Look; label: string }[] = [
   { value: "default", label: "Default" },
   { value: "cyberpunk", label: "Cyberpunk" },
@@ -43,7 +48,7 @@ const PAGES = [
  */
 export function FloatingNav() {
   const pathname = usePathname()
-  const { hand, setHand } = useHand()
+  const { hand, setHand, enabled: handEnabled, setEnabled: setHandEnabled } = useHand()
   const { look, setLook } = useLook()
   const [open, setOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -165,7 +170,13 @@ export function FloatingNav() {
 
           {/* Settings. Picking an option keeps the menu open. */}
           <OptionRow label="Theme" options={LOOKS} value={look} onChange={setLook} />
-          <OptionRow label="Cursor hand" options={HANDS} value={hand} onChange={setHand} />
+          <OptionRow
+            label="Hand cursor"
+            options={CURSOR_STATES}
+            value={handEnabled ? "on" : "off"}
+            onChange={(state) => setHandEnabled(state === "on")}
+          />
+          {handEnabled && <OptionRow label="Cursor hand" options={HANDS} value={hand} onChange={setHand} />}
         </nav>
       )}
 

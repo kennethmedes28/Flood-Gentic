@@ -7,6 +7,7 @@ import type { CircleMarker, LayerGroup, Map as LeafletMap } from "leaflet"
 
 import type { Position } from "@/hooks/useMyPosition"
 import type { EvacuationCenter } from "@/data/evacuation-centers"
+import { distanceKm } from "@/lib/geo"
 
 const TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 const ATTRIBUTION = "© OpenStreetMap contributors"
@@ -109,18 +110,26 @@ export function CentersMap({ centers, selectedId, onSelect, user }: CentersMapPr
     if (selected) map.current.panTo([selected.lat, selected.lng], { animate: !window.matchMedia("(prefers-reduced-motion: reduce)").matches })
   }, [selectedId, centers, ready])
 
-  // The user's own position, when shared.
+  // The user's own position, when shared. The map zooms to fit the user and the nearest center, so "You are here" is
+  // easy to see; when sharing is switched off the map goes back to showing every listed center.
   useEffect(() => {
     const L = leaflet.current
     if (!ready || !L || !map.current) return
     userMarker.current?.remove()
     userMarker.current = null
-    if (user) {
-      userMarker.current = L.circleMarker([user.lat, user.lng], { radius: 8, color: "#ffffff", weight: 3, fillColor: "#0b2545", fillOpacity: 1 })
-        .bindTooltip(plainTooltip("You are here"))
-        .addTo(map.current)
-    }
-  }, [user, ready])
+    if (!user) return
+
+    userMarker.current = L.circleMarker([user.lat, user.lng], { radius: 8, color: "#ffffff", weight: 3, fillColor: "#0b2545", fillOpacity: 1 })
+      .bindTooltip(plainTooltip("You are here"))
+      .addTo(map.current)
+
+    const nearest = [...centers].sort(
+      (a, b) => distanceKm(user.lat, user.lng, a.lat, a.lng) - distanceKm(user.lat, user.lng, b.lat, b.lng)
+    )[0]
+    const points: [number, number][] = [[user.lat, user.lng]]
+    if (nearest) points.push([nearest.lat, nearest.lng])
+    map.current.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 16, animate: false })
+  }, [user, ready, centers])
 
   return (
     <div className="relative isolate z-0 h-full min-h-72 overflow-hidden rounded-2xl">

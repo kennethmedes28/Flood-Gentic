@@ -75,6 +75,9 @@ class ChatStreamRequest(StrictModel):
     image: Annotated[str, StringConstraints(max_length=MAX_IMAGE_BASE64_CHARS)] | None = None
     # With a photo: also count people and vehicles and estimate a rough depth. Slower: 6 SAM requests instead of 4.
     detailed: bool = False
+    # The file name of the uploaded photo. Only used to recognise the example photos in sam-detections/
+    # (see src/services/detection_pairs.py); it never becomes a file path.
+    filename: Annotated[str, StringConstraints(max_length=200)] | None = None
 
     @model_validator(mode="after")
     def needs_text_or_photo(self):

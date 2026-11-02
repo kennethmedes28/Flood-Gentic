@@ -15,6 +15,8 @@ import { QuickPrompts } from "./QuickPrompts"
 const MAX_LENGTH = 1000
 /** The counter only appears when the message is close to the limit. */
 const COUNTER_FROM = 800
+/** How long to wait for the browser's position before giving up. */
+const LOCATION_TIMEOUT_MS = 10_000
 
 const WELCOME: ChatMessage = {
   id: "welcome",
@@ -23,7 +25,7 @@ const WELCOME: ChatMessage = {
   text:
     "Hi! I'm the AI Agent Flood Assistant. Ask me about flood risk, evacuation centers, " +
     "emergency contacts or what to prepare. You can write in English or Filipino, " +
-    "or attach a photo or video to check it for flood water.",
+    "or attach (or drag and drop) a photo or video to check it for flood water.",
 }
 
 let nextId = 0
@@ -50,6 +52,7 @@ export function ChatWindow() {
   const [threadId, setThreadId] = useState<string | null>(null)
   const [location, setLocation] = useState<Coordinates | null>(null)
   const [locationNote, setLocationNote] = useState("")
+  const [locating, setLocating] = useState(false)
   const [draft, setDraft] = useState("")
   const [pending, setPending] = useState(false)
   /** What the assistant is doing right now, shown next to the typing dots. */
@@ -58,6 +61,10 @@ export function ChatWindow() {
   const { attachment, attachError, attachFile, removeAttachment, takeAttachment } = useMediaAttachment()
   /** Also count people and vehicles / estimate depth: more detail, but more API credit per check. */
   const [moreDetail, setMoreDetail] = useState(false)
+  /** True while a file is being dragged over the chat, to show the drop hint. */
+  const [dragging, setDragging] = useState(false)
+  /** dragenter/dragleave also fire for every child element, so the enters are counted to know when the file really left. */
+  const dragDepth = useRef(0)
   const endOfMessages = useRef<HTMLDivElement>(null)
   const inputBox = useRef<HTMLTextAreaElement>(null)
   /** What was in the message box when the microphone was turned on; the spoken words are added after it. */
@@ -119,13 +126,14 @@ export function ChatWindow() {
         reply = await sendChatVideoStream(item.file, { message, threadId, location, detailed: moreDetail }, onProgress)
       } else {
         const image = item ? await preparePhotoForChat(item.file) : undefined
-        reply = await sendChatMessageStream({ message, threadId, location, image, detailed: moreDetail }, onProgress)
+        reply = await sendChatMessageStream({ message, threadId, location, image, detailed: moreDetail, filename: item?.file.name }, onProgress)
       }
       setThreadId(reply.threadId)
       addMessage({
         role: "assistant",
         text: reply.text,
         kind: reply.blocked ? "blocked" : reply.safeAnswer ? "safe" : "normal",
+        resultImage: reply.imageUrl,
       })
     } catch (error) {
       const known = error instanceof ChatError || error instanceof MediaCheckError
@@ -136,23 +144,74 @@ export function ChatWindow() {
     }
   }
 
-  /** Ask the browser for the position, only after the user taps the button. */
+  /**
+   * Ask the browser for the position, only after the user taps the button. Tapping it again while the position is
+   * shared switches sharing off. The request has a time limit, so "Finding your location…" can never hang forever.
+   */
   function shareLocation() {
+    if (locating) return
+    if (location) {
+      setLocation(null)
+      setLocationNote("Location off. Answers will be general.")
+      return
+    }
     if (!navigator.geolocation) {
       setLocationNote("Your browser can't share a location.")
       return
     }
+    setLocating(true)
     setLocationNote("Finding your location…")
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        setLocating(false)
         setLocation({ lat: position.coords.latitude, lng: position.coords.longitude })
         setLocationNote("Using your location for answers.")
       },
-      () => {
+      (failure) => {
+        setLocating(false)
         setLocation(null)
-        setLocationNote("Location not shared. Answers will be general.")
-      }
+        setLocationNote(
+          failure.code === failure.PERMISSION_DENIED
+            ? "Location not shared. Answers will be general."
+            : "Couldn't find your location. Check that location is on for this device and try again. Answers will be general."
+        )
+      },
+      { timeout: LOCATION_TIMEOUT_MS, maximumAge: 60_000 }
     )
+  }
+
+  /** True when the drag carries a file (and not, say, selected text). */
+  function carriesFiles(event: React.DragEvent): boolean {
+    return Array.from(event.dataTransfer.types).includes("Files")
+  }
+
+  function onDragEnter(event: React.DragEvent) {
+    if (!carriesFiles(event) || pending) return
+    event.preventDefault()
+    dragDepth.current += 1
+    setDragging(true)
+  }
+
+  function onDragOver(event: React.DragEvent) {
+    if (!carriesFiles(event) || pending) return
+    event.preventDefault() // required, or the browser refuses the drop
+    event.dataTransfer.dropEffect = "copy"
+  }
+
+  function onDragLeave(event: React.DragEvent) {
+    if (!carriesFiles(event)) return
+    dragDepth.current = Math.max(0, dragDepth.current - 1)
+    if (dragDepth.current === 0) setDragging(false)
+  }
+
+  /** Dropping a photo or video attaches it, the same as picking it with the input button (the first file only). */
+  function onDrop(event: React.DragEvent) {
+    if (!carriesFiles(event)) return
+    event.preventDefault()
+    dragDepth.current = 0
+    setDragging(false)
+    const file = event.dataTransfer.files[0]
+    if (file && !pending && !voiceActive) attachFile(file)
   }
 
   function clearConversation() {
@@ -164,7 +223,22 @@ export function ChatWindow() {
   const showPrompts = messages.length === 1 && !pending
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div
+      className="relative flex h-full min-h-0 flex-col gap-3"
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dragging && (
+        <div
+          className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-3xl border-2 border-dashed border-[var(--glass-accent)] bg-black/40 text-lg font-semibold text-white"
+          role="status"
+        >
+          Drop a photo or video to check it for flood water
+        </div>
+      )}
+
       {/* Header */}
       <GlassPanel className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
         <div>
@@ -178,9 +252,10 @@ export function ChatWindow() {
             type="button"
             onClick={shareLocation}
             aria-pressed={location !== null}
+            aria-busy={locating}
             className="min-h-11 rounded-full px-4 text-sm font-medium aria-pressed:bg-[var(--glass-accent)] aria-pressed:text-white aria-pressed:[text-shadow:none]"
           >
-            {location ? "Location on" : "Use my location"}
+            {locating ? "Finding location…" : location ? "Location on" : "Use my location"}
           </button>
           <button
             type="button"
