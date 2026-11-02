@@ -234,6 +234,7 @@ make check               # backend tests, then the frontend type check and lint
 | POST | `/chat/stream` | The same, as one JSON line per step: what the assistant is doing, then the reply. Also takes a photo as base64 (`image`) |
 | POST | `/chat/stream/video` | A video as the request body (MP4, MOV or WebM, up to 200 MB); the whole video is analysed for flood water |
 | GET | `/dashboard` | Weather, rain, river flow and a flood risk level for each of the 17 cities, from the last recorded day |
+| GET | `/analytics/weather` | Long-run rain, temperature, river flow and wind since 2020 for Metro Manila or one city, grouped by year, month or day (`city`, `year`, `month`, `day` filters) |
 | GET | `/weather/forecast`, `/weather/stream` | The Tomorrow.io forecast, stored once a day; the stream sends it live as server-sent events |
 | POST, GET | `/reports` | Submit or list community flood reports (unverified) |
 | POST | `/requests` | Submit a supply or assistance request (write only) |

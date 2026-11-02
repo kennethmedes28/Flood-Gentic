@@ -37,6 +37,7 @@ flowchart TD
 | `/request` | Supply / assistance request form |
 | `/contacts` | Built. 911 first, then the rescue office and fire station of a chosen city, national agencies and hospitals. Numbers are copied exactly from `corpus/ph_emergency_contacts.csv`; only plain numbers are tap-to-call, ranges and text instructions are shown as written |
 | `/flood` | Flood level for any of the 17 cities: flood risk, river flow on a gauge (filled to today's flow, with marks at the lowest and highest flow of the last 7 recorded days), the last 7 recorded days of river flow and rain, the rain forecast for the next 24 hours, and what to do. Real data from the backend (`GET /dashboard` and the live weather); there is no water height in the data |
+| `/analytics` | Macro Weather Analytics: rainfall, temperature and heat, river flow vs rain, and wind and gusts since 2020, with city, year, month and day filters. Click a bar or point to drill down (years, months, days, one day); also a ranking of the 17 cities, the rainiest days and a table of the numbers. Charts use Recharts. Data from `GET /analytics/weather` |
 
 The data of the two pages above is generated, not typed: `scripts/export_frontend_data.py` copies the two CSV files into
 `frontend/src/data/evacuation-centers.ts` and `emergency-contacts.ts`. Run it again when a CSV changes (`--check` tells you if it is out of date).

@@ -14,6 +14,7 @@ Endpoints (see docs/backend_architecture.md section 4):
     GET  /weather/forecast      stored Tomorrow.io forecast (fetched once a day)
     GET  /weather/stream        the same, streamed live (server-sent events)
     GET  /dashboard             weather, rain, river flow and flood risk per city (recorded datasets)
+    GET  /analytics/weather     long-run weather statistics by city, year, month and day (recorded dataset)
     GET  /health, /health/ready what works
     /staff/...                  review reports and requests (only when STAFF_API_KEY is set)
     WS   /ws/voice, /ws/camera  live speech-to-text and the webcam flood check
@@ -27,7 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.api.rate_limit import RateLimiter
-from src.api.routers import advisories, chat, dashboard, evacuation, health, help_requests, reports, staff, weather
+from src.api.routers import advisories, analytics, chat, dashboard, evacuation, health, help_requests, reports, staff, weather
 from src.api.settings import Settings, load_settings
 from src.api.startup import real_services
 from src.services.media_upload import MAX_IMAGE_BASE64_CHARS, MAX_VIDEO_BYTES
@@ -88,7 +89,7 @@ def create_app(settings: Settings | None = None, lifespan=real_services) -> Fast
         allow_headers=["Content-Type"],
     )
 
-    for module in (health, chat, reports, help_requests, evacuation, advisories, dashboard, weather):
+    for module in (health, chat, reports, help_requests, evacuation, advisories, dashboard, analytics, weather):
         app.include_router(module.router)
     if settings.staff_api_key:  # without a key the staff endpoints simply do not exist
         app.include_router(staff.router)
