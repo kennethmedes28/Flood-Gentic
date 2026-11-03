@@ -14,18 +14,16 @@ Example:
     location = resolve_location("Nasa Brgy. Nangka, Marikina ako")
 """
 
-import csv
 import logging
-import os
 import re
 import unicodedata
 from functools import lru_cache
-from pathlib import Path
 from typing import Callable
 
 import httpx
 
 from agents.fetch_supabase_open_meteo_datasets import LOCATION_ALIASES, NCR_LOCATIONS
+from agents.reference_data import EVACUATION_CENTER_PLACES
 from agents.flood_types import (
     PRECISION_BARANGAY,
     PRECISION_CITY,
@@ -84,8 +82,7 @@ OUTSIDE_NCR_PATTERN = re.compile(
     r"(?!\s+(?:avenue|ave|street|st|park|boulevard|blvd|hospital|medical|memorial|stadium))"
 )
 
-# Barangay names per city, taken from the evacuation-center list (the only barangay list in the project).
-CENTERS_CSV = Path(__file__).resolve().parents[2] / "corpus" / "ncr_evacuation_centers.csv"
+# Barangay names per city come from the built-in list of evacuation-center places (see ``load_known_barangays``).
 
 ASK_FOR_LOCATION = (
     "Which city or barangay are you in? Example: \"Brgy. Nangka, Marikina\". "
@@ -206,17 +203,13 @@ def find_outside_place(text: str) -> str | None:
 
 @lru_cache(maxsize=1)
 def load_known_barangays() -> dict[str, set[str]]:
-    """Read ``{city: {barangay names, accent-free lower case}}`` from the evacuation-center CSV (empty if missing)."""
-    path = Path(os.getenv("EVACUATION_CENTERS_CSV", CENTERS_CSV))
-    if not path.exists():
-        return {}
+    """``{city: {barangay names, accent-free lower case}}`` from the built-in list of evacuation-center places."""
     barangays: dict[str, set[str]] = {}
-    with open(path, newline="", encoding="utf-8-sig") as file:
-        for row in csv.DictReader(file):
-            city = city_key(row["city"].replace(" City", ""))
-            name = re.sub(r"^(?:barangay|brgy\.?)\s+", "", plain_text(row["barangay"]).strip())
-            if name:
-                barangays.setdefault(city, set()).add(name)
+    for city_name, barangay in EVACUATION_CENTER_PLACES:
+        city = city_key(city_name.replace(" City", ""))
+        name = re.sub(r"^(?:barangay|brgy\.?)\s+", "", plain_text(barangay).strip())
+        if name:
+            barangays.setdefault(city, set()).add(name)
     return barangays
 
 

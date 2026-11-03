@@ -198,7 +198,7 @@ def answer_route_question(question: str, context: ChatContext) -> AgentReply:
     if start is None:
         return AgentReply(text=ASK_FOR_LOCATION, pending_intent="route")
 
-    risk = assess_flood_risk(start.city, now=context.now)
+    risk = assess_flood_risk(start.city, now=context.now, get_connection=context.get_connection)
     zones = collect_zones(context, start.city, risk.level)
 
     destination = (resolve_location(destination_text) if destination_text else None) or context.destination

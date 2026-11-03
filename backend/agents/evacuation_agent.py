@@ -166,7 +166,7 @@ def answer_evacuation_question(question: str, context: ChatContext) -> AgentRepl
         logger.error("Could not read evacuation centers: %s", error)
         return AgentReply(text=NO_DATABASE_ANSWER, location=origin)
 
-    risk = assess_flood_risk(origin.city, now=context.now)
+    risk = assess_flood_risk(origin.city, now=context.now, get_connection=context.get_connection)
     zones = collect_zones(context, origin.city, risk.level)
     centers, flooded_count = rank_centers(origin, rows, zones)
 

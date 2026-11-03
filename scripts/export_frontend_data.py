@@ -1,12 +1,16 @@
-"""Write the evacuation centers and the emergency hotlines as data files for the frontend pages.
+"""Write the evacuation centers and the emergency hotlines as built-in data files for the frontend pages and the backend.
 
-    cd backend && uv run python ../scripts/export_frontend_data.py            # write the two files
+    cd backend && uv run python ../scripts/export_frontend_data.py            # write the files
     cd backend && uv run python ../scripts/export_frontend_data.py --check    # fail if they are out of date
 
-The files are written next to the other sample data:
+The files written:
 
     frontend/src/data/evacuation-centers.ts   from datasets/ncr_evacuation_centers.csv
     frontend/src/data/emergency-contacts.ts   from corpus/ph_emergency_contacts.csv
+    backend/agents/reference_data.py          from both: the hotlines and the barangay names the chat agents use
+
+The backend does not read any CSV file at run time. Emergency numbers must never depend on the network or the database, so the
+agents use this built-in copy (the Supabase tables are filled from the same CSV files by sync_datasets_to_supabase.py).
 
 Every value is copied exactly as it is in the CSV. Phone numbers in particular are never reformatted or
 rebuilt: a wrong digit can cost a life. The only thing worked out here is which cities a local hotline belongs to,
@@ -19,6 +23,7 @@ Run it again whenever one of the two CSV files changes, and commit the result.
 import argparse
 import csv
 import json
+import pprint
 import sys
 import unicodedata
 from pathlib import Path
@@ -27,6 +32,7 @@ REPO_DIR = Path(__file__).resolve().parent.parent
 CENTERS_CSV = REPO_DIR / "datasets" / "ncr_evacuation_centers.csv"
 CONTACTS_CSV = REPO_DIR / "corpus" / "ph_emergency_contacts.csv"
 OUT_DIR = REPO_DIR / "frontend" / "src" / "data"
+BACKEND_DATA = REPO_DIR / "backend" / "agents" / "reference_data.py"
 
 # Only these hotline groups belong to a city. The others are national, or hospitals (which name no city).
 LOCAL_CATEGORIES = {"Local - City Rescue", "Local - Fire"}
@@ -102,6 +108,23 @@ def json_block(value) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2)
 
 
+def build_backend_data() -> str:
+    """The Python module with the hotlines (rows exactly as in the CSV) and each barangay that has an evacuation center."""
+    contact_rows = [
+        {name: row[name] for name in ("Agency", "Category", "Contact Type", "Number", "Notes")} for row in read_csv(CONTACTS_CSV)
+    ]
+    places = sorted({(row["city"], row["barangay"]) for row in read_csv(CENTERS_CSV)})
+    return (
+        HEADER.format(source="corpus/ph_emergency_contacts.csv and datasets/ncr_evacuation_centers.csv").replace("//", "#")
+        + '"""Built-in reference data for the chat agents: emergency hotlines and the barangays that have evacuation centers.\n\n'
+        + "Numbers are copied exactly as written in the list: a wrong digit can cost a life.\n"
+        + '"""\n\n'
+        + f"CONTACT_ROWS: list[dict[str, str]] = {pprint.pformat(contact_rows, width=140, sort_dicts=False)}\n\n"
+        + f"# (city, barangay) of every evacuation center, as written in the list.\n"
+        + f"EVACUATION_CENTER_PLACES: list[tuple[str, str]] = {pprint.pformat(places, width=140)}\n"
+    )
+
+
 def build_files() -> dict[Path, str]:
     """The text of each file to write, by path."""
     centers, cities = build_centers(read_csv(CENTERS_CSV))
@@ -125,7 +148,11 @@ def build_files() -> dict[Path, str]:
         "  notes: string\n  /** The cities a local hotline serves; empty for national hotlines and hospitals. */\n  cities: string[]\n}\n\n"
         f"export const EMERGENCY_CONTACTS: Contact[] = {json_block(contacts)}\n",
     )
-    return {OUT_DIR / "evacuation-centers.ts": centers_ts, OUT_DIR / "emergency-contacts.ts": contacts_ts}
+    return {
+        OUT_DIR / "evacuation-centers.ts": centers_ts,
+        OUT_DIR / "emergency-contacts.ts": contacts_ts,
+        BACKEND_DATA: build_backend_data(),
+    }
 
 
 def main() -> int:

@@ -173,7 +173,24 @@ class FloodRiskTests(unittest.TestCase):
         self.assertEqual(self.assess(rain_data(0.0), "Red Rainfall Warning over Metro Manila").level, RISK_CRITICAL)
 
     def test_soaked_ground_raises_a_dry_forecast_to_watch(self):
-        self.assertEqual(self.assess(rain_data(0.0, past_mm_per_hour=2.0)).level, RISK_WATCH)
+        # The recorded history (normally read from Supabase) says 3-day rain is usually small, so 48 mm of past rain is soaked ground.
+        history = {"marikina": {"rain_3d": [1.0] * 50, "discharge": [5.0] * 50}}
+        with mock.patch.object(flood_risk_agent, "load_history", return_value=history):
+            self.assertEqual(self.assess(rain_data(0.0, past_mm_per_hour=2.0)).level, RISK_WATCH)
+
+    def test_without_recorded_history_the_ground_rule_is_skipped(self):
+        self.assertEqual(self.assess(rain_data(0.0, past_mm_per_hour=2.0)).level, RISK_LOW)  # no connection: no history
+
+    def test_history_comes_from_the_recorded_days_in_supabase(self):
+        records = {"marikina": {"days": [], "rain_3d_sorted": [1.0, 2.0], "flow_sorted": [3.0]}}
+        with mock.patch("src.services.dashboard_data.get_records", return_value=records):
+            history = flood_risk_agent.load_history(lambda: object())
+        self.assertEqual(history, {"marikina": {"rain_3d": [1.0, 2.0], "discharge": [3.0]}})
+
+    def test_history_is_skipped_when_the_database_fails_or_is_missing(self):
+        self.assertEqual(flood_risk_agent.load_history(None), {})
+        with mock.patch("src.services.dashboard_data.get_records", side_effect=ConnectionError("down")):
+            self.assertEqual(flood_risk_agent.load_history(lambda: object()), {})
 
     def test_missing_data_is_reported(self):
         with mock.patch.object(flood_risk_agent, "download_rain", side_effect=RuntimeError("down")), \
