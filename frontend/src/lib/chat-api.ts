@@ -8,7 +8,8 @@
 
 import { authHeaders } from "@/lib/supabase"
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+// A trailing slash is removed, so "https://api.example.com/" does not turn "/chat" into "//chat".
+export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/+$/, "")
 
 export type Coordinates = { lat: number; lng: number }
 

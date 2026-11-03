@@ -8,7 +8,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js"
  * app runs signed-out; the backend then has to be started with REQUIRE_AUTH=false.
  */
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+// Both names are accepted: Supabase now calls it the "publishable" key, and older projects call it the "anon" key.
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 /** True when the .env.local still holds the example placeholders ("your-project...") instead of real values. */
 function isPlaceholder(value: string | undefined): boolean {
