@@ -1,14 +1,16 @@
 "use client"
 
+import { useT } from "@/context/LanguageContext"
 import type { VoiceStatus } from "@/hooks/useVoiceTranscription"
+import type { MessageKey } from "@/i18n/messages"
 import { cn } from "@/lib/utils"
 
 /** The words that go with each state, for the tooltip and for screen readers. */
-const LABELS: Record<VoiceStatus, string> = {
-  idle: "Start voice input",
-  connecting: "Starting voice input",
-  listening: "Stop voice input",
-  processing: "Turning your speech into text",
+const LABELS: Record<VoiceStatus, MessageKey> = {
+  idle: "voiceButton.idle",
+  connecting: "voiceButton.connecting",
+  listening: "voiceButton.listening",
+  processing: "voiceButton.processing",
 }
 
 type VoiceButtonProps = {
@@ -26,6 +28,7 @@ type VoiceButtonProps = {
  * aria-pressed, so it never depends on colour alone.
  */
 export function VoiceButton({ status, onClick, disabled = false }: VoiceButtonProps) {
+  const t = useT()
   const listening = status === "listening"
   const busy = status === "connecting" || status === "processing"
 
@@ -35,8 +38,8 @@ export function VoiceButton({ status, onClick, disabled = false }: VoiceButtonPr
       onClick={onClick}
       disabled={disabled || busy}
       aria-pressed={listening}
-      aria-label={LABELS[status]}
-      title={LABELS[status]}
+      aria-label={t(LABELS[status])}
+      title={t(LABELS[status])}
       className={cn(
         "relative flex size-12 shrink-0 items-center justify-center rounded-full shadow-lg disabled:opacity-40",
         listening ? "bg-[#dc2626] text-white [text-shadow:none]" : "glass-panel !rounded-full"

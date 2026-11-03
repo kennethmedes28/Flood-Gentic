@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 
 import { GlassPanel } from "@/components/ui/GlassPanel"
 import { useAuth } from "@/context/AuthContext"
+import { useT } from "@/context/LanguageContext"
 import { ACCESS_REQUEST_SUBJECT, CONTACT_EMAIL, mailtoLink } from "@/lib/contact"
 import { fetchUsage, type Usage } from "@/lib/usage-api"
 
@@ -15,6 +16,7 @@ import { fetchUsage, type Usage } from "@/lib/usage-api"
  */
 export function AuthBar({ refreshKey }: { refreshKey: number }) {
   const { status, displayName, signIn, signOut, error } = useAuth()
+  const t = useT()
   const [usage, setUsage] = useState<Usage | null>(null)
 
   // Read what has been used when the person signs in, and again after every message (refreshKey changes then).
@@ -34,20 +36,20 @@ export function AuthBar({ refreshKey }: { refreshKey: number }) {
       <GlassPanel className="flex flex-wrap items-center justify-between gap-3 px-5 py-2 text-sm">
         <div className="min-w-0 text-sm" style={{ color: "var(--glass-text-muted)" }}>
           <p className="truncate">
-            Signed in as <span className="font-medium">{displayName ?? "your account"}</span>
+            {t("auth.signedInAs")} <span className="font-medium">{displayName ?? t("auth.yourAccount")}</span>
           </p>
           {usage && (
             <p className="text-xs">
-              Today: {usage.messagesToday} of {usage.messagesLimit} messages · {usage.photosToday} of {usage.photosLimit} photo checks
+              {t("auth.usage", { messages: usage.messagesToday, messagesLimit: usage.messagesLimit, photos: usage.photosToday, photosLimit: usage.photosLimit })}
             </p>
           )}
           <p className="text-xs">
-            <Link href="/privacy" className="underline underline-offset-2">Privacy</Link> ·{" "}
-            <Link href="/data-deletion" className="underline underline-offset-2">Data deletion</Link>
+            <Link href="/privacy" className="underline underline-offset-2">{t("auth.privacy")}</Link> ·{" "}
+            <Link href="/data-deletion" className="underline underline-offset-2">{t("auth.dataDeletion")}</Link>
           </p>
         </div>
         <button type="button" onClick={() => void signOut()} className="min-h-11 rounded-full px-4 text-sm font-medium">
-          Sign out
+          {t("auth.signOut")}
         </button>
       </GlassPanel>
     )
@@ -56,21 +58,21 @@ export function AuthBar({ refreshKey }: { refreshKey: number }) {
   return (
     <GlassPanel className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
       <div className="min-w-0 flex-1 text-sm">
-        <p className="font-medium">Sign in to chat, check photos or use voice.</p>
+        <p className="font-medium">{t("auth.prompt")}</p>
         <p className="text-xs" style={{ color: "var(--glass-text-muted)" }}>
-          In an emergency you can still type it here without signing in, and you can always call 911.
+          {t("auth.emergencyNote")}
         </p>
         <p className="text-xs" style={{ color: "var(--glass-text-muted)" }}>
-          Can&apos;t sign in? Google and Facebook sign-in may be limited to approved accounts while the apps are under review. To request access, email{" "}
+          {t("auth.accessBefore")}
           <a href={mailtoLink(ACCESS_REQUEST_SUBJECT)} className="underline underline-offset-2">
             {CONTACT_EMAIL}
           </a>
-          . <Link href="/privacy" className="underline underline-offset-2">Privacy</Link> ·{" "}
-          <Link href="/data-deletion" className="underline underline-offset-2">Data deletion</Link>
+          {t("auth.accessAfter")} <Link href="/privacy" className="underline underline-offset-2">{t("auth.privacy")}</Link> ·{" "}
+          <Link href="/data-deletion" className="underline underline-offset-2">{t("auth.dataDeletion")}</Link>
         </p>
         {error && (
           <p className="text-xs font-medium" role="alert">
-            {error}
+            {t(error)}
           </p>
         )}
       </div>
@@ -80,14 +82,14 @@ export function AuthBar({ refreshKey }: { refreshKey: number }) {
           onClick={() => void signIn("google")}
           className="min-h-11 rounded-full bg-[var(--glass-accent)] px-5 text-sm font-semibold text-white [text-shadow:none]"
         >
-          Sign in with Google
+          {t("auth.signInGoogle")}
         </button>
         <button
           type="button"
           onClick={() => void signIn("facebook")}
           className="min-h-11 rounded-full bg-[var(--glass-accent)] px-5 text-sm font-semibold text-white [text-shadow:none]"
         >
-          Sign in with Facebook
+          {t("auth.signInFacebook")}
         </button>
       </div>
     </GlassPanel>

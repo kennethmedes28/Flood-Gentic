@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react"
 
 import { GlassPanel } from "@/components/ui/GlassPanel"
 import { useAuth } from "@/context/AuthContext"
+import { useLanguage } from "@/context/LanguageContext"
 import { useVoiceTranscription } from "@/hooks/useVoiceTranscription"
+import { backendText, type MessageKey } from "@/i18n/messages"
 import { ChatError, sendChatMessageStream, type Coordinates } from "@/lib/chat-api"
 import { useMediaAttachment } from "@/hooks/useMediaAttachment"
 import { MediaCheckError, preparePhotoForChat } from "@/lib/media-check-api"
@@ -20,15 +22,8 @@ const COUNTER_FROM = 800
 /** How long to wait for the browser's position before giving up. */
 const LOCATION_TIMEOUT_MS = 10_000
 
-const WELCOME: ChatMessage = {
-  id: "welcome",
-  role: "assistant",
-  kind: "normal",
-  text:
-    "Hi! I'm the AI Agent Flood Assistant. Ask me about flood risk, evacuation centers, " +
-    "emergency contacts or what to prepare. You can write in English or Filipino, " +
-    "or attach (or drag and drop) a photo and ask me anything about it.",
-}
+/** The first message. It is a text of the interface (not fixed English), so it follows the chosen language. */
+const WELCOME: ChatMessage = { id: "welcome", role: "assistant", kind: "normal", text: "", textKey: "assistant.welcome" }
 
 let nextId = 0
 function newId() {
@@ -51,10 +46,12 @@ function withSpeech(typedBefore: string, spoken: string): string {
  */
 export function ChatWindow() {
   const auth = useAuth()
+  const { language, t } = useLanguage()
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME])
   const [threadId, setThreadId] = useState<string | null>(null)
   const [location, setLocation] = useState<Coordinates | null>(null)
-  const [locationNote, setLocationNote] = useState("")
+  /** What to tell the person about the location, as a key in src/i18n/messages (translated when shown), or "". */
+  const [locationNote, setLocationNote] = useState<MessageKey | "">("")
   const [locating, setLocating] = useState(false)
   const [draft, setDraft] = useState("")
   const [pending, setPending] = useState(false)
@@ -110,7 +107,7 @@ export function ChatWindow() {
 
     // A photo check costs paid requests, so it needs sign-in; say so before uploading anything.
     if (item && auth.status === "signedOut") {
-      addMessage({ role: "assistant", kind: "error", text: "Please sign in with Google or Facebook to check a photo. If you are in danger, call 911." })
+      addMessage({ role: "assistant", kind: "error", text: "", textKey: "error.signInPhoto" })
       return
     }
 
@@ -135,8 +132,14 @@ export function ChatWindow() {
         kind: reply.blocked ? "blocked" : reply.safeAnswer ? "safe" : "normal",
       })
     } catch (error) {
-      const known = error instanceof ChatError || error instanceof MediaCheckError
-      addMessage({ role: "assistant", kind: "error", text: known ? error.message : "Something went wrong. Please try again." })
+      // Our own errors carry a key for the text (shown in the chosen language); a text the backend wrote is shown as it is.
+      if (error instanceof MediaCheckError || (error instanceof ChatError && error.key)) {
+        addMessage({ role: "assistant", kind: "error", text: "", textKey: error.key })
+      } else if (error instanceof ChatError) {
+        addMessage({ role: "assistant", kind: "error", text: error.message })
+      } else {
+        addMessage({ role: "assistant", kind: "error", text: "", textKey: "error.generic" })
+      }
     } finally {
       setPending(false)
       setProgress("")
@@ -151,29 +154,25 @@ export function ChatWindow() {
     if (locating) return
     if (location) {
       setLocation(null)
-      setLocationNote("Location off. Answers will be general.")
+      setLocationNote("assistant.location.noteOff")
       return
     }
     if (!navigator.geolocation) {
-      setLocationNote("Your browser can't share a location.")
+      setLocationNote("assistant.location.noteUnsupported")
       return
     }
     setLocating(true)
-    setLocationNote("Finding your location…")
+    setLocationNote("assistant.location.noteFinding")
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setLocating(false)
         setLocation({ lat: position.coords.latitude, lng: position.coords.longitude })
-        setLocationNote("Using your location for answers.")
+        setLocationNote("assistant.location.noteUsing")
       },
       (failure) => {
         setLocating(false)
         setLocation(null)
-        setLocationNote(
-          failure.code === failure.PERMISSION_DENIED
-            ? "Location not shared. Answers will be general."
-            : "Couldn't find your location. Check that location is on for this device and try again. Answers will be general."
-        )
+        setLocationNote(failure.code === failure.PERMISSION_DENIED ? "assistant.location.noteDenied" : "assistant.location.noteFailed")
       },
       { timeout: LOCATION_TIMEOUT_MS, maximumAge: 60_000 }
     )
@@ -234,16 +233,16 @@ export function ChatWindow() {
           className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-3xl border-2 border-dashed border-[var(--glass-accent)] bg-black/40 text-lg font-semibold text-white"
           role="status"
         >
-          Drop a photo to ask about it
+          {t("assistant.dropPhoto")}
         </div>
       )}
 
       {/* Header */}
       <GlassPanel className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
         <div>
-          <h1 className="text-lg font-semibold">AI Agent Flood Assistant</h1>
+          <h1 className="text-lg font-semibold">{t("nav.assistant")}</h1>
           <p className="text-xs" style={{ color: "var(--glass-text-muted)" }}>
-            Metro Manila · English and Filipino
+            {t("assistant.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -254,7 +253,7 @@ export function ChatWindow() {
             aria-busy={locating}
             className="min-h-11 rounded-full px-4 text-sm font-medium aria-pressed:bg-[var(--glass-accent)] aria-pressed:text-white aria-pressed:[text-shadow:none]"
           >
-            {locating ? "Finding location…" : location ? "Location on" : "Use my location"}
+            {locating ? t("assistant.location.finding") : location ? t("assistant.location.on") : t("assistant.location.use")}
           </button>
           <button
             type="button"
@@ -262,12 +261,12 @@ export function ChatWindow() {
             disabled={messages.length === 1 || pending}
             className="min-h-11 rounded-full px-4 text-sm font-medium disabled:opacity-40"
           >
-            New chat
+            {t("assistant.newChat")}
           </button>
         </div>
         {locationNote && (
           <p className="w-full text-xs" role="status" style={{ color: "var(--glass-text-muted)" }}>
-            {locationNote}
+            {t(locationNote)}
           </p>
         )}
       </GlassPanel>
@@ -280,7 +279,7 @@ export function ChatWindow() {
           {messages.map((message) => (
             <MessageBubble key={message.id} message={message} />
           ))}
-          {pending && <TypingIndicator status={progress || undefined} />}
+          {pending && <TypingIndicator status={progress ? backendText(language, progress) : undefined} />}
         </ol>
         <div ref={endOfMessages} />
       </GlassPanel>
@@ -296,11 +295,11 @@ export function ChatWindow() {
             <p className="truncate font-medium">{attachment.file.name}</p>
             <label className="flex min-h-11 items-center gap-2 text-xs">
               <input type="checkbox" checked={moreDetail} onChange={(event) => setMoreDetail(event.target.checked)} className="size-4" />
-              For a flood check, also count people and vehicles (slower, uses more credit)
+              {t("assistant.attach.detail")}
             </label>
           </div>
           <button type="button" onClick={removeAttachment} className="min-h-11 rounded-full px-4 text-sm font-medium">
-            Remove
+            {t("assistant.attach.remove")}
           </button>
         </GlassPanel>
       )}
@@ -315,7 +314,7 @@ export function ChatWindow() {
       >
         <GlassPanel className="flex-1 px-4 py-2">
           <label htmlFor="chat-input" className="sr-only">
-            Message to the AI Agent Flood Assistant
+            {t("assistant.inputLabel")}
           </label>
           <textarea
             id="chat-input"
@@ -333,10 +332,10 @@ export function ChatWindow() {
             readOnly={voiceActive}
             placeholder={
               voice.status === "listening"
-                ? "Listening…"
+                ? t("assistant.placeholderListening")
                 : attachment
-                  ? "Ask anything about it, e.g. what does the sign say? (or just send it for a flood check)"
-                  : "Ask about floods, evacuation or contacts…"
+                  ? t("assistant.placeholderPhoto")
+                  : t("assistant.placeholder")
             }
             className="max-h-32 min-h-11 w-full resize-none bg-transparent py-2.5 text-sm outline-none placeholder:text-current placeholder:opacity-60"
             style={{ fieldSizing: "content" } as React.CSSProperties}
@@ -359,7 +358,7 @@ export function ChatWindow() {
         <button
           type="submit"
           disabled={pending || voiceActive || (!draft.trim() && !attachment)}
-          aria-label="Send message"
+          aria-label={t("assistant.send")}
           className="flex size-12 shrink-0 items-center justify-center rounded-full bg-[var(--glass-accent)] text-white shadow-lg disabled:opacity-40"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -371,24 +370,24 @@ export function ChatWindow() {
       {/* What the microphone is doing, or why it stopped. Typing always works. */}
       {attachError ? (
         <p className="text-center text-sm" role="alert">
-          {attachError}
+          {t(attachError)}
         </p>
       ) : voice.error ? (
         <p className="text-center text-sm" role="alert">
-          {voice.error}
+          {t(voice.error)}
         </p>
       ) : voiceActive ? (
         <p className="text-center text-sm" role="status">
           {voice.status === "listening"
-            ? "Listening… tap the red button when you are done. You can then fix the text before sending."
+            ? t("assistant.voice.listening")
             : voice.status === "processing"
-              ? "Turning your speech into text…"
-              : "Starting the microphone…"}
+              ? t("assistant.voice.processing")
+              : t("assistant.voice.starting")}
         </p>
       ) : null}
 
       <p className="text-center text-xs" style={{ color: "var(--glass-text-muted)" }}>
-        Not an official warning. In an emergency call 911 or your local DRRMO.
+        {t("assistant.disclaimer")}
       </p>
     </div>
   )

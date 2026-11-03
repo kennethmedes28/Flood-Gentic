@@ -2,6 +2,9 @@
 
 import { useRef } from "react"
 
+import { useT } from "@/context/LanguageContext"
+import type { MessageKey } from "@/i18n/messages"
+
 import type { VoiceStatus } from "@/hooks/useVoiceTranscription"
 import { cn } from "@/lib/utils"
 
@@ -23,9 +26,9 @@ type InputModeButtonProps = {
   locked?: boolean
 }
 
-const OPTIONS: { mode: InputMode; label: string; hint: string }[] = [
-  { mode: "voice", label: "Voice", hint: "Speak your question" },
-  { mode: "media", label: "Photo", hint: "Ask anything about a picture" },
+const OPTIONS: { mode: InputMode; label: MessageKey; hint: MessageKey }[] = [
+  { mode: "voice", label: "input.voice", hint: "input.voiceHint" },
+  { mode: "media", label: "input.photo", hint: "input.photoHint" },
 ]
 
 /** A camera icon for the photo mode. */
@@ -60,6 +63,7 @@ export function InputModeButton({
   disabled = false,
   locked = false,
 }: InputModeButtonProps) {
+  const t = useT()
   const fileInput = useRef<HTMLInputElement>(null)
 
   function pickMode(next: InputMode) {
@@ -76,8 +80,8 @@ export function InputModeButton({
           type="button"
           onClick={() => fileInput.current?.click()}
           disabled={disabled}
-          aria-label="Choose a photo and ask about it"
-          title="Choose a photo and ask about it"
+          aria-label={t("input.choosePhoto")}
+          title={t("input.choosePhoto")}
           className="glass-panel relative flex size-12 shrink-0 items-center justify-center !rounded-full shadow-lg disabled:opacity-40"
         >
           <CameraIcon />
@@ -89,7 +93,7 @@ export function InputModeButton({
         type="button"
         onClick={() => pickMode(mode === "voice" ? "media" : "voice")}
         disabled={disabled || locked}
-        aria-label={mode === "voice" ? "Switch to photo" : "Switch to voice"}
+        aria-label={mode === "voice" ? t("input.switchToPhoto") : t("input.switchToVoice")}
         className="absolute -top-1 -right-1 flex size-6 items-center justify-center rounded-full bg-[var(--glass-accent)] text-white shadow disabled:hidden"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -105,7 +109,7 @@ export function InputModeButton({
             "group-hover/mode:visible group-hover/mode:opacity-100 group-focus-within/mode:visible group-focus-within/mode:opacity-100"
           )}
         >
-          <div role="group" aria-label="Input type" className="help-dialog flex w-56 flex-col gap-1 p-2">
+          <div role="group" aria-label={t("input.group")} className="help-dialog flex w-56 flex-col gap-1 p-2">
             {OPTIONS.map((option) => (
               <button
                 key={option.mode}
@@ -114,8 +118,8 @@ export function InputModeButton({
                 aria-pressed={mode === option.mode}
                 className="min-h-11 rounded-xl px-3 py-1.5 text-left text-sm aria-pressed:bg-[var(--glass-accent)] aria-pressed:text-white aria-pressed:[text-shadow:none]"
               >
-                <span className="block font-semibold">{option.label}</span>
-                <span className="block text-xs opacity-80">{option.hint}</span>
+                <span className="block font-semibold">{t(option.label)}</span>
+                <span className="block text-xs opacity-80">{t(option.hint)}</span>
               </button>
             ))}
           </div>

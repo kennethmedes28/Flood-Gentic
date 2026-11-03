@@ -6,10 +6,13 @@ import { useEffect, useRef, useState } from "react"
 
 import { HelpDialog } from "@/components/shell/HelpDialog"
 import { useHand, type Hand } from "@/context/HandContext"
-import { useIconSize, type IconSize } from "@/context/IconSizeContext"
+import { useIconSize } from "@/context/IconSizeContext"
+import { useLanguage } from "@/context/LanguageContext"
 import { useLook, type Look } from "@/context/LookContext"
 import { useTextSize, type TextSize } from "@/context/TextSizeContext"
 import { useDraggable } from "@/hooks/useDraggable"
+import { LANGUAGES, LANGUAGE_NAMES, type Language } from "@/i18n/define"
+import type { MessageKey } from "@/i18n/messages"
 
 /** The menu is as wide as this many rem, so it grows with the text size; it never gets wider than the screen. */
 const MENU_WIDTH_REM = 16.25
@@ -18,33 +21,26 @@ const GAP = 8
 /** The menu never gets shorter than this, so it stays usable on a very small screen (it then scrolls). */
 const MIN_MENU_HEIGHT = 160
 
-const HANDS: { value: Hand; label: string }[] = [
-  { value: "left", label: "Left" },
-  { value: "right", label: "Right" },
+const HANDS: { value: Hand; label: MessageKey }[] = [
+  { value: "left", label: "nav.left" },
+  { value: "right", label: "nav.right" },
 ]
 
-const TEXT_SIZES: { value: TextSize; label: string }[] = [
-  { value: "small", label: "Small" },
-  { value: "default", label: "Default" },
-  { value: "large", label: "Large" },
-  { value: "xlarge", label: "Extra large" },
+const SIZES: { value: TextSize; label: MessageKey }[] = [
+  { value: "small", label: "nav.size.small" },
+  { value: "default", label: "nav.size.default" },
+  { value: "large", label: "nav.size.large" },
+  { value: "xlarge", label: "nav.size.xlarge" },
 ]
 
-const ICON_SIZES: { value: IconSize; label: string }[] = [
-  { value: "small", label: "Small" },
-  { value: "default", label: "Default" },
-  { value: "large", label: "Large" },
-  { value: "xlarge", label: "Extra large" },
+const CURSOR_STATES: { value: "on" | "off"; label: MessageKey }[] = [
+  { value: "on", label: "nav.on" },
+  { value: "off", label: "nav.off" },
 ]
 
-const CURSOR_STATES: { value: "on" | "off"; label: string }[] = [
-  { value: "on", label: "On" },
-  { value: "off", label: "Off" },
-]
-
-const LOOKS: { value: Look; label: string }[] = [
-  { value: "default", label: "Default" },
-  { value: "cyberpunk", label: "Cyberpunk" },
+const LOOKS: { value: Look; label: MessageKey }[] = [
+  { value: "default", label: "nav.themeDefault" },
+  { value: "cyberpunk", label: "nav.themeCyberpunk" },
 ]
 
 /**
@@ -53,14 +49,14 @@ const LOOKS: { value: Look; label: string }[] = [
  */
 const HAZARD_MAP_URL = "https://noah.up.edu.ph/know-your-hazards/flood"
 
-const PAGES = [
-  { href: "/", label: "Live view" },
-  { href: "/flood", label: "Flood level" },
-  { href: "/analytics", label: "Macro Weather Analytics" },
-  { href: "/satellite", label: "Live PAGASA Satellite View" },
-  { href: "/evacuation", label: "Evacuation" },
-  { href: "/assistant", label: "AI Agent Flood Assistant" },
-  { href: "/contacts", label: "Contacts" },
+const PAGES: { href: string; label: MessageKey }[] = [
+  { href: "/", label: "nav.liveView" },
+  { href: "/flood", label: "nav.floodLevel" },
+  { href: "/analytics", label: "nav.analytics" },
+  { href: "/satellite", label: "nav.satellite" },
+  { href: "/evacuation", label: "nav.evacuation" },
+  { href: "/assistant", label: "nav.assistant" },
+  { href: "/contacts", label: "nav.contacts" },
 ]
 
 /**
@@ -73,6 +69,7 @@ export function FloatingNav() {
   const { look, setLook } = useLook()
   const { size: textSize, setSize: setTextSize } = useTextSize()
   const { size: iconSize, setSize: setIconSize, pixels: buttonSize } = useIconSize()
+  const { language, setLanguage, t } = useLanguage()
   const [open, setOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const menuButton = useRef<HTMLButtonElement>(null)
@@ -121,7 +118,7 @@ export function FloatingNav() {
           left: position.x,
           top: position.y,
         }}
-        aria-label="Navigation menu"
+        aria-label={t("nav.menuButton")}
         aria-haspopup="menu"
         aria-expanded={open}
         {...handlers}
@@ -156,7 +153,7 @@ export function FloatingNav() {
               : { top: position.y + buttonSize + GAP }),
           }}
           role="menu"
-          aria-label="Pages"
+          aria-label={t("nav.pages")}
         >
           {PAGES.map((page) => (
             <Link
@@ -167,7 +164,7 @@ export function FloatingNav() {
               onClick={() => setOpen(false)}
               className="flex min-h-11 items-center rounded-full px-4 text-sm font-medium aria-[current=page]:bg-[var(--glass-accent)] aria-[current=page]:text-white aria-[current=page]:[text-shadow:none]"
             >
-              {page.label}
+              {t(page.label)}
             </Link>
           ))}
 
@@ -179,11 +176,11 @@ export function FloatingNav() {
             onClick={() => setOpen(false)}
             className="flex min-h-11 items-center justify-between rounded-full px-4 text-sm font-medium"
           >
-            Hazard map
+            {t("nav.hazardMap")}
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M7 17L17 7M9 7h8v8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <span className="sr-only">(opens in a new tab)</span>
+            <span className="sr-only">{t("nav.opensNewTab")}</span>
           </a>
 
           <button
@@ -195,7 +192,7 @@ export function FloatingNav() {
             }}
             className="flex min-h-11 items-center justify-between rounded-full px-4 text-sm font-medium"
           >
-            Help and access guide
+            {t("nav.help")}
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
               <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -203,16 +200,17 @@ export function FloatingNav() {
           </button>
 
           {/* Settings. Picking an option keeps the menu open. */}
-          <OptionRow label="Theme" options={LOOKS} value={look} onChange={setLook} />
-          <OptionRow label="Text size" options={TEXT_SIZES} value={textSize} onChange={setTextSize} twoColumns />
-          <OptionRow label="Icon size" options={ICON_SIZES} value={iconSize} onChange={setIconSize} twoColumns />
+          <OptionRow label={t("nav.language")} options={LANGUAGES.map((value) => ({ value, label: LANGUAGE_NAMES[value] }))} value={language} onChange={(value: Language) => setLanguage(value)} />
+          <OptionRow label={t("nav.theme")} options={LOOKS.map((o) => ({ value: o.value, label: t(o.label) }))} value={look} onChange={setLook} />
+          <OptionRow label={t("nav.textSize")} options={SIZES.map((o) => ({ value: o.value, label: t(o.label) }))} value={textSize} onChange={setTextSize} twoColumns />
+          <OptionRow label={t("nav.iconSize")} options={SIZES.map((o) => ({ value: o.value, label: t(o.label) }))} value={iconSize} onChange={setIconSize} twoColumns />
           <OptionRow
-            label="Hand cursor"
-            options={CURSOR_STATES}
+            label={t("nav.handCursor")}
+            options={CURSOR_STATES.map((o) => ({ value: o.value, label: t(o.label) }))}
             value={handEnabled ? "on" : "off"}
             onChange={(state) => setHandEnabled(state === "on")}
           />
-          {handEnabled && <OptionRow label="Cursor hand" options={HANDS} value={hand} onChange={setHand} />}
+          {handEnabled && <OptionRow label={t("nav.cursorHand")} options={HANDS.map((o) => ({ value: o.value, label: t(o.label) }))} value={hand} onChange={setHand} />}
         </nav>
       )}
 

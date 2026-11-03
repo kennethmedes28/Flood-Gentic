@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 
+import type { MessageKey } from "@/i18n/messages"
 import { authConfigured, getSupabase } from "@/lib/supabase"
 
 /** The ways to sign in. Each one has to be switched on in Supabase (Authentication, Providers). */
@@ -21,8 +22,8 @@ type AuthValue = {
   /** Opens the provider's sign-in page (Google or Facebook) and comes back to this page afterwards. */
   signIn: (provider: SignInProvider) => Promise<void>
   signOut: () => Promise<void>
-  /** A plain sentence when sign-in failed, or "". */
-  error: string
+  /** The interface text to show when sign-in failed (a key in src/i18n/messages), or "". */
+  error: MessageKey | ""
 }
 
 const EMPTY: AuthValue = {
@@ -42,7 +43,7 @@ const AuthContext = createContext<AuthValue>(EMPTY)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthValue["status"]>(authConfigured ? "loading" : "unconfigured")
   const [displayName, setDisplayName] = useState<string | null>(null)
-  const [error, setError] = useState("")
+  const [error, setError] = useState<MessageKey | "">("")
 
   useEffect(() => {
     const supabase = getSupabase()
@@ -67,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       provider,
       options: { redirectTo: `${window.location.origin}/assistant` },
     })
-    if (failure) setError("Sign-in could not start. Please try again in a moment.")
+    if (failure) setError("auth.error.start")
   }, [])
 
   const signOut = useCallback(async () => {

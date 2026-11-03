@@ -2,61 +2,18 @@
 
 import { useEffect, useRef } from "react"
 
-/** The guide: a heading and a few short points for each part of the app. */
-const SECTIONS: { title: string; points: string[] }[] = [
-  {
-    title: "Made for VR and Meta glasses",
-    points: [
-      "Flood-Gentic is designed as a futuristic heads-up display for VR headsets and Meta glasses: a see-through glass look, a 3D hand with a laser pointer, voice input, large touch targets, and text and icons you can scale. It also works in any modern browser on a phone, tablet or computer.",
-      "Hands-free: use the microphone button in the assistant to speak your question. The laser hand points and clicks; the slider on the right makes the panels clearer so you can see the world behind them.",
-    ],
-  },
-  {
-    title: "Getting around",
-    points: [
-      "Tap the round logo button to open the menu. Drag it anywhere you like, or focus it and use the arrow keys to move it.",
-      "Pick a page from the menu. “Hazard map” opens the official UP NOAH map in a new tab.",
-      "Press Esc, or tap outside the menu, to close it.",
-    ],
-  },
-  {
-    title: "Making it easier to see",
-    points: [
-      "The slider on the right edge sets how frosted the panels are: up for more frost, down for clearer. With the keyboard, focus it and use the arrow keys.",
-      "Theme, in the menu, switches between Default and Cyberpunk.",
-      "Text size, in the menu, makes all the text smaller or larger: Small, Default, Large or Extra large. Default follows your browser or device text size. It is remembered on this device.",
-      "Icon size, in the menu, makes the round logo button smaller or larger, separately from the text. Make it small if it covers part of the page, or large to find and tap it more easily. The menu always stays on the screen and scrolls if it is long.",
-    ],
-  },
-  {
-    title: "The hand cursor",
-    points: [
-      "On most pages the pointer is a 3D hand with a red laser dot. The dot is where you point and click. Choose the Left or Right hand in the menu.",
-      "Prefer the normal pointer? Set “Hand cursor” to Off in the menu. It is remembered on this device.",
-      "Hold Alt and press the arrow keys to move the hand out of the way.",
-      "The PAGASA satellite page uses your normal pointer.",
-    ],
-  },
-  {
-    title: "Resizing the view",
-    points: [
-      "On the dashboard and the AI Agent Flood Assistant, drag a corner bracket toward the centre to shrink the view, and drag it back out to enlarge it.",
-      "With the keyboard: Tab to a corner, press the arrow keys to move it, and press Enter or Esc to restore the full size. Double-clicking a corner restores it too.",
-    ],
-  },
-  {
-    title: "Reduced motion",
-    points: ["If your device is set to reduce motion, the opening animation is skipped."],
-  },
-  {
-    title: "Please note",
-    points: [
-      "The weather now and the forecast come from Tomorrow.io. Rain, river flow and the flood risk level are from the latest recorded day, refreshed four times a day (today so far, until the day ends). None of it is an official flood warning.",
-      "For official warnings, see pagasa.dost.gov.ph and ndrrmc.gov.ph. In an emergency, call 911 and your local DRRMO.",
-      "The assistant needs a Google or Facebook sign-in. To request access (including to be allowed to sign in, or for the project's Supabase data), or to ask for your data to be deleted, email kennethmedes28@gmail.com. See /privacy and /data-deletion.",
-      "Photos: attach a picture and ask anything about it. Questions about flooding also get an automatic flood check. A photo with no question gets the flood check by default.",
-    ],
-  },
+import { useT } from "@/context/LanguageContext"
+import type { MessageKey } from "@/i18n/messages"
+
+/** The guide: a heading and a few short points for each part of the app (keys of the texts in src/i18n/messages/shell.ts). */
+const SECTIONS: { title: MessageKey; points: MessageKey[] }[] = [
+  { title: "help.vr.title", points: ["help.vr.1", "help.vr.2"] },
+  { title: "help.around.title", points: ["help.around.1", "help.around.2", "help.around.3"] },
+  { title: "help.see.title", points: ["help.see.1", "help.see.2", "help.see.3", "help.see.4", "help.see.5"] },
+  { title: "help.hand.title", points: ["help.hand.1", "help.hand.2", "help.hand.3", "help.hand.4"] },
+  { title: "help.resize.title", points: ["help.resize.1", "help.resize.2"] },
+  { title: "help.motion.title", points: ["help.motion.1"] },
+  { title: "help.note.title", points: ["help.note.1", "help.note.2", "help.note.3", "help.note.4"] },
 ]
 
 type HelpDialogProps = {
@@ -74,6 +31,7 @@ type HelpDialogProps = {
  * inside the guide, Esc closes it, and focus goes back to the menu button.
  */
 export function HelpDialog({ open, onClose, returnFocusTo }: HelpDialogProps) {
+  const t = useT()
   const dialogRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -134,9 +92,9 @@ export function HelpDialog({ open, onClose, returnFocusTo }: HelpDialogProps) {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 id="help-title" className="text-lg font-semibold">
-              Help and access guide
+              {t("help.title")}
             </h2>
-            <p className="help-muted mt-1 text-sm">How to move around and adjust the app so it works for you.</p>
+            <p className="help-muted mt-1 text-sm">{t("help.subtitle")}</p>
           </div>
           <button
             ref={closeButtonRef}
@@ -144,17 +102,17 @@ export function HelpDialog({ open, onClose, returnFocusTo }: HelpDialogProps) {
             onClick={onClose}
             className="help-close min-h-11 shrink-0 rounded-full px-4 text-sm font-medium"
           >
-            Close
+            {t("help.close")}
           </button>
         </div>
 
         <div className="mt-4 flex flex-col gap-4">
           {SECTIONS.map((section) => (
-            <section key={section.title} aria-label={section.title}>
-              <h3 className="text-sm font-semibold">{section.title}</h3>
+            <section key={section.title} aria-label={t(section.title)}>
+              <h3 className="text-sm font-semibold">{t(section.title)}</h3>
               <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-relaxed">
                 {section.points.map((point) => (
-                  <li key={point}>{point}</li>
+                  <li key={point}>{t(point)}</li>
                 ))}
               </ul>
             </section>

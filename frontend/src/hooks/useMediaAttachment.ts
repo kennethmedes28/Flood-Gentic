@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 
+import type { MessageKey } from "@/i18n/messages"
+
 /** A photo waiting to be checked, with a temporary address for showing a preview of it. */
 export type Attachment = { file: File; url: string }
 
@@ -14,11 +16,11 @@ export type Attachment = { file: File; url: string }
  */
 export function useMediaAttachment() {
   const [attachment, setAttachment] = useState<Attachment | null>(null)
-  const [attachError, setAttachError] = useState("")
+  const [attachError, setAttachError] = useState<MessageKey | "">("")
 
   function attachFile(file: File) {
     if (!file.type.startsWith("image/")) {
-      setAttachError("Please choose a photo.")
+      setAttachError("error.photoNotPhoto")
       return
     }
     setAttachError("")

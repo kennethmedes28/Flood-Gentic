@@ -6,6 +6,7 @@
  * suggested evacuation center.
  */
 
+import type { MessageKey } from "@/i18n/messages"
 import { authHeaders } from "@/lib/supabase"
 
 // A trailing slash is removed, so "https://api.example.com/" does not turn "/chat" into "//chat".
@@ -23,13 +24,27 @@ export type ChatReply = {
   blocked: boolean
 }
 
-/** An error whose message is already safe and friendly to show to the user. */
+/**
+ * An error whose message is safe and friendly to show to the user. When the text is one of ours it is a message `key`, which the
+ * page translates into the chosen language when it shows it; a text the backend wrote (a limit that is used up, a validation
+ * problem) is passed through as it is, because the backend already writes it in both languages or in the person's language.
+ */
 export class ChatError extends Error {
+  /** The key of the interface text, when this error is one of ours. */
+  key?: MessageKey
   /** True when the backend refused because nobody is signed in, so the page can point to the sign-in button. */
   needsSignIn = false
+
+  constructor(textOrKey: MessageKey | { text: string }) {
+    super(typeof textOrKey === "string" ? textOrKey : textOrKey.text)
+    if (typeof textOrKey === "string") this.key = textOrKey
+  }
 }
 
-const SIGN_IN_MESSAGE = "Please sign in with Google or Facebook to use the assistant. If you are in danger, call 911."
+/** The text to show for an error from this module or from the photo helper, in the chosen language. */
+export function errorText(error: { key?: MessageKey; message: string }, t: (key: MessageKey) => string): string {
+  return error.key ? t(error.key) : error.message
+}
 
 /** Turn FastAPI's validation error (a string or a list of problems) into one sentence. */
 function readDetail(detail: unknown): string | null {
@@ -60,29 +75,30 @@ export type ChatProgress = {
   topics: string[]
 }
 
-const NETWORK_MESSAGE = "I can't reach the assistant right now. Please check your connection and try again."
 
 /** Turn a failed answer into a friendly ChatError. Does nothing when the answer is fine. */
 async function throwIfFailed(response: Response): Promise<void> {
   if (response.ok) return
   if (response.status === 401) {
-    const error = new ChatError(SIGN_IN_MESSAGE)
+    const error = new ChatError("error.signIn")
     error.needsSignIn = true
     throw error
   }
   if (response.status === 429) {
     // A spending cap says what was used up and when it starts again; the speed limit just says to wait.
     const body = await response.json().catch(() => null)
-    throw new ChatError(readDetail(body?.detail) ?? "You're sending messages too fast. Please wait a moment and try again.")
+    const detail = readDetail(body?.detail)
+    throw detail ? new ChatError({ text: detail }) : new ChatError("error.tooFast")
   }
   if (response.status === 413) {
-    throw new ChatError("That file is too large. Please choose a smaller one.")
+    throw new ChatError("error.tooLarge")
   }
   if (response.status === 422) {
     const body = await response.json().catch(() => null)
-    throw new ChatError(readDetail(body?.detail) ?? "That message couldn't be sent. Please change it and try again.")
+    const detail = readDetail(body?.detail)
+    throw detail ? new ChatError({ text: detail }) : new ChatError("error.generic")
   }
-  throw new ChatError("The assistant is having trouble right now. Please try again in a moment.")
+  throw new ChatError("error.trouble")
 }
 
 /** POST the message to one of the chat endpoints and turn a failed answer into a friendly ChatError. */
@@ -101,7 +117,7 @@ async function postMessage(path: string, options: SendOptions, signal?: AbortSig
       signal,
     })
   } catch {
-    throw new ChatError(NETWORK_MESSAGE)
+    throw new ChatError("error.network")
   }
 
   await throwIfFailed(response)
@@ -146,7 +162,7 @@ export async function sendChatMessageStream(
 
 /** Read the lines of a chat stream: progress is passed on, and the reply is returned. */
 async function readReplyStream(response: Response, onProgress: (progress: ChatProgress) => void, signal?: AbortSignal): Promise<ChatReply> {
-  if (!response.body) throw new ChatError(NETWORK_MESSAGE)
+  if (!response.body) throw new ChatError("error.network")
 
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffered = ""
@@ -158,7 +174,7 @@ async function readReplyStream(response: Response, onProgress: (progress: ChatPr
     const event = JSON.parse(line) as StreamEvent
     if (event.type === "status") onProgress({ label: event.label, topics: event.topics ?? [] })
     else if (event.type === "reply") reply = toReply(event)
-    else if (event.type === "error") throw new ChatError(event.message)
+    else if (event.type === "error") throw new ChatError({ text: event.message })
   }
 
   try {
@@ -174,9 +190,9 @@ async function readReplyStream(response: Response, onProgress: (progress: ChatPr
   } catch (error) {
     if (error instanceof ChatError) throw error
     if (signal?.aborted) throw error
-    throw new ChatError(NETWORK_MESSAGE)
+    throw new ChatError("error.network")
   }
 
-  if (!reply) throw new ChatError("The assistant couldn't finish. Please try again in a moment.")
+  if (!reply) throw new ChatError("error.couldntFinish")
   return reply
 }

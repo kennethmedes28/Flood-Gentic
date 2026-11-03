@@ -1,3 +1,5 @@
+import type { MessageKey } from "@/i18n/messages"
+
 /**
  * Getting a photo ready to be sent with a question about it (any question; a flood question also gets the automatic flood check).
  *
@@ -12,13 +14,13 @@ const JPEG_QUALITY = 0.8
 /** The sorts of file the picker accepts. */
 export const MEDIA_ACCEPT = "image/*"
 
-export class MediaCheckError extends Error {}
-
-/** What the user is shown for each thing that can go wrong. */
-const MESSAGES = {
-  unreadable: "That file couldn't be opened. Try a different photo.",
-  notMedia: "Please choose a photo.",
+/** An error from preparing a photo. `key` is the interface text to show (translated by the page). */
+export class MediaCheckError extends Error {
+  constructor(readonly key: MessageKey) {
+    super(key)
+  }
 }
+
 
 /** Draw a picture onto a canvas of at most MAX_WIDTH and return it as a JPEG. */
 function canvasToJpeg(source: CanvasImageSource, width: number, height: number): Promise<Blob> {
@@ -29,7 +31,7 @@ function canvasToJpeg(source: CanvasImageSource, width: number, height: number):
   canvas.getContext("2d")?.drawImage(source, 0, 0, canvas.width, canvas.height)
 
   return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new MediaCheckError(MESSAGES.unreadable))), "image/jpeg", JPEG_QUALITY)
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new MediaCheckError("error.photoUnreadable"))), "image/jpeg", JPEG_QUALITY)
   })
 }
 
@@ -43,7 +45,7 @@ async function photoToJpeg(file: File): Promise<Blob> {
     return await canvasToJpeg(image, image.naturalWidth, image.naturalHeight)
   } catch (error) {
     if (error instanceof MediaCheckError) throw error
-    throw new MediaCheckError(MESSAGES.unreadable)
+    throw new MediaCheckError("error.photoUnreadable")
   } finally {
     URL.revokeObjectURL(url)
   }
@@ -54,13 +56,13 @@ function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "")
-    reader.onerror = () => reject(new MediaCheckError(MESSAGES.unreadable))
+    reader.onerror = () => reject(new MediaCheckError("error.photoUnreadable"))
     reader.readAsDataURL(blob)
   })
 }
 
 /** Turn a photo into one small JPEG, as base64 text, ready to send with a chat message. */
 export async function preparePhotoForChat(file: File): Promise<string> {
-  if (!file.type.startsWith("image/")) throw new MediaCheckError(MESSAGES.notMedia)
+  if (!file.type.startsWith("image/")) throw new MediaCheckError("error.photoNotPhoto")
   return blobToBase64(await photoToJpeg(file))
 }

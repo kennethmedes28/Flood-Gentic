@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react"
 
+import { useT } from "@/context/LanguageContext"
 import { useResizableFrame, type Corner } from "@/hooks/useResizableFrame"
+import type { MessageKey } from "@/i18n/messages"
 import { cn } from "@/lib/utils"
 
 /** Size of the area a finger or mouse can grab at each corner, in pixels. */
@@ -11,31 +13,27 @@ const HANDLE_SIZE = 44
 const HANDLE_OFFSET = 8
 
 /** For each corner: its look (the bracket's two sides), where it sits, and its mouse cursor. */
-const CORNERS: { corner: Corner; label: string; bracket: string; place: string; cursor: string }[] = [
+const CORNERS: { corner: Corner; bracket: string; place: string; cursor: string }[] = [
   {
     corner: "top-left",
-    label: "top left",
     bracket: "rounded-tl-lg border-t-2 border-l-2 origin-top-left",
     place: "items-start justify-start",
     cursor: "cursor-nwse-resize",
   },
   {
     corner: "top-right",
-    label: "top right",
     bracket: "rounded-tr-lg border-t-2 border-r-2 origin-top-right",
     place: "items-start justify-end",
     cursor: "cursor-nesw-resize",
   },
   {
     corner: "bottom-left",
-    label: "bottom left",
     bracket: "rounded-bl-lg border-b-2 border-l-2 origin-bottom-left",
     place: "items-end justify-start",
     cursor: "cursor-nesw-resize",
   },
   {
     corner: "bottom-right",
-    label: "bottom right",
     bracket: "rounded-br-lg border-r-2 border-b-2 origin-bottom-right",
     place: "items-end justify-end",
     cursor: "cursor-nwse-resize",
@@ -65,6 +63,7 @@ type ResizableFrameProps = {
  * The frame is fixed to the window and scrolls inside, so the page's own scrolling happens here instead.
  */
 export function ResizableFrame({ storageKey, contentClassName, fillHeight = false, children }: ResizableFrameProps) {
+  const t = useT()
   const { insets, viewport, width, height, scale, isFull, dragging, cornerProps } = useResizableFrame(storageKey)
 
   // A shrunk element still takes up its original size, so the frame would scroll through empty space. The content's
@@ -118,15 +117,15 @@ export function ResizableFrame({ storageKey, contentClassName, fillHeight = fals
         </div>
       </div>
 
-      {CORNERS.map(({ corner, label, bracket, place, cursor }) => {
+      {CORNERS.map(({ corner, bracket, place, cursor }) => {
         const atTop = corner.startsWith("top")
         const atLeft = corner.endsWith("left")
         return (
           <button
             key={corner}
             type="button"
-            aria-label={`Resize the frame from the ${label} corner. Drag toward the centre to shrink it, use the arrow keys, or press Enter to restore it.`}
-            title="Drag toward the centre to shrink · double-click to restore"
+            aria-label={t("frame.resizeLabel", { corner: t(`corner.${corner}` as MessageKey) })}
+            title={t("frame.resizeTitle")}
             className={cn("group fixed z-30 flex touch-none bg-transparent p-1 select-none focus-visible:outline-2 focus-visible:outline-[var(--hud-corner)]", place, cursor)}
             style={{
               width: HANDLE_SIZE,

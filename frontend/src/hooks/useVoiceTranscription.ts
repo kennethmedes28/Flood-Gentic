@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { API_URL } from "@/lib/chat-api"
+import type { MessageKey } from "@/i18n/messages"
 import { authConfigured, getAccessToken } from "@/lib/supabase"
 
 /** What the voice input is doing. */
@@ -21,20 +22,21 @@ const FINISH_TIMEOUT_MS = 8000
 /** Audio recorded while the connection opens is kept (about 4 s at most) and sent once it is ready. */
 const MAX_QUEUED_FRAMES = 50
 
+/** The interface text (keys of src/i18n/messages/assistant.ts) for each thing that can go wrong; the page translates it. */
 const MESSAGES = {
-  insecure: "Voice input needs a secure page (https) or localhost. You can still type your question.",
-  unsupported: "This browser can't record voice. You can still type your question.",
-  denied: "The microphone is blocked. Allow it in your browser's site settings, then try again.",
-  noMicrophone: "No microphone was found. Check that one is connected, or type your question.",
-  micBusy: "The microphone is being used by another app. Close it and try again.",
-  micFailed: "The microphone couldn't start. Please try again, or type your question.",
-  server: "I can't reach the voice service right now. You can still type your question.",
-  signIn: "Please sign in with Google or Facebook to use voice. You can still type your question.",
-  silence: "I didn't hear anything. Try again, a little closer to the microphone.",
-}
+  insecure: "error.voiceInsecure",
+  unsupported: "error.voiceUnsupported",
+  denied: "error.voiceDenied",
+  noMicrophone: "error.voiceNoMic",
+  micBusy: "error.voiceBusy",
+  micFailed: "error.voiceFailed",
+  server: "error.voiceServer",
+  signIn: "error.voiceSignIn",
+  silence: "error.voiceSilence",
+} as const satisfies Record<string, MessageKey>
 
 /** Turn the error from getUserMedia into one friendly sentence. */
-function microphoneMessage(error: unknown): string {
+function microphoneMessage(error: unknown): MessageKey {
   const name = error instanceof DOMException ? error.name : ""
   if (name === "NotAllowedError" || name === "SecurityError") return MESSAGES.denied
   if (name === "NotFoundError" || name === "OverconstrainedError") return MESSAGES.noMicrophone
@@ -70,7 +72,7 @@ type Options = {
  */
 export function useVoiceTranscription({ onPartial, onFinal }: Options) {
   const [status, setStatus] = useState<VoiceStatus>("idle")
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<MessageKey | null>(null)
 
   const session = useRef<Session | null>(null)
   const statusRef = useRef<VoiceStatus>("idle")
@@ -107,7 +109,7 @@ export function useVoiceTranscription({ onPartial, onFinal }: Options) {
 
   /** Show a message and end the session. */
   const fail = useCallback(
-    (message: string) => {
+    (message: MessageKey) => {
       setError(message)
       teardown()
     },
