@@ -7,6 +7,7 @@ import { HandCursor } from "@/components/shell/HandCursor"
 import { CurrentCityProvider } from "@/context/CurrentCityContext"
 import { LookProvider } from "@/context/LookContext"
 import { HandProvider } from "@/context/HandContext"
+import { IconSizeProvider } from "@/context/IconSizeContext"
 import { GlassProvider } from "@/context/GlassContext"
 import { TextSizeProvider } from "@/context/TextSizeContext"
 import { ThemeProvider } from "@/context/ThemeProvider"
@@ -37,7 +38,9 @@ export default function RootLayout({
               <HandProvider>
                 <CurrentCityProvider>
                   <AuthProvider>
-                    <TextSizeProvider>{children}</TextSizeProvider>
+                    <TextSizeProvider>
+                      <IconSizeProvider>{children}</IconSizeProvider>
+                    </TextSizeProvider>
                   </AuthProvider>
                   <HandCursor />
                 </CurrentCityProvider>

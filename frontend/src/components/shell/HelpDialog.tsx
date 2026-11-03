@@ -5,6 +5,13 @@ import { useEffect, useRef } from "react"
 /** The guide: a heading and a few short points for each part of the app. */
 const SECTIONS: { title: string; points: string[] }[] = [
   {
+    title: "Made for VR and Meta glasses",
+    points: [
+      "Flood-Gentic is designed as a futuristic heads-up display for VR headsets and Meta glasses: a see-through glass look, a 3D hand with a laser pointer, voice input, large touch targets, and text and icons you can scale. It also works in any modern browser on a phone, tablet or computer.",
+      "Hands-free: use the microphone button in the assistant to speak your question. The laser hand points and clicks; the slider on the right makes the panels clearer so you can see the world behind them.",
+    ],
+  },
+  {
     title: "Getting around",
     points: [
       "Tap the round logo button to open the menu. Drag it anywhere you like, or focus it and use the arrow keys to move it.",
@@ -18,6 +25,7 @@ const SECTIONS: { title: string; points: string[] }[] = [
       "The slider on the right edge sets how frosted the panels are: up for more frost, down for clearer. With the keyboard, focus it and use the arrow keys.",
       "Theme, in the menu, switches between Default and Cyberpunk.",
       "Text size, in the menu, makes all the text smaller or larger: Small, Default, Large or Extra large. Default follows your browser or device text size. It is remembered on this device.",
+      "Icon size, in the menu, makes the round logo button smaller or larger, separately from the text. Make it small if it covers part of the page, or large to find and tap it more easily. The menu always stays on the screen and scrolls if it is long.",
     ],
   },
   {
@@ -45,7 +53,8 @@ const SECTIONS: { title: string; points: string[] }[] = [
     points: [
       "The weather now and the forecast come from Tomorrow.io. Rain, river flow and the flood risk level are from the latest recorded day, refreshed four times a day (today so far, until the day ends). None of it is an official flood warning.",
       "For official warnings, see pagasa.dost.gov.ph and ndrrmc.gov.ph. In an emergency, call 911 and your local DRRMO.",
-      "The assistant needs a Google or Facebook sign-in. To request access, or to ask for your data to be deleted, email kennethmedes28@gmail.com. See /privacy and /data-deletion.",
+      "The assistant needs a Google or Facebook sign-in. To request access (including to be allowed to sign in, or for the project's Supabase data), or to ask for your data to be deleted, email kennethmedes28@gmail.com. See /privacy and /data-deletion.",
+      "Photos: attach a picture and ask anything about it. Questions about flooding also get an automatic flood check. A photo with no question gets the flood check by default.",
     ],
   },
 ]

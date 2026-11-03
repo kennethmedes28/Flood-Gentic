@@ -6,12 +6,17 @@ import { useEffect, useRef, useState } from "react"
 
 import { HelpDialog } from "@/components/shell/HelpDialog"
 import { useHand, type Hand } from "@/context/HandContext"
+import { useIconSize, type IconSize } from "@/context/IconSizeContext"
 import { useLook, type Look } from "@/context/LookContext"
 import { useTextSize, type TextSize } from "@/context/TextSizeContext"
 import { useDraggable } from "@/hooks/useDraggable"
 
-const BUTTON_SIZE = 68
-const MENU_WIDTH = 260
+/** The menu is as wide as this many rem, so it grows with the text size; it never gets wider than the screen. */
+const MENU_WIDTH_REM = 16.25
+/** Space kept free between the menu and the edge of the screen, and between the menu and the button, in pixels. */
+const GAP = 8
+/** The menu never gets shorter than this, so it stays usable on a very small screen (it then scrolls). */
+const MIN_MENU_HEIGHT = 160
 
 const HANDS: { value: Hand; label: string }[] = [
   { value: "left", label: "Left" },
@@ -19,6 +24,13 @@ const HANDS: { value: Hand; label: string }[] = [
 ]
 
 const TEXT_SIZES: { value: TextSize; label: string }[] = [
+  { value: "small", label: "Small" },
+  { value: "default", label: "Default" },
+  { value: "large", label: "Large" },
+  { value: "xlarge", label: "Extra large" },
+]
+
+const ICON_SIZES: { value: IconSize; label: string }[] = [
   { value: "small", label: "Small" },
   { value: "default", label: "Default" },
   { value: "large", label: "Large" },
@@ -60,10 +72,11 @@ export function FloatingNav() {
   const { hand, setHand, enabled: handEnabled, setEnabled: setHandEnabled } = useHand()
   const { look, setLook } = useLook()
   const { size: textSize, setSize: setTextSize } = useTextSize()
+  const { size: iconSize, setSize: setIconSize, pixels: buttonSize } = useIconSize()
   const [open, setOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const menuButton = useRef<HTMLButtonElement>(null)
-  const { position, handlers, onArrowKey } = useDraggable(BUTTON_SIZE, () =>
+  const { position, handlers, onArrowKey } = useDraggable(buttonSize, () =>
     setOpen((current) => !current)
   )
 
@@ -80,8 +93,18 @@ export function FloatingNav() {
   // The menu only exists after a tap, so the window size is safe to read here
   // (this component is also rendered on the server, where there is no window).
   const opensUpwards = open && position.y > window.innerHeight / 2
-  // Keep the menu inside the screen horizontally.
-  const menuLeft = open ? Math.min(position.x, window.innerWidth - MENU_WIDTH - 8) : 0
+  // The menu is sized in rem (so it grows with the text size) but never wider than the screen. Keep it inside the screen
+  // horizontally, and keep it no taller than the free space on the side of the button it opens on, so that none of it is
+  // pushed off the screen: a longer menu scrolls inside its box instead.
+  const rootFontPx = open ? parseFloat(getComputedStyle(document.documentElement).fontSize) || 16 : 16
+  const menuWidth = open ? Math.min(MENU_WIDTH_REM * rootFontPx, window.innerWidth - 2 * GAP) : 0
+  const menuLeft = open ? Math.max(GAP, Math.min(position.x, window.innerWidth - menuWidth - GAP)) : 0
+  const menuMaxHeight = open
+    ? Math.max(
+        MIN_MENU_HEIGHT,
+        opensUpwards ? position.y - 2 * GAP : window.innerHeight - (position.y + buttonSize + GAP) - GAP
+      )
+    : 0
 
   return (
     <>
@@ -93,8 +116,8 @@ export function FloatingNav() {
         type="button"
         className="fixed z-50 flex cursor-grab touch-none items-center select-none active:cursor-grabbing justify-center overflow-hidden rounded-full shadow-lg focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-white"
         style={{
-          width: BUTTON_SIZE,
-          height: BUTTON_SIZE,
+          width: buttonSize,
+          height: buttonSize,
           left: position.x,
           top: position.y,
         }}
@@ -123,13 +146,14 @@ export function FloatingNav() {
 
       {open && (
         <nav
-          className="glass-panel fixed z-50 flex max-h-[calc(100svh-1rem)] flex-col overflow-y-auto p-2"
+          className="glass-panel fixed z-50 flex flex-col overflow-y-auto overscroll-contain p-2"
           style={{
-            width: MENU_WIDTH,
+            width: menuWidth,
+            maxHeight: menuMaxHeight,
             left: menuLeft,
             ...(opensUpwards
-              ? { bottom: window.innerHeight - position.y + 8 }
-              : { top: position.y + BUTTON_SIZE + 8 }),
+              ? { bottom: window.innerHeight - position.y + GAP }
+              : { top: position.y + buttonSize + GAP }),
           }}
           role="menu"
           aria-label="Pages"
@@ -181,6 +205,7 @@ export function FloatingNav() {
           {/* Settings. Picking an option keeps the menu open. */}
           <OptionRow label="Theme" options={LOOKS} value={look} onChange={setLook} />
           <OptionRow label="Text size" options={TEXT_SIZES} value={textSize} onChange={setTextSize} twoColumns />
+          <OptionRow label="Icon size" options={ICON_SIZES} value={iconSize} onChange={setIconSize} twoColumns />
           <OptionRow
             label="Hand cursor"
             options={CURSOR_STATES}

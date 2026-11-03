@@ -44,6 +44,7 @@ dev = [
     "pypdf>=6.21.3",
     "pytest>=8.0",
     "ragas>=0.4.3",
+    "torchvision>=0.18",  # pulled in by the notebook tools; listed so it comes from the same CPU index as torch
 ]
 
 # Railway has no GPU, so torch comes from PyTorch's CPU-only wheels on Linux (far smaller than the CUDA build).
@@ -54,3 +55,4 @@ explicit = true
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]

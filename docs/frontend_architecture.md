@@ -10,6 +10,7 @@ and an empty `components/ui` folder. The app is not scaffolded yet, so this docu
 - Emergency information reachable in one tap, before any chat is needed.
 - Bilingual (English / Filipino) from the start.
 - Always show where an answer came from and how fresh it is.
+- Designed for VR headsets and Meta glasses as a futuristic heads-up display (it also works in any modern browser): a see-through glass interface with a transparency slider, a 3D hand with a laser pointer as the cursor, voice input, large touch targets, and text and menu-button sizes that can be scaled separately.
 
 ## 2. Screens
 
@@ -125,6 +126,7 @@ sequenceDiagram
 - Language toggle visible on every page; chat replies in the language the user wrote in.
 - Official vs. community content is visually distinct everywhere it appears.
 - Keyboard navigable, semantic HTML, screen-reader labels on icon buttons.
+- The round menu button (the "icon box") has its own size setting (Small to Extra large, 44 to 109 px), separate from the text size. The menu next to it is sized in rem so it grows with the text size, never wider than the screen, and never taller than the free space on its side of the button: a long menu scrolls inside its box, so every item stays reachable at every text and icon size (checked in a browser at three screen shapes, four text sizes and three icon sizes).
 
 ## 7. Resilience and performance
 

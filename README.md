@@ -8,7 +8,7 @@
 
 > Built for the Meta Global AI Hackathon 2026 with Muse Spark, SAM 3.1, Muse Voice Transcribe, and Muse Image on the Meta Model API. Build for your world.
 
-A flood assistant for Metro Manila (NCR). Residents ask questions in English or Filipino and get answers
+A flood assistant for Metro Manila (NCR), **designed for VR and Meta glasses**: a futuristic heads-up display you can use hands-free. Residents ask questions in English or Filipino and get answers
 grounded in official sources: the nearest safe evacuation center, the flood risk for their area, a route that
 avoids flooded streets, hotlines, and weather from PAGASA and Open-Meteo.
 
@@ -88,14 +88,15 @@ is built for it. These are real prompts the agents answer today.
 | Ask | You get |
 |---|---|
 | `Ano ang dapat ihanda bago bumaha?` | Steps and checklists from the preparedness manual, with the sources listed under the answer |
+| `What should I pack in a go-bag?` | What the manual lists, with its sources, plus a short list of general guidance clearly labelled as not from the official documents |
 | `What is the process of relief goods?` | What the documents say, which documents they came from, and what they do not cover |
 
-### Check a photo
+### Ask about a photo
 
-Attach a photo of a street in the assistant (hover the round button beside the message box and choose **Photo**).
-Ask anything about it in the same message ("How many cars are stuck?", "Hanggang saan ang baha?"): the answer comes from a model that looks at the
-picture, followed by the automatic measurements: how much of it is covered by flood water and, if you tick the option, how many people and vehicles
-are in the water. It needs a sign-in, it is automatic and unverified, and it never says a road is safe.
+Attach a photo (hover the round button beside the message box and choose **Photo**, or drag and drop one) and **ask anything about it**: "What does the sign say?", "How many cats are there?",
+"What is in this picture?". The answer comes from a model that looks at the picture. If your question is about flooding ("Can a car pass here?", "Hanggang saan ang baha?"), the answer is
+followed by the automatic measurements: how much of the picture is covered by flood water and, if you tick the option, how many people and vehicles are in the water. A photo sent with no question gets
+the flood check by default. It needs a sign-in, it is automatic and unverified, it never says a road is safe, and it does not identify people or read licence plates.
 
 ### Report and share
 
@@ -128,8 +129,21 @@ finishes the centers.
 what to do, instead of a guess.
 
 Most answers use fixed rules and no model, so they are fast, free per question, and the same every time.
-Only weather and preparedness questions use a chat model; photo checks use the SAM vision model. While the assistant works,
+Weather, preparedness and photo questions use a chat model; flood checks of photos also use the SAM vision model. While the assistant works,
 the page shows what it is doing ("Checking rain, river flow and PAGASA for flood risk").
+
+## Designed for VR and Meta glasses
+
+Flood-Gentic is designed as a futuristic heads-up display (HUD) for VR headsets and Meta glasses, where hands may be busy and the screen sits in front of the real world. It runs in any modern browser
+(phone, tablet or computer) too. What makes it suit that kind of use:
+
+- **A see-through glass interface.** Frosted glass panels, HUD corner brackets and a slider on the right edge that makes the panels clearer so you can see the world behind them.
+- **A 3D hand with a laser pointer.** The cursor is a hand whose laser dot is where you point and click (left or right hand; it can be switched off for a normal pointer).
+- **Hands-free input.** Speak your question with the microphone button, or ask about a photo, instead of typing.
+- **Large, scalable controls.** Text size (Small to Extra large) and the size of the round menu button (Small to Extra large) can be set separately, and the menu always stays on the screen.
+- **Short, calm answers** in English or Filipino, with the 911 text first in an emergency.
+
+The help and access guide inside the app (the menu's "Help and access guide") says the same, and explains how to use these controls.
 
 ## Architecture
 
