@@ -27,7 +27,7 @@ const WELCOME: ChatMessage = {
   text:
     "Hi! I'm the AI Agent Flood Assistant. Ask me about flood risk, evacuation centers, " +
     "emergency contacts or what to prepare. You can write in English or Filipino, " +
-    "or attach (or drag and drop) a photo to check it for flood water.",
+    "or attach (or drag and drop) a photo and ask me anything about it.",
 }
 
 let nextId = 0
@@ -100,7 +100,7 @@ export function ChatWindow() {
 
   /**
    * Send the message, with the attached photo if there is one. The photo is made small in the browser and goes to the
-   * backend with the message, which checks it for flood water and answers in the same conversation. The text is then the caption: it may be empty.
+   * backend with the message. A question about the picture is answered from the picture; a flood question also gets the automatic flood check, and a photo sent with no question gets the flood check by default. The answer comes in the same conversation. The text is then the caption: it may be empty.
    */
   async function send(text: string) {
     const message = text.trim()
@@ -234,7 +234,7 @@ export function ChatWindow() {
           className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-3xl border-2 border-dashed border-[var(--glass-accent)] bg-black/40 text-lg font-semibold text-white"
           role="status"
         >
-          Drop a photo to check it for flood water
+          Drop a photo to ask about it
         </div>
       )}
 
@@ -296,7 +296,7 @@ export function ChatWindow() {
             <p className="truncate font-medium">{attachment.file.name}</p>
             <label className="flex min-h-11 items-center gap-2 text-xs">
               <input type="checkbox" checked={moreDetail} onChange={(event) => setMoreDetail(event.target.checked)} className="size-4" />
-              Also count people and vehicles (slower, uses more credit)
+              For a flood check, also count people and vehicles (slower, uses more credit)
             </label>
           </div>
           <button type="button" onClick={removeAttachment} className="min-h-11 rounded-full px-4 text-sm font-medium">
@@ -335,7 +335,7 @@ export function ChatWindow() {
               voice.status === "listening"
                 ? "Listening…"
                 : attachment
-                  ? "Ask anything about it, e.g. can a car pass? (or just send it)"
+                  ? "Ask anything about it, e.g. what does the sign say? (or just send it for a flood check)"
                   : "Ask about floods, evacuation or contacts…"
             }
             className="max-h-32 min-h-11 w-full resize-none bg-transparent py-2.5 text-sm outline-none placeholder:text-current placeholder:opacity-60"

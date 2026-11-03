@@ -1,13 +1,15 @@
-"""Flood media agent: checks a photo of a street for flood water, and answers questions about it.
+"""Flood media agent: answers any question about a photo, and checks a photo of a street for flood water.
 
-Two steps:
+Three cases:
 
-    1. Measure: SAM 3.1 (see ``video/``) finds flood water, people and vehicles. These numbers are always worked out
-       the same way, so they are the grounded part of the answer.
-    2. Answer the question: when the person asked something of their own ("can a car pass?", "ilan ang tao?"),
-       a chat model that can see pictures looks at the photo, the question and the
-       measurements, and answers it. Its rules are in ``ANSWER_RULES``. When no question was asked, or the model is not
-       available, the fixed bilingual report is used instead, with no model call.
+    1. A photo with a question that is NOT about flooding ("what does the sign say?", "how many cats?") goes straight to a chat
+       model that can see pictures, with no paid SAM check (see ``answer_free_question``). Any question about the picture is welcome.
+    2. A photo with a flood question ("can a car pass?", "ilan ang tao?"): first SAM 3.1 (see ``video/``) measures flood water,
+       people and vehicles, which is the grounded part of the answer; then the chat model answers the question from the picture and the
+       measurements, and the measurements follow under ``ANSWER_HEADING``.
+    3. A photo with no question, or no chat model available, gets the fixed bilingual flood report, with no model call.
+
+The model's rules are in ``ANSWER_RULES``.
 
 What it can and cannot say:
 
@@ -26,6 +28,7 @@ import base64
 import hashlib
 import logging
 import os
+import re
 from io import BytesIO
 
 from langchain_core.language_models import BaseChatModel
@@ -58,24 +61,48 @@ SAFETY_TEXT = (
 )
 
 
-# The rules the chat model follows when it answers a question about a picture. They keep it to what can be seen,
-# and away from the things a flood photo must never be used for (judging a road safe, a precise depth, a person's identity).
-ANSWER_RULES = """You help people in Metro Manila understand a photo of a possible flood.
-You get the picture, measurements from an automatic flood check, and the person's question.
+# The rules the chat model follows when it answers a question about a picture. Any question about the picture is welcome. The rules keep
+# it to what can be seen, and away from the things a flood photo must never be used for (judging a road safe, a precise depth, a person's identity).
+ANSWER_RULES = """You help people in Metro Manila with a photo they send. They can ask anything about the picture.
+You get the picture and the person's question, and sometimes measurements from a separate automatic flood check.
 
 Rules:
-- Answer the question directly, in the same language the person used (English, Filipino or a mix), in at most 6 short sentences.
+- Answer the question directly, in the same language the person used (English, Filipino or a mix), in at most 8 short sentences.
+  Any question about the picture is welcome: what is in it, text or signs, counts, colours, objects, the weather or the surroundings.
 - Only describe what can be seen. If the picture does not show what was asked, say so plainly instead of guessing.
-- The measurements are from a separate automatic check. Use them for the share of water and the number of people and vehicles.
-  If what you see disagrees with them, say both.
-- Never say that a road or an area is safe to walk, wade or drive through, and never encourage anyone to enter flood water.
-  If asked, say that a picture cannot show how deep or fast the water is, and that they should not cross.
-- Do not give a water depth in centimetres or metres; you may describe it relative to people or cars ("up to the knees
+- When measurements are given, they are from a separate automatic flood check. Use them for the share of water and the number of
+  people and vehicles. If what you see disagrees with them, say both.
+- If the picture shows flood water, never say that a road or an area is safe to walk, wade or drive through, and never encourage
+  anyone to enter flood water. If asked, say that a picture cannot show how deep or fast the water is, and that they should not cross.
+- Do not give a water depth in centimetres or metres; you may describe it relative to people or objects ("up to the knees
   of the people") and say it is a rough look, not a measurement.
-- Do not identify people, guess who they are, or read out licence plates or house numbers.
+- Do not identify real people or guess who they are, and do not read out licence plates, house numbers, ID cards or other personal details.
 - You cannot tell where or when the picture was taken; do not claim to.
 - If anyone in the picture looks in danger, start with: call 911 now.
 - No lists or headings: plain sentences."""
+
+# A question that mentions any of these is about flooding, so the automatic flood check (paid SAM requests) runs too. Any other question
+# goes straight to the chat model with the picture. English and Filipino, matched as whole words or word starts.
+FLOOD_QUESTION_WORDS = (
+    "flood", "baha", "bumaha", "binaha", "water", "tubig", "deep", "lalim", "malalim", "tuhod", "baywang", "bewang", "hita", "dibdib", "ankle", "knee", "waist",
+    "pass", "passable", "madaanan", "madadaanan", "daanan", "cross", "tawid", "tumawid", "drive", "magmaneho", "road", "kalsada", "street", "rain", "ulan",
+    "walk", "wade", "lusong", "lumusong", "lakad", "maglakad", "travel", "biyahe", "swim", "lunod", "drown", "evacuat", "rescue", "safe", "ligtas", "people", "tao", "person", "car", "cars", "vehicle", "sasakyan", "jeep", "truck", "motor", "storm", "bagyo", "typhoon",
+)
+FREE_QUESTION_FOOTER = (
+    "This answer comes from the picture only and may be wrong.\n"
+    "Galing lang sa larawan ang sagot na ito at maaaring mali."
+)
+FREE_QUESTION_BUSY = (
+    "I cannot look at pictures right now. Please try again in a little while.\n"
+    "Hindi ko matingnan ang mga larawan ngayon. Subukan muli mamaya."
+)
+
+
+def is_flood_question(question: str) -> bool:
+    """True when the question is about flooding, so the automatic flood check should run as well."""
+    words = re.findall(r"[a-zñ]+", question.lower())
+    return any(word.startswith(stem) if len(stem) >= 6 else word == stem for word in words for stem in FLOOD_QUESTION_WORDS)
+
 
 # The longest side of a photo handed to the chat model: enough detail, and a small request.
 ANSWER_PICTURE_WIDTH = 1024
@@ -128,6 +155,10 @@ def answer_flood_media_question(
     if not api_key:
         return AgentReply(text=NO_KEY_ANSWER)
 
+    # Any question that is not about flooding goes straight to the chat model with the picture, with no paid SAM flood check.
+    if question and question.strip() and llm is not None and not is_flood_question(question):
+        return answer_free_question(media, question.strip(), llm)
+
     try:
         report = measure_flood_media(media, api_key, include_people_and_vehicles)
     except Exception as error:
@@ -151,6 +182,20 @@ def answer_flood_media_question(
     if not answer:
         return AgentReply(text=fixed_report)
     return AgentReply(text=f"{answer}\n\n{ANSWER_HEADING}\n{fixed_report}")
+
+
+def answer_free_question(media: ImageInput, question: str, llm: BaseChatModel) -> AgentReply:
+    """Answer any question about the picture from the picture alone (no flood measurements, one chat model call)."""
+    if not model_budget.try_use():  # hourly cap on model calls (see utils/call_budget.py)
+        return AgentReply(text=FREE_QUESTION_BUSY)
+    try:
+        answer = answer_with_model(llm, question, pictures_for_model(media), None)
+    except Exception as error:
+        logger.error("Answering the question about the picture failed: %s", error)
+        return AgentReply(text=FAILED_ANSWER)
+    if not answer:
+        return AgentReply(text=FAILED_ANSWER)
+    return AgentReply(text=f"{answer}\n\n{FREE_QUESTION_FOOTER}")
 
 
 def pictures_for_model(media: ImageInput) -> list[bytes]:
@@ -183,15 +228,16 @@ def describe_measurements(report: FloodSceneReport, counted: bool = True) -> str
 
 
 def answer_with_model(
-    llm: BaseChatModel, question: str, pictures: list[bytes], report: FloodSceneReport, counted: bool = True
+    llm: BaseChatModel, question: str, pictures: list[bytes], report: FloodSceneReport | None, counted: bool = True
 ) -> str:
-    """Ask the chat model the person's question, with the pictures and the measurements. Returns its plain-text answer."""
+    """Ask the chat model the person's question, with the pictures and (when there are any) the measurements. Returns its plain-text answer."""
     if pictures:
         seen = "the photo"
     else:
         seen = "no picture (it could not be shown to you), so answer only from the measurements and say so"
+    measurements = f"\n\nMeasurements:\n{describe_measurements(report, counted)}" if report is not None else ""
     content = [
-        {"type": "text", "text": f"Question: {question}\n\nYou are given {seen}.\n\nMeasurements:\n{describe_measurements(report, counted)}"},
+        {"type": "text", "text": f"Question: {question}\n\nYou are given {seen}.{measurements}"},
         *(
             {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(picture).decode("ascii")}}
             for picture in pictures

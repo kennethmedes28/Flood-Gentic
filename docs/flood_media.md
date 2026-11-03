@@ -4,7 +4,7 @@ How a photo of a street is checked for flood water. Photos only: video analysis,
 
 ## 1. What it does
 
-SAM 3.1 (Meta's Segment Anything model, `sam-3.1`) finds every object that matches a short phrase in a picture and returns a box
+Besides the flood check, any question about a photo is answered by a chat model that looks at the picture (section 10). The flood check works like this. SAM 3.1 (Meta's Segment Anything model, `sam-3.1`) finds every object that matches a short phrase in a picture and returns a box
 and a pixel mask for each. The flood media agent asks for three things and turns the answers into a short summary:
 
 | Phrase | Used for |
@@ -111,6 +111,11 @@ Run it again (from `backend/`): `uv run python ../scripts/evaluate_flood_media.p
 `--score-only` scores from the saved answers without any request. The photos go in `evaluation/flood_media/source/Data/raw/{images,masks}`.
 
 ## 10. Asking anything about a picture
+
+**Any question is welcome.** A question that is not about flooding ("What does the sign say?", "How many cats are there?") goes straight to the chat model with the picture: no SAM requests, one model call, and
+the reply ends with a short "this answer comes from the picture only and may be wrong" line. A question that mentions flooding (flood, baha, water, tubig, deep, walk, pass, people, cars and similar words in English and Filipino, see
+`FLOOD_QUESTION_WORDS` in `agents/flood_media_agent.py`) gets the full flow below. The model's rules (`ANSWER_RULES`) allow any question but keep the limits: never say a road is safe in flood water, no water depth in centimetres, no identifying
+people or reading licence plates, and "call 911 now" first when someone looks in danger.
 
 Words sent with a photo are the person's question ("How many cars are stuck?", "Hanggang saan ang baha?"), and they are answered,
 not just the share of water. `agents/flood_media_agent.py`:

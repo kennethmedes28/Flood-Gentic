@@ -88,7 +88,7 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(len(model.pictures()), 1)
         self.assertTrue(model.pictures()[0]["image_url"]["url"].startswith("data:image/jpeg;base64,"))
         rules = model.sent[0][0].content
-        self.assertIn("Never say that a road or an area is safe", rules)
+        self.assertIn("never say that a road or an area is safe", rules)
 
     def test_when_counting_was_off_the_model_is_told_so_instead_of_none_found(self):
         model = RecordingModel()
@@ -123,6 +123,61 @@ class AgentTests(unittest.TestCase):
             text = self.ask("Can I walk here?", model).text
         self.assertEqual(model.sent, [])
         self.assertIn("about 30%", text)
+
+
+class FreeQuestionTests(unittest.TestCase):
+    """A question that is not about flooding goes straight to the model with the picture: no paid SAM check."""
+
+    def setUp(self):
+        self.analysis = mock.patch.object(flood_media_agent, "analyze_flood_media", return_value=REPORT).start()
+        self.budget = mock.patch.object(flood_media_agent.model_budget, "try_use", return_value=True).start()
+        self.addCleanup(mock.patch.stopall)
+        self.photo = ImageInput(data=photo_bytes())
+
+    def ask(self, question, model):
+        return answer_flood_media_question(self.photo, ChatContext(), api_key="key", question=question, llm=model)
+
+    def test_any_question_about_the_picture_is_answered_without_the_flood_check(self):
+        model = RecordingModel(answer="The sign says Rizal Avenue.")
+        text = self.ask("What does the sign say?", model).text
+        self.analysis.assert_not_called()  # no SAM requests were made
+        self.assertTrue(text.startswith("The sign says Rizal Avenue."))
+        self.assertNotIn(flood_media_agent.ANSWER_HEADING, text)  # no flood measurements
+        self.assertIn("may be wrong", text)
+        self.assertEqual(len(model.pictures()), 1)
+        self.assertNotIn("Measurements", model.question_text())
+
+    def test_a_flood_question_still_gets_the_measurements(self):
+        model = RecordingModel()
+        text = self.ask("Hanggang saan ang baha?", model).text
+        self.analysis.assert_called_once()
+        self.assertIn(flood_media_agent.ANSWER_HEADING, text)
+
+    def test_the_rules_allow_any_question_but_keep_the_flood_and_privacy_limits(self):
+        model = RecordingModel()
+        self.ask("How many cats are there?", model)
+        rules = model.sent[0][0].content
+        self.assertIn("They can ask anything about the picture", rules)
+        self.assertIn("never say that a road or an area is safe", rules)
+        self.assertIn("Do not identify real people", rules)
+
+    def test_when_the_model_budget_is_used_up_no_model_is_called(self):
+        self.budget.return_value = False
+        model = RecordingModel()
+        text = self.ask("What colour is the roof?", model).text
+        self.assertEqual(model.sent, [])
+        self.assertIn("try again", text)
+
+    def test_a_failing_model_gives_the_could_not_check_answer(self):
+        text = self.ask("What colour is the roof?", RecordingModel(error=RuntimeError("down"))).text
+        self.assertIn("could not check", text)
+
+    def test_which_questions_count_as_flood_questions(self):
+        for flood in ("Can a car pass here?", "Hanggang saan ang baha?", "How deep is the water?", "Ilan ang tao dito?", "Ligtas bang lumusong dito?", "Can I walk here?"):
+            self.assertTrue(flood_media_agent.is_flood_question(flood), flood)
+        for other in ("What is in this photo?", "What does the sign say?", "How many cats are there?", "Anong brand ng damit?", "Describe the colours"):
+            self.assertFalse(flood_media_agent.is_flood_question(other), other)
+
 
 class GraphTests(unittest.TestCase):
     """The graph hands the person's own words to the agent, but not the default question used for a bare picture."""

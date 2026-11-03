@@ -25,7 +25,7 @@ type InputModeButtonProps = {
 
 const OPTIONS: { mode: InputMode; label: string; hint: string }[] = [
   { mode: "voice", label: "Voice", hint: "Speak your question" },
-  { mode: "media", label: "Photo", hint: "Check a picture for flood water" },
+  { mode: "media", label: "Photo", hint: "Ask anything about a picture" },
 ]
 
 /** A camera icon for the photo mode. */
@@ -76,8 +76,8 @@ export function InputModeButton({
           type="button"
           onClick={() => fileInput.current?.click()}
           disabled={disabled}
-          aria-label="Choose a photo to check for flood water"
-          title="Choose a photo to check for flood water"
+          aria-label="Choose a photo and ask about it"
+          title="Choose a photo and ask about it"
           className="glass-panel relative flex size-12 shrink-0 items-center justify-center !rounded-full shadow-lg disabled:opacity-40"
         >
           <CameraIcon />

@@ -1,5 +1,5 @@
 /**
- * Getting a photo ready to be checked for flood water.
+ * Getting a photo ready to be sent with a question about it (any question; a flood question also gets the automatic flood check).
  *
  * A photo is made smaller first and goes to the backend as text with the chat message (POST /chat/stream, see
  * chat-api.ts). Each check costs API credit on the backend: 4 SAM requests (two water phrases, on the photo and on a
