@@ -197,7 +197,7 @@ with the embedding model loaded; loading the model from the volume cache takes a
 `/dashboard` call takes about 6 s (it loads the recorded days) and later ones are served from memory. Railway bills memory by use, so the
 loaded embedding model is the main cost of running this service.
 
-**Variables on the Railway service** (secrets are set from `backend/.env` by `python scripts/set_railway_variables.py`, which you run yourself; only what the running API needs is copied):
+**Variables on the Railway service** (secrets are set from `backend/.env` by `python3 scripts/set_railway_variables.py`, which you run yourself; only what the running API needs is copied):
 
 | Variable | Value |
 |---|---|
@@ -246,7 +246,7 @@ A newer push to the same branch cancels the run that is still going. Lint is not
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the publishable key (`sb_publishable_...`) |
 
-After the first Vercel deploy, set `CORS_ORIGINS` on Railway to the Vercel address (`python scripts/set_railway_variables.py --cors-origins https://<name>.vercel.app`),
+After the first Vercel deploy, set `CORS_ORIGINS` on Railway to the Vercel address (`python3 scripts/set_railway_variables.py --cors-origins https://<name>.vercel.app`),
 and add that address to the Supabase redirect URLs (section 8).
 
 ## 12. Planned

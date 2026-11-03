@@ -2,8 +2,8 @@
 
 Run it yourself, from the repository root, after `railway login` and `railway link` (see docs/deployment_workflow_guide.md):
 
-    python scripts/set_railway_variables.py --dry-run     # show which variables would be set (names only)
-    python scripts/set_railway_variables.py               # set them, without starting a deploy
+    python3 scripts/set_railway_variables.py --dry-run     # show which variables would be set (names only)
+    python3 scripts/set_railway_variables.py               # set them, without starting a deploy
 
 Only what the running API needs is copied. The values are never printed. Not copied on purpose: SUPABASE_SECRET_KEY and
 SUPABASE_ACCESS_TOKEN (full-power keys the API does not use), HF_TOKEN, GROQ_API_KEY, LLAMAINDEX_API_KEY, and the LangSmith
