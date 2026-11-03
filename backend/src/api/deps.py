@@ -61,11 +61,6 @@ def get_db(request: Request) -> Callable:
     return get_connection
 
 
-def get_optional_db(request: Request) -> Callable | None:
-    """Like ``get_db``, but None instead of a 503 when there is no database, for pages that can use files instead."""
-    return getattr(request.app.state, "get_connection", None)
-
-
 def database_unavailable(error: Exception) -> HTTPException:
     """Log a database failure and return the 503 to raise.
 

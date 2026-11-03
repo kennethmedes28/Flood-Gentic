@@ -47,20 +47,20 @@ class DashboardFromDatabaseTests(unittest.TestCase):
 
     def test_reads_the_last_day_from_the_database(self):
         connection = FakeConnection([weather_row("2026-11-01", 1.0), weather_row("2026-11-02", 2.8)])
-        data = dashboard_data.build_dashboard(["manila"], get_connection=lambda: connection)
+        data = dashboard_data.build_dashboard(["manila"], lambda: connection)
         self.assertEqual(str(data["data_date"]), "2026-11-02")
         self.assertEqual(data["cities"][0]["rain_mm"], 2.8)
 
-    def test_falls_back_to_the_files_when_the_database_fails(self):
+    def test_a_database_failure_is_raised(self):
         def broken():
             raise RuntimeError("down")
 
-        data = dashboard_data.build_dashboard(["manila"], get_connection=broken)
-        self.assertIsNotNone(data["data_date"])  # came from datasets/
+        with self.assertRaises(RuntimeError):
+            dashboard_data.build_dashboard(["manila"], broken)
 
-    def test_empty_tables_fall_back_to_the_files(self):
-        data = dashboard_data.build_dashboard(["manila"], get_connection=lambda: FakeConnection([]))
-        self.assertIsNotNone(data["data_date"])
+    def test_empty_tables_are_an_error(self):
+        with self.assertRaises(RuntimeError):
+            dashboard_data.build_dashboard(["manila"], lambda: FakeConnection([]))
 
 
 class PlacesTests(unittest.TestCase):

@@ -1,34 +1,27 @@
-"""Numbers for the dashboard, read from the project's recorded daily datasets.
+"""Numbers for the dashboard, read from the recorded daily weather in Supabase.
 
-The numbers come from Supabase (tables ``ncr_locations``, ``ncr_weather_daily`` and ``ncr_flood_features_daily``,
-kept current every night by the "Update datasets" GitHub workflow, which replaces the last 7 days with Open-Meteo's
-revised values). If the database cannot be read, the files in ``datasets/`` are used instead so the dashboard keeps
-working. The files are NOT updated by the workflow, so they can be days behind Supabase and differ on recent days:
+The tables are ``ncr_locations``, ``ncr_weather_daily`` and ``ncr_flood_features_daily``. The "Update datasets" GitHub
+workflow keeps them current every night and replaces the last 7 days with Open-Meteo's revised values. There is no
+fallback to files: if the database cannot be read, the error is raised and the API answers 503.
 
-    * ``ncr_weather_daily_2020-2026.csv``  - temperature, rain, wind and river flow per day
-    * ``ncr_flood_features_daily.csv``     - rain over 1 hour / 3 days and how high the river is for its history
+    * ``ncr_weather_daily``         - temperature, rain, wind and river flow per day
+    * ``ncr_flood_features_daily``  - rain over 1 hour / 3 days and how high the river is for its history
 
 "Today" on the dashboard is therefore the LAST RECORDED DAY (``data_date``), which can be some days behind.
 The response always says which day it is, so the page can show it.
 
 The risk level uses the same thresholds as ``agents.flood_risk_agent`` (low, watch, high, critical), applied to
-that last recorded day. There is no forecast in these files, so it describes what already happened.
+that last recorded day. There is no forecast in these tables, so it describes what already happened.
 
-Rows are matched to cities with ``ncr_locations.csv`` (its ``location_id`` order is alphabetical), not with
-the order of ``NCR_LOCATIONS``.
+Rows are matched to cities by the city name in ``ncr_locations``, not with the order of ``NCR_LOCATIONS``.
 
 Example:
-    data = build_dashboard(["manila", "marikina"])
+    data = build_dashboard(["manila", "marikina"], get_connection)
     data["cities"][0]["risk_level"]   # "low", "watch", "high" or "critical"
 """
 
-import csv
-import logging
-import os
 import time
 from datetime import date
-from functools import lru_cache
-from pathlib import Path
 
 from agents.fetch_supabase_open_meteo_datasets import NCR_LOCATIONS
 from agents.flood_risk_agent import (
@@ -45,12 +38,6 @@ from agents.flood_risk_agent import (
     raise_level,
 )
 from agents.flood_types import RISK_CRITICAL, RISK_HIGH, RISK_LOW, RISK_WATCH
-
-DEFAULT_DATASETS = Path(__file__).resolve().parents[3] / "datasets"
-WEATHER_FILE = "ncr_weather_daily_2020-2026.csv"
-FEATURES_FILE = "ncr_flood_features_daily.csv"
-LOCATIONS_FILE = "ncr_locations.csv"
-logger = logging.getLogger(__name__)
 
 DB_CACHE_SECONDS = 5 * 60  # the tables change at most once a day, so reading them again every 5 minutes is plenty
 RECORDS_SQL = """
@@ -72,22 +59,13 @@ def city_key(name: str) -> str:
     return plain
 
 
-def number(text: str | None) -> float | None:
-    """A CSV cell as a number, or None when it is empty."""
-    return float(text) if text not in (None, "") else None
-
-
-def read_rows(path: Path) -> list[dict]:
-    """All rows of a CSV file (a leading byte-order mark is ignored)."""
-    with open(path, newline="", encoding="utf-8-sig") as file:
-        return list(csv.DictReader(file))
+def number(value) -> float | None:
+    """A database value as a number, or None when it is empty."""
+    return float(value) if value not in (None, "") else None
 
 
 def day_from_row(row: dict) -> dict:
-    """One recorded day, in the shape the rest of this module uses, from a row of the weather + features join.
-
-    The same column names are used by the database query (``RECORDS_SQL``) and by the merged CSV rows.
-    """
+    """One recorded day, in the shape the rest of this module uses, from a row of ``RECORDS_SQL``."""
     return {
         "date": str(row["date"]),
         "rain_mm": number(row["precipitation_sum_mm"]),
@@ -118,33 +96,11 @@ def group_by_city(rows: list[tuple[str, dict]]) -> dict[str, dict]:
     return records
 
 
-@lru_cache(maxsize=4)
-def load_records(folder: str, version: tuple) -> dict[str, dict]:
-    """Per city key, the recorded days read from the CSV files (see ``group_by_city`` for the shape).
-
-    ``version`` is the files' modification times: when a file is replaced by the data loader, the next call
-    reads it again instead of serving old numbers.
-    """
-    base = Path(folder)
-    keys = {row["location_id"]: city_key(row["city"]) for row in read_rows(base / LOCATIONS_FILE)}
-    features = {(row["location_id"], row["date"]): row for row in read_rows(base / FEATURES_FILE)}
-    empty_features = {"rain_max_1h_mm": None, "rain_3d_mm": None, "discharge_pctile": None}
-
-    rows: list[tuple[str, dict]] = []
-    for row in read_rows(base / WEATHER_FILE):
-        key = keys.get(row["location_id"])
-        if key is None:
-            continue
-        extra = features.get((row["location_id"], row["date"]), empty_features)
-        rows.append((key, day_from_row({**row, **{name: extra.get(name) for name in empty_features}})))
-    return group_by_city(rows)
-
-
 _db_cache: dict = {"at": 0.0, "records": None}
 
 
 def load_records_from_db(get_connection) -> dict[str, dict]:
-    """Per city key, the recorded days read from Supabase, kept for ``DB_CACHE_SECONDS``. Raises when the read fails."""
+    """Per city key, the recorded days read from Supabase, kept in this process for ``DB_CACHE_SECONDS``. Raises when the read fails."""
     cached = _db_cache["records"]
     if cached is not None and time.monotonic() - _db_cache["at"] < DB_CACHE_SECONDS:
         return cached
@@ -158,21 +114,9 @@ def load_records_from_db(get_connection) -> dict[str, dict]:
     return records
 
 
-def load_records_from_files(datasets_dir: str | Path | None = None) -> dict[str, dict]:
-    """The recorded days from the CSV files (the fallback; they can lag behind Supabase). The folder defaults to ``datasets/`` or ``DATASETS_DIR``."""
-    folder = Path(datasets_dir or os.getenv("DATASETS_DIR") or DEFAULT_DATASETS)
-    version = tuple((folder / name).stat().st_mtime_ns for name in (WEATHER_FILE, FEATURES_FILE, LOCATIONS_FILE))
-    return load_records(str(folder), version)
-
-
-def get_records(get_connection=None, datasets_dir: str | Path | None = None) -> dict[str, dict]:
-    """The recorded days: from Supabase when a connection is given and works, otherwise from the CSV files."""
-    if get_connection is not None:
-        try:
-            return load_records_from_db(get_connection)
-        except Exception as error:
-            logger.warning("Recorded weather could not be read from Supabase (%s); using the dataset files, which can be older.", type(error).__name__)
-    return load_records_from_files(datasets_dir)
+def get_records(get_connection) -> dict[str, dict]:
+    """The recorded days per city key, read from Supabase (kept for ``DB_CACHE_SECONDS``). Raises when that fails."""
+    return load_records_from_db(get_connection)
 
 
 def risk_from_day(day: dict, rain_3d_sorted: list[float]) -> tuple[str, list[str]]:
@@ -234,13 +178,9 @@ def build_city(key: str, record: dict | None) -> dict:
     return entry
 
 
-def build_dashboard(cities: list[str], datasets_dir: str | Path | None = None, get_connection=None) -> dict:
-    """The dashboard data for the given city keys (keys of ``NCR_LOCATIONS``), from the recorded days.
-
-    With ``get_connection`` the days are read from Supabase and, if that fails, from the CSV files in ``datasets/``
-    (or the ``DATASETS_DIR`` folder, or ``datasets_dir``).
-    """
-    records = get_records(get_connection, datasets_dir)
+def build_dashboard(cities: list[str], get_connection) -> dict:
+    """The dashboard data for the given city keys (keys of ``NCR_LOCATIONS``), from the recorded days in Supabase."""
+    records = get_records(get_connection)
 
     entries = [build_city(key, records.get(key)) for key in cities]
     dates = [entry["data_date"] for entry in entries if entry["data_date"]]

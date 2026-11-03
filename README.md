@@ -176,7 +176,7 @@ frontend/                Next.js app (React 19, Tailwind 4): dashboard, flood le
   src/components/        ui, shell (frame, menu, cursor), and one folder per page
   src/context  hooks  lib  data/    state, reusable logic, plain functions and API clients, static data
 corpus/                  source documents and CSVs (evacuation centers, hotlines, locations)
-datasets/                daily NCR weather and flood-feature CSVs (a fallback for the dashboard only if Supabase cannot be read; the nightly workflow updates Supabase, not these files, so they can be days behind)
+datasets/                daily NCR weather and flood-feature CSVs (the backend does not read them; the nightly workflow updates Supabase, not these files, so they can be days behind)
 scripts/                 data loading, the daily dataset update, the Tomorrow.io fetch, run_dev.py
 hooks/                   run_all.sh and run_all.bat: start the backend and the frontend together
 Makefile                 shortcuts: make run, make test, make check
@@ -290,7 +290,7 @@ stored forecast is never replaced, so the API and the workflow never fetch the s
 repository secret `TOMMORROW_IO_API` as well as the three Supabase ones. Run it yourself with `python scripts/fetch_tomorrow_forecast.py [--dry-run]`.
 
 **What the pages show.** The dashboard and flood level pages read the weather and river flow from the Supabase tables (the last recorded day,
-which can be days behind; the older files in `datasets/` are used only if the database cannot be read) and the weather now and the forecast from the stored Tomorrow.io rows. The flood risk level is a rule-based estimate from the
+which can be days behind; the API answers 503 if the database cannot be read) and the weather now and the forecast from the stored Tomorrow.io rows. The flood risk level is a rule-based estimate from the
 recorded day and does not use the forecast.
 
 To run the dataset update yourself: `uv run python ../scripts/update_supabase_from_open_meteo.py` from `backend/`

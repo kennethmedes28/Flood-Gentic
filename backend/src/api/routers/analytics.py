@@ -1,14 +1,13 @@
 """GET /analytics/weather: long-run weather statistics for the "Macro Weather Analytics" page.
 
-Reads the recorded daily data from Supabase (2020 to the last recorded day; the older dataset files are used only if
-the database cannot be read), grouped by year, month or day so the page can drill
+Reads the recorded daily data from Supabase (2020 to the last recorded day; a 503 if the database cannot be read), grouped by year, month or day so the page can drill
 down. Recorded data only: it is not a forecast and not an official PAGASA statistic.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from agents.location_agent import find_city
-from src.api.deps import UNKNOWN_CITY, get_optional_db
+from src.api.deps import UNKNOWN_CITY, database_unavailable, get_db
 from src.api.schemas import AnalyticsOut
 from src.cache import get_cache
 from src.services.weather_analytics import InvalidFilter, build_analytics
@@ -24,7 +23,7 @@ def weather_analytics(
     year: int | None = Query(default=None, ge=2000, le=2100, description="Keep one year: one point per month."),
     month: int | None = Query(default=None, ge=1, le=12, description="Keep one month (needs year): one point per day."),
     day: int | None = Query(default=None, ge=1, le=31, description="Look at one day (needs year and month)."),
-    get_connection=Depends(get_optional_db),
+    get_connection=Depends(get_db),
 ) -> AnalyticsOut:
     """Statistics for the chosen city and period. With no year there is one point per year."""
     key = None
@@ -36,8 +35,10 @@ def weather_analytics(
         data = get_cache().get_or_set(
             f"analytics:{key}:{year}:{month}:{day}",
             CACHE_SECONDS,
-            lambda: build_analytics(city=key, year=year, month=month, day=day, get_connection=get_connection),
+            lambda: build_analytics(get_connection, city=key, year=year, month=month, day=day),
         )
         return AnalyticsOut(**data)
     except InvalidFilter as error:
         raise HTTPException(status_code=422, detail=str(error))
+    except Exception as error:
+        raise database_unavailable(error)

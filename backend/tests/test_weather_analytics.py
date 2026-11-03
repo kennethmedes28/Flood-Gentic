@@ -1,21 +1,19 @@
-"""Tests for GET /analytics/weather. It reads small CSV files made here, not the real datasets.
+"""Tests for GET /analytics/weather. The recorded days come from a fake database connection made here.
 
 Run from the backend folder:  python -m unittest tests.test_weather_analytics -v
 """
 
 import sys
-import tempfile
 import types
 import unittest
 from datetime import date, timedelta
 from pathlib import Path
-from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.modules.setdefault("bm25s", types.ModuleType("bm25s"))  # optional search library, not needed here
 
 from tests.test_api import make_client
-from tests.test_dashboard import FEATURES_HEADER, WEATHER_HEADER
+from tests.test_dashboard import BrokenConnection, RecordsConnection, forget_kept_answers, recorded_row
 
 FIRST_DAY = date(2023, 12, 30)
 LAST_DAY = date(2024, 2, 2)
@@ -41,12 +39,34 @@ def write_datasets(folder: Path) -> None:
     (folder / "ncr_flood_features_daily.csv").write_text("\n".join(features) + "\n", encoding="utf-8")
 
 
+FIRST_DAY = date(2023, 12, 30)
+LAST_DAY = date(2024, 2, 2)
+
+
+def recorded_rows() -> list[dict]:
+    """Two cities (Manila, Marikina) for 2023-12-30 to 2024-02-02.
+
+    Manila gets 10 mm every day; Marikina 20 mm, except 2024-01-15 which has 100 mm. Marikina is 1 degree hotter.
+    """
+    rows = []
+    day = FIRST_DAY
+    while day <= LAST_DAY:
+        for city, flow, rain, high in (("Manila", 5.0, 10.0, 32.0), ("Marikina", 6.0, 100.0 if day == date(2024, 1, 15) else 20.0, 33.0)):
+            row = recorded_row(city, day, rain, 0.5, 2.0, flow, 0.5)
+            row["temperature_2m_max_c"] = high
+            row["temperature_2m_min_c"] = 25.0
+            rows.append(row)
+        day += timedelta(days=1)
+    return rows
+
+
 class WeatherAnalyticsTests(unittest.TestCase):
+    def setUp(self):
+        forget_kept_answers()
+        self.addCleanup(forget_kept_answers)
+
     def ask(self, query: str = ""):
-        folder = tempfile.TemporaryDirectory()
-        self.addCleanup(folder.cleanup)
-        write_datasets(Path(folder.name))
-        with mock.patch.dict("os.environ", {"DATASETS_DIR": folder.name}), make_client() as client:
+        with make_client(connection=RecordsConnection(recorded_rows())) as client:
             return client.get(f"/analytics/weather{query}")
 
     def test_no_year_gives_one_point_per_year(self):

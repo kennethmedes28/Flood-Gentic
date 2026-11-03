@@ -1,7 +1,7 @@
 """Long-run weather statistics for the "Macro Weather Analytics" page, from the recorded daily dataset.
 
-The data is the ``ncr_weather_daily`` table in Supabase, or, only when the
-database cannot be read, ``datasets/ncr_weather_daily_2020-2026.csv``, which can be days behind (one row per city per day). This module groups it by
+The data is the ``ncr_weather_daily`` table in Supabase (one row per city per day). If the database cannot be read, the
+error is raised and the API answers 503. This module groups it by
 year, month or day so the page can drill down: all years, then the months of one year, then the days of one month.
 
 Filters (all optional):
@@ -23,7 +23,6 @@ Example:
 
 import calendar
 from datetime import date
-from pathlib import Path
 
 from agents.fetch_supabase_open_meteo_datasets import NCR_LOCATIONS
 from agents.flood_risk_agent import DAILY_RAIN_WATCH_MM
@@ -72,11 +71,6 @@ def total(values: list) -> float | None:
 
 
 # --- loading and combining the days -------------------------------------------------------------
-
-
-def load_all_records(datasets_dir: str | Path | None = None, get_connection=None) -> dict[str, dict]:
-    """Per city key, the recorded days (see ``dashboard_data.get_records``): Supabase first, then the CSV files."""
-    return get_records(get_connection, datasets_dir)
 
 
 def combine_cities(records: dict[str, dict]) -> list[dict]:
@@ -214,16 +208,15 @@ def check_filters(city: str | None, year: int | None, month: int | None, day: in
 
 
 def build_analytics(
+    get_connection,
     city: str | None = None,
     year: int | None = None,
     month: int | None = None,
     day: int | None = None,
-    datasets_dir: str | Path | None = None,
-    get_connection=None,
 ) -> dict:
     """Everything the analytics page needs for one choice of filters (see the module docstring)."""
     check_filters(city, year, month, day)
-    records = load_all_records(datasets_dir, get_connection)
+    records = get_records(get_connection)
     all_days = days_for(records, city)
 
     in_range = keep_prefix(all_days, year, month)

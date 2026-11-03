@@ -181,8 +181,8 @@ corner does the same on touch screens.
 
 The dashboard (`/`) reads `GET /dashboard?cities=...` (all 17 cities) from the backend
 (`backend/src/api/routers/dashboard.py`, `backend/src/services/dashboard_data.py`), through `lib/dashboard-api.ts` and
-`context/DashboardDataContext.tsx`. The backend reads the CSV files in `datasets/` (`ncr_weather_daily_2020-2026.csv`,
-`ncr_flood_features_daily.csv`, `ncr_locations.csv`; folder can be changed with `DATASETS_DIR`) and re-reads a file when it changes.
+`context/DashboardDataContext.tsx`. The backend reads the Supabase tables `ncr_weather_daily`, `ncr_flood_features_daily` and `ncr_locations`
+(kept current by the nightly workflow) and keeps them in memory for 5 minutes. If the database cannot be read the API answers 503.
 No weather service is called. "Today" is the **last recorded day**, which can be days behind; the page shows its date.
 
 | Dashboard part | From |
