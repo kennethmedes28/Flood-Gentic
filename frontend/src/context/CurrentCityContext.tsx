@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { CITIES, DEFAULT_CITY_NAME, type CityReading } from "@/data/dashboard-cities"
 import { findCity } from "@/lib/city-lookup"
 import { locate, readSaved, save, type Located } from "@/lib/current-location"
+import type { MessageKey } from "@/i18n/messages"
 
 type CurrentCityValue = {
   /** The city the dashboard is about: the default one, or the one nearest to the user while sharing. */
@@ -16,7 +17,7 @@ type CurrentCityValue = {
   /** True while the browser is finding the position. */
   locating: boolean
   /** A short sentence about what just happened (for example why sharing was turned off), or "". */
-  note: string
+  note: MessageKey | ""
   /** Turn sharing on (asks the browser, only now) or off (back to the default city). */
   setSharing: (on: boolean) => void
 }
@@ -36,13 +37,13 @@ const FALLBACK: CurrentCityValue = {
 const CurrentCityContext = createContext<CurrentCityValue>(FALLBACK)
 
 /** Shown when the position is outside what the dashboard covers. Sharing stays on; the default city is shown. */
-const OUTSIDE_NOTE = `You're outside Metro Manila, which this dashboard covers, so it shows ${DEFAULT_CITY_NAME}.`
+const OUTSIDE_NOTE: MessageKey = "city.outside"
 
 /** Why sharing was turned off again. */
-const NOT_SHARED_NOTES: Record<Exclude<Located["kind"], "city" | "outside">, string> = {
-  unsupported: "Your browser can't share a location.",
-  denied: `Location not shared. The dashboard shows ${DEFAULT_CITY_NAME}.`,
-  failed: "Couldn't find your location. Please try again.",
+const NOT_SHARED_NOTES: Record<Exclude<Located["kind"], "city" | "outside">, MessageKey> = {
+  unsupported: "city.unsupported",
+  denied: "city.denied",
+  failed: "city.failed",
 }
 
 /**
@@ -60,7 +61,7 @@ export function CurrentCityProvider({ children }: { children: React.ReactNode })
   const [sharing, setSharingState] = useState(false)
   const [outside, setOutside] = useState(false)
   const [locating, setLocating] = useState(false)
-  const [note, setNote] = useState("")
+  const [note, setNote] = useState<MessageKey | "">("")
 
   // Restore the choice after the page has loaded (storage can be unavailable).
   useEffect(() => {
@@ -100,7 +101,7 @@ export function CurrentCityProvider({ children }: { children: React.ReactNode })
     }
 
     setLocating(true)
-    setNote("Finding your location…")
+    setNote("city.finding")
     const result = await locate()
     setLocating(false)
 

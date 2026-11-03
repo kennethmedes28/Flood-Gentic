@@ -2,6 +2,8 @@
  * Flood levels, lowest first. These are the same four levels the backend's flood risk agent uses
  * (low, watch, high, critical), and the advice is its wording, so the page and the assistant agree.
  */
+import type { MessageKey } from "@/i18n/messages"
+
 export type FloodLevel = "low" | "watch" | "high" | "critical"
 
 export const LEVEL_ORDER: FloodLevel[] = ["low", "watch", "high", "critical"]
@@ -10,30 +12,30 @@ export const LEVEL_ORDER: FloodLevel[] = ["low", "watch", "high", "critical"]
  * Each level pairs a label and a symbol with its colour, never colour alone.
  * The colours are dark enough for white text on them (contrast of at least 4.5 to 1).
  */
-export const LEVEL_STYLE: Record<FloodLevel, { label: string; symbol: string; color: string; advice: string }> = {
+export const LEVEL_STYLE: Record<FloodLevel, { label: MessageKey; symbol: string; color: string; advice: MessageKey }> = {
   low: {
-    label: "Low",
+    label: "level.low",
     symbol: "●",
     color: "#15803d",
-    advice: "No flood signal right now. Keep checking pagasa.dost.gov.ph.",
+    advice: "level.low.advice",
   },
   watch: {
-    label: "Watch",
+    label: "level.watch",
     symbol: "▲",
     color: "#b45309",
-    advice: "Flooding is possible in low areas. Prepare your go bag and know your nearest evacuation center.",
+    advice: "level.watch.advice",
   },
   high: {
-    label: "High",
+    label: "level.high",
     symbol: "■",
     color: "#dc2626",
-    advice: "Flooding is likely. Move valuables up, avoid low roads, and be ready to leave.",
+    advice: "level.high.advice",
   },
   critical: {
-    label: "Critical",
+    label: "level.critical",
     symbol: "◆",
     color: "#7e22ce",
-    advice: "Serious flooding is expected. Follow your DRRMO's evacuation orders now.",
+    advice: "level.critical.advice",
   },
 }
 
@@ -59,14 +61,20 @@ export function forecastRainLevel(peakMmPerHour: number, totalMm: number): Flood
   return LEVEL_ORDER.indexOf(fromPeak) >= LEVEL_ORDER.indexOf(fromTotal) ? fromPeak : fromTotal
 }
 
-/** How the river changed from the day before: "Rising 12% since the day before", "Falling …" or "Steady". */
-export function describeFlowChange(previous: number | null | undefined, latest: number | null | undefined): { arrow: string; text: string } {
+/**
+ * How the river changed from the day before. Returns an arrow, the key of the interface text, and the percent to put in it
+ * (translate with ``t(change.key, { percent: change.percent })``).
+ */
+export type FlowChangeKey = "flow.unknown" | "flow.steady" | "flow.rising" | "flow.falling"
+
+export function describeFlowChange(
+  previous: number | null | undefined,
+  latest: number | null | undefined
+): { arrow: string; key: FlowChangeKey; percent: number } {
   if (previous === null || previous === undefined || latest === null || latest === undefined || previous <= 0) {
-    return { arrow: "→", text: "Change not known" }
+    return { arrow: "→", key: "flow.unknown", percent: 0 }
   }
   const percent = Math.round(((latest - previous) / previous) * 100)
-  if (Math.abs(percent) < 5) return { arrow: "→", text: "Steady since the day before" }
-  return percent > 0
-    ? { arrow: "↗", text: `Rising ${percent}% since the day before` }
-    : { arrow: "↘", text: `Falling ${Math.abs(percent)}% since the day before` }
+  if (Math.abs(percent) < 5) return { arrow: "→", key: "flow.steady", percent: 0 }
+  return percent > 0 ? { arrow: "↗", key: "flow.rising", percent } : { arrow: "↘", key: "flow.falling", percent: Math.abs(percent) }
 }

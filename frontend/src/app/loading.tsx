@@ -1,3 +1,6 @@
+"use client"
+
+import { useT } from "@/context/LanguageContext"
 import { SceneBackground } from "@/components/shell/SceneBackground"
 import { GlassPanel } from "@/components/ui/GlassPanel"
 import { LoadingLabel, Skeleton } from "@/components/ui/Skeleton"
@@ -11,10 +14,11 @@ import { RainChart } from "@/components/dashboard/RainChart"
  * Mirrors the dashboard layout using each component's loading state.
  */
 export default function Loading() {
+  const t = useT()
   return (
     <main className="min-h-svh p-4 pr-[68px] sm:p-6 sm:pr-[68px]">
       <SceneBackground />
-      <LoadingLabel>Loading dashboard</LoadingLabel>
+      <LoadingLabel>{t("loading.dashboard")}</LoadingLabel>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <GlassPanel className="p-4 lg:col-span-12">
           <Skeleton className="h-6 w-full" />

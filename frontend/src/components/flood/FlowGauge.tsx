@@ -1,3 +1,4 @@
+import { useLanguage } from "@/context/LanguageContext"
 import { LEVEL_STYLE, type FloodLevel } from "@/lib/flood-levels"
 
 /** Height of the glass tube. */
@@ -25,6 +26,7 @@ function percentOf(flowM3s: number, maxM3s: number): number {
  * This is a flow in m³/s, not a water height: there is no height in the data.
  */
 export function FlowGauge({ flowM3s, lowM3s, highM3s, level }: FlowGaugeProps) {
+  const { t } = useLanguage()
   const color = LEVEL_STYLE[level ?? "low"].color
   // The tube reaches a little above the week's highest flow, so the water never touches the top.
   const maxM3s = Math.max(highM3s * 1.15, flowM3s * 1.15, 0.1)
@@ -32,11 +34,11 @@ export function FlowGauge({ flowM3s, lowM3s, highM3s, level }: FlowGaugeProps) {
   const sameValue = Math.abs(highM3s - lowM3s) < 0.05 // a flat week: one mark is enough
 
   const marks = [
-    { label: "7-day high", flow: highM3s },
-    ...(sameValue ? [] : [{ label: "7-day low", flow: lowM3s }]),
+    { label: t("gauge.high"), flow: highM3s },
+    ...(sameValue ? [] : [{ label: t("gauge.low"), flow: lowM3s }]),
   ]
 
-  const summary = `River flow ${flowM3s.toFixed(1)} cubic metres per second. Over the last 7 recorded days it ranged from ${lowM3s.toFixed(1)} to ${highM3s.toFixed(1)}.`
+  const summary = t("gauge.summary", { flow: flowM3s.toFixed(1), low: lowM3s.toFixed(1), high: highM3s.toFixed(1) })
 
   return (
     <div className="flex items-stretch justify-center gap-3" role="img" aria-label={summary}>

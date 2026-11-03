@@ -1,4 +1,7 @@
 import { assistant } from "@/i18n/messages/assistant"
+import { dashboard } from "@/i18n/messages/dashboard"
+import { data } from "@/i18n/messages/data"
+import { flood } from "@/i18n/messages/flood"
 import { shell } from "@/i18n/messages/shell"
 
 /**
@@ -6,8 +9,8 @@ import { shell } from "@/i18n/messages/shell"
  * keys decide the type of a key, and `defineMessages` makes sure every group has the same keys in Filipino.
  */
 export const MESSAGES = {
-  en: { ...shell.en, ...assistant.en },
-  fil: { ...shell.fil, ...assistant.fil },
+  en: { ...shell.en, ...assistant.en, ...data.en, ...dashboard.en, ...flood.en },
+  fil: { ...shell.fil, ...assistant.fil, ...data.fil, ...dashboard.fil, ...flood.fil },
 }
 
 /** The name of one interface text, for example "nav.help". */

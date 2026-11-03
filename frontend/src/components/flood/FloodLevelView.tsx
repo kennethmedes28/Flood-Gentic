@@ -11,6 +11,7 @@ import { GlassPanel } from "@/components/ui/GlassPanel"
 import { LoadingLabel, Skeleton } from "@/components/ui/Skeleton"
 import { useCurrentCity } from "@/context/CurrentCityContext"
 import { useDashboardData } from "@/context/DashboardDataContext"
+import { useLanguage } from "@/context/LanguageContext"
 import { useLiveWeather } from "@/context/LiveWeatherContext"
 import { CITIES } from "@/data/dashboard-cities"
 import { LEVEL_STYLE, describeFlowChange, forecastRainLevel } from "@/lib/flood-levels"
@@ -60,6 +61,7 @@ function summariseForecast(hourly: { time: string; values: Record<string, number
  * It opens on the current city (see CurrentCityContext), and any of the 17 cities can be picked.
  */
 export function FloodLevelView() {
+  const { t, locale } = useLanguage()
   const { city: currentCity } = useCurrentCity()
   const { status, cityData, error, reload } = useDashboardData()
   const { forecastFor } = useLiveWeather()
@@ -73,7 +75,7 @@ export function FloodLevelView() {
   if (status === "loading") {
     return (
       <div className="flex flex-col gap-4">
-        <LoadingLabel>Loading flood levels</LoadingLabel>
+        <LoadingLabel>{t("flood.loading")}</LoadingLabel>
         <GlassPanel className="p-5">
           <Skeleton className="h-7 w-40" />
           <Skeleton className="mt-4 h-11 w-full" />
@@ -86,12 +88,12 @@ export function FloodLevelView() {
   if (!live) {
     return (
       <GlassPanel className="p-5">
-        <h1 className="text-xl font-semibold">Flood level</h1>
+        <h1 className="text-xl font-semibold">{t("flood.title")}</h1>
         <p className="mt-2 text-base" role="alert">
-          {error || "No flood data for this city yet."}
+          {error ? t(error) : t("flood.noData")}
         </p>
         <button type="button" onClick={reload} className="mt-3 min-h-11 rounded-full px-5 text-base font-medium">
-          Try again
+          {t("flood.retry")}
         </button>
       </GlassPanel>
     )
@@ -104,7 +106,7 @@ export function FloodLevelView() {
   const weekFlows = week.flatMap((day) => (day.riverFlowM3s === null ? [] : [day.riverFlowM3s]))
   const weekLow = weekFlows.length > 0 ? Math.min(...weekFlows) : null
   const weekHigh = weekFlows.length > 0 ? Math.max(...weekFlows) : null
-  const dataDay = live.dataDate ? shortDate(live.dataDate) : "unknown date"
+  const dataDay = live.dataDate ? shortDate(live.dataDate, locale) : t("flood.unknownDate")
 
   return (
     <div className="flex flex-col gap-4">
@@ -112,16 +114,16 @@ export function FloodLevelView() {
       <GlassPanel className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold">Flood level</h1>
+            <h1 className="text-xl font-semibold">{t("flood.title")}</h1>
             <p className="text-base" style={MUTED}>
-              Flood risk and river flow by city in Metro Manila.
+              {t("flood.subtitle")}
             </p>
           </div>
-          <span className="rounded-full border border-current px-3 py-1 text-sm font-medium">Recorded up to {dataDay} · not official</span>
+          <span className="rounded-full border border-current px-3 py-1 text-sm font-medium">{t("flood.recordedUpTo", { day: dataDay })}</span>
         </div>
 
         <fieldset className="mt-4">
-          <legend className="sr-only">Choose a city</legend>
+          <legend className="sr-only">{t("flood.chooseCity")}</legend>
           <div className="flex flex-wrap gap-2">
             {CITIES.map((candidate) => {
               const candidateRisk = riskLook(cityData(candidate.key)?.risk)
@@ -144,7 +146,7 @@ export function FloodLevelView() {
                       {candidateRisk.symbol}
                     </span>
                     {shortName(candidate.name)}
-                    <span className="sr-only">, {candidateRisk.label} risk</span>
+                    <span className="sr-only">{t("flood.cityRisk", { level: t(candidateRisk.label) })}</span>
                   </span>
                 </label>
               )
@@ -158,11 +160,11 @@ export function FloodLevelView() {
         <GlassPanel className="p-5 lg:col-span-5">
           <h2 className="text-lg font-semibold">{city.name}</h2>
           <p className="text-base" style={MUTED}>
-            River flow on {dataDay}
+            {t("flood.riverFlowOn", { day: dataDay })}
           </p>
 
           {live.riverFlowM3s === null ? (
-            <p className="mt-3 text-base">No river readings for this city.</p>
+            <p className="mt-3 text-base">{t("flood.noRiver")}</p>
           ) : (
             <>
               <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
@@ -174,18 +176,14 @@ export function FloodLevelView() {
                   {level && <LevelChip level={level} />}
                   <p className="text-base">
                     <span aria-hidden="true">{flowChange.arrow} </span>
-                    {flowChange.text}
+                    {t(flowChange.key, { percent: flowChange.percent })}
                   </p>
                 </div>
               </div>
               {weekLow !== null && weekHigh !== null && (
                 <p className="mt-2 text-base" style={MUTED}>
-                  Over the last {week.length} recorded days: {weekLow.toFixed(1)} to {weekHigh.toFixed(1)} m³/s.{" "}
-                  {live.riverFlowM3s <= weekLow
-                    ? "Today is the lowest of the week."
-                    : live.riverFlowM3s >= weekHigh
-                      ? "Today is the highest of the week."
-                      : ""}
+                  {t("flood.weekRange", { days: week.length, low: weekLow.toFixed(1), high: weekHigh.toFixed(1) })}{" "}
+                  {live.riverFlowM3s <= weekLow ? t("flood.weekLowest") : live.riverFlowM3s >= weekHigh ? t("flood.weekHighest") : ""}
                 </p>
               )}
               {weekLow !== null && weekHigh !== null && (
@@ -200,9 +198,9 @@ export function FloodLevelView() {
         <div className="flex flex-col gap-4 lg:col-span-7">
           {/* The recorded days. */}
           <GlassPanel className="p-5">
-            <h2 className="text-lg font-semibold">Last {week.length} recorded days</h2>
+            <h2 className="text-lg font-semibold">{t("flood.lastDays", { days: week.length })}</h2>
             <p className="text-sm" style={MUTED}>
-              River flow in m³/s, and the rain that fell each day (mm)
+              {t("flood.lastDaysHint")}
             </p>
             <div className="mt-3">
               <FlowChart days={week} level={level} />
@@ -211,7 +209,7 @@ export function FloodLevelView() {
               <RainBars days={week} />
             </div>
             <p className="mt-1 text-base tabular-nums" style={MUTED}>
-              Rain on {dataDay}: {live.rainMm === null ? "not recorded" : `${live.rainMm.toFixed(1)} mm`}
+              {t("flood.rainOn", { day: dataDay, rain: live.rainMm === null ? t("flood.notRecorded") : `${live.rainMm.toFixed(1)} mm` })}
             </p>
           </GlassPanel>
 
@@ -219,34 +217,35 @@ export function FloodLevelView() {
             {/* What the rain forecast says. */}
             <GlassPanel className="p-5">
               <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold">
-                What may come next
+                {t("flood.next")}
                 {forecast && <LevelChip level={forecast.level} className="!px-2 !py-0.5 !text-xs" />}
               </h2>
               {forecast ? (
                 <>
                   <p className="mt-2 text-base leading-relaxed">
-                    About {forecast.totalMm.toFixed(1)} mm of rain is forecast in the next {forecast.hoursCovered} hours, at most{" "}
-                    {forecast.peakMmPerHour.toFixed(1)} mm in one hour.
+                    {t("flood.forecastLine", { total: forecast.totalMm.toFixed(1), hours: forecast.hoursCovered, peak: forecast.peakMmPerHour.toFixed(1) })}
                     {forecast.wettest &&
-                      ` The highest chance of rain is ${weekday(new Date(forecast.wettest.time).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }))}, ${Math.round(forecast.wettest.chance)}%.`}
+                      ` ${t("flood.wettest", {
+                        day: weekday(new Date(forecast.wettest.time).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }), locale),
+                        percent: Math.round(forecast.wettest.chance),
+                      })}`}
                   </p>
                   <p className="mt-2 text-sm" style={MUTED}>
-                    The level uses the same rain limits as the flood risk rules. It is a forecast, not a warning, and it is not
-                    part of the risk level shown above.
+                    {t("flood.forecastNote")}
                   </p>
                 </>
               ) : (
-                <p className="mt-2 text-base">The rain forecast isn&apos;t available right now.</p>
+                <p className="mt-2 text-base">{t("flood.noForecast")}</p>
               )}
             </GlassPanel>
 
             {/* What to do. */}
             <GlassPanel className="p-5">
               <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold">
-                What to do
+                {t("flood.todo")}
                 {level && <LevelChip level={level} className="!px-2 !py-0.5 !text-xs" />}
               </h2>
-              <p className="mt-2 text-base leading-relaxed">{level ? LEVEL_STYLE[level].advice : "The flood risk could not be worked out. Check pagasa.dost.gov.ph."}</p>
+              <p className="mt-2 text-base leading-relaxed">{level ? t(LEVEL_STYLE[level].advice) : t("flood.noLevel")}</p>
               {live.riskReasons.length > 0 && (
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-sm" style={MUTED}>
                   {live.riskReasons.map((reason) => (
@@ -256,10 +255,10 @@ export function FloodLevelView() {
               )}
               <div className="mt-4 flex flex-wrap gap-2">
                 <a href="tel:911" className={`${ACTION_BUTTON} bg-[var(--glass-accent)] text-white`}>
-                  Call 911 if in danger
+                  {t("flood.call911")}
                 </a>
                 <Link href="/assistant" className={`${ACTION_BUTTON} border border-current`}>
-                  Ask the AI Agent Flood Assistant
+                  {t("flood.askAssistant")}
                 </Link>
               </div>
             </GlassPanel>
@@ -268,17 +267,19 @@ export function FloodLevelView() {
       </div>
 
       <GlassPanel className="p-5 text-sm">
-        <p className="font-semibold">Disclaimer</p>
+        <p className="font-semibold">{t("flood.disclaimerTitle")}</p>
         <p className="mt-1" style={MUTED}>
-          River flow, rain and the risk level are from the latest recorded day, refreshed four times a day (today so far, until the day ends).
-          The risk is a rule-based estimate, not an official flood warning. Flow is in m³/s: there is no water height in the data.
-          The rain forecast is from Tomorrow.io. For official warnings, see pagasa.dost.gov.ph and ndrrmc.gov.ph.
+          {t("flood.disclaimer")}
         </p>
       </GlassPanel>
 
       {/* Tells screen-reader users what changed when they pick another city. */}
       <p className="sr-only" role="status">
-        Showing {city.name}: {risk.label} {level ? "risk" : ""}, river flow {live.riverFlowM3s === null ? "unknown" : `${live.riverFlowM3s.toFixed(1)} cubic metres per second`}.
+        {t("flood.status", {
+          city: city.name,
+          risk: level ? t("flood.statusRisk", { level: t(risk.label) }) : t(risk.label),
+          flow: live.riverFlowM3s === null ? t("flood.statusUnknown") : t("flood.statusFlow", { flow: live.riverFlowM3s.toFixed(1) }),
+        })}
       </p>
     </div>
   )

@@ -4,6 +4,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 import { CITIES } from "@/data/dashboard-cities"
 import { fetchDashboard, type LiveCity } from "@/lib/dashboard-api"
+import { KeyedError } from "@/i18n/keyed-error"
+import type { MessageKey } from "@/i18n/messages"
 
 /** The data files change about once a day; checking every 15 minutes is plenty. */
 const REFRESH_MS = 15 * 60 * 1000
@@ -16,7 +18,7 @@ type DashboardDataValue = {
   /** The newest day in the data (for example "2026-10-30"), or null. */
   dataDate: string | null
   /** A plain sentence when the last try failed, or "". */
-  error: string
+  error: MessageKey | ""
   /** Try again now. */
   reload: () => void
 }
@@ -38,7 +40,7 @@ const DashboardDataContext = createContext<DashboardDataValue>(EMPTY)
 export function DashboardDataProvider({ children }: { children: React.ReactNode }) {
   const [cities, setCities] = useState<Map<string, LiveCity>>(new Map())
   const [dataDate, setDataDate] = useState<string | null>(null)
-  const [error, setError] = useState("")
+  const [error, setError] = useState<MessageKey | "">("")
   const [attempt, setAttempt] = useState(0) // changing this loads again
 
   useEffect(() => {
@@ -52,7 +54,7 @@ export function DashboardDataProvider({ children }: { children: React.ReactNode 
         setError("")
       } catch (caught) {
         if (controller.signal.aborted) return
-        setError(caught instanceof Error ? caught.message : "Something went wrong.")
+        setError(caught instanceof KeyedError ? caught.key : "error.generic")
       }
     }
 

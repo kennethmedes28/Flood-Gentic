@@ -9,6 +9,7 @@ import { useCurrentCity } from "@/context/CurrentCityContext"
 import { useDashboardData } from "@/context/DashboardDataContext"
 import { useLiveWeather } from "@/context/LiveWeatherContext"
 import { manilaHour } from "@/lib/rain-words"
+import { useLanguage } from "@/context/LanguageContext"
 
 const HOURS_SHOWN = 12
 
@@ -39,6 +40,7 @@ export function RainChart({ loading = false }: { loading?: boolean }) {
   const { city } = useCurrentCity()
   const { status, cityData } = useDashboardData()
   const { forecastFor } = useLiveWeather()
+  const { t } = useLanguage()
   const [chosen, setChosen] = useState<View>("hours")
 
   const hours = hourBars(forecastFor(city.key)?.hourly ?? [])
@@ -49,7 +51,7 @@ export function RainChart({ loading = false }: { loading?: boolean }) {
   if (loading || (status === "loading" && hours.length === 0)) {
     return (
       <GlassPanel className="p-5">
-        <LoadingLabel>Loading rainfall</LoadingLabel>
+        <LoadingLabel>{t("rainChart.loading")}</LoadingLabel>
         <Skeleton className="h-5 w-48" />
         <Skeleton className="mt-4 h-40 w-full" />
       </GlassPanel>
@@ -59,8 +61,8 @@ export function RainChart({ loading = false }: { loading?: boolean }) {
   const maxRain = Math.max(0, ...bars.map((bar) => bar.mm))
   /** Bars are scaled to the biggest value; with no rain at all they stay flat rather than dividing by zero. */
   const barHeight = (mm: number) => (maxRain > 0 ? (mm / maxRain) * 100 : 0)
-  const title = view === "hours" ? "Rainfall, next 12 hours" : "Rainfall, last 14 days"
-  const unit = view === "hours" ? "Millimetres per hour (Tomorrow.io forecast)" : "Millimetres per day (recorded)"
+  const title = view === "hours" ? t("rainChart.titleHours") : t("rainChart.titleDays")
+  const unit = view === "hours" ? t("rainChart.unitHours") : t("rainChart.unitDays")
 
   return (
     <GlassPanel className="p-5">
@@ -75,12 +77,12 @@ export function RainChart({ loading = false }: { loading?: boolean }) {
         </div>
         {hours.length > 0 && (
           <ToggleGroup
-            label="Rainfall range"
+            label={t("rainChart.range")}
             value={view}
             onChange={setChosen}
             options={[
-              { value: "hours", text: "Next 12 h" },
-              { value: "days", text: "Last 14 days" },
+              { value: "hours", text: t("rainChart.next12") },
+              { value: "days", text: t("rainChart.last14") },
             ]}
           />
         )}
@@ -88,13 +90,13 @@ export function RainChart({ loading = false }: { loading?: boolean }) {
 
       {bars.length === 0 ? (
         <p className="mt-3 text-sm" style={{ color: "var(--glass-text-muted)" }}>
-          No rain data is available for this city.
+          {t("rainChart.none")}
         </p>
       ) : (
         <div
           className="mt-4 flex h-40 items-end gap-1.5"
           role="img"
-          aria-label={maxRain > 0 ? `${title}, peaking at ${maxRain.toFixed(1)} millimetres` : `${title}: no rain`}
+          aria-label={maxRain > 0 ? t("rainChart.peaking", { title, mm: maxRain.toFixed(1) }) : t("rainChart.noRain", { title })}
         >
           {bars.map((bar) => (
             <div key={bar.key} className="flex h-full flex-1 flex-col items-center justify-end gap-1">

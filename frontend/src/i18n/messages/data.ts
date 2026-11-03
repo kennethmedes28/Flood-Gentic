@@ -1,0 +1,87 @@
+import { defineMessages } from "@/i18n/define"
+
+/** Words shared by the data pages: flood levels, rain bands, weather codes, how the river changed, and dates. */
+export const data = defineMessages(
+  {
+    "level.low": "Low",
+    "level.watch": "Watch",
+    "level.high": "High",
+    "level.critical": "Critical",
+    "level.low.advice": "No flood signal right now. Keep checking pagasa.dost.gov.ph.",
+    "level.watch.advice": "Flooding is possible in low areas. Prepare your go bag and know your nearest evacuation center.",
+    "level.high.advice": "Flooding is likely. Move valuables up, avoid low roads, and be ready to leave.",
+    "level.critical.advice": "Serious flooding is expected. Follow your DRRMO's evacuation orders now.",
+
+    "rain.intense": "Intense rain",
+    "rain.heavy": "Heavy rain",
+    "rain.moderate": "Moderate rain",
+    "rain.light": "Light rain",
+    "rain.none": "Little or no rain",
+    "rain.unknown": "Rain not recorded",
+
+    "sky.clear": "Clear",
+    "sky.mostlyClear": "Mostly clear",
+    "sky.partlyCloudy": "Partly cloudy",
+    "sky.mostlyCloudy": "Mostly cloudy",
+    "sky.cloudy": "Cloudy",
+    "sky.fog": "Fog",
+    "sky.drizzle": "Drizzle",
+    "sky.lightRain": "Light rain",
+    "sky.rain": "Rain",
+    "sky.heavyRain": "Heavy rain",
+    "sky.thunderstorm": "Thunderstorm",
+    "sky.snow": "Snow",
+    "sky.ice": "Freezing rain or ice",
+    "sky.unknown": "Weather unavailable",
+
+    "flow.unknown": "Change not known",
+    "flow.steady": "Steady since the day before",
+    "flow.rising": "Rising {percent}% since the day before",
+    "flow.falling": "Falling {percent}% since the day before",
+
+    "day.latest": "Latest recorded day",
+    "day.today": "Today so far",
+    "day.unknownDate": "unknown date",
+  },
+  {
+    "level.low": "Mababa",
+    "level.watch": "Bantay",
+    "level.high": "Mataas",
+    "level.critical": "Kritikal",
+    "level.low.advice": "Walang senyales ng baha sa ngayon. Patuloy na tingnan ang pagasa.dost.gov.ph.",
+    "level.watch.advice": "Maaaring bumaha sa mabababang lugar. Ihanda ang go bag mo at alamin ang pinakamalapit na evacuation center.",
+    "level.high.advice": "Malamang na bumaha. Itaas ang mga mahahalagang gamit, iwasan ang mabababang kalsada, at maging handang umalis.",
+    "level.critical.advice": "Inaasahan ang malubhang baha. Sundin na ngayon ang utos ng DRRMO ninyo na lumikas.",
+
+    "rain.intense": "Matinding ulan",
+    "rain.heavy": "Malakas na ulan",
+    "rain.moderate": "Katamtamang ulan",
+    "rain.light": "Mahinang ulan",
+    "rain.none": "Kaunti o walang ulan",
+    "rain.unknown": "Walang naitalang ulan",
+
+    "sky.clear": "Maaliwalas",
+    "sky.mostlyClear": "Halos maaliwalas",
+    "sky.partlyCloudy": "Bahagyang maulap",
+    "sky.mostlyCloudy": "Halos maulap",
+    "sky.cloudy": "Maulap",
+    "sky.fog": "Hamog",
+    "sky.drizzle": "Ambon",
+    "sky.lightRain": "Mahinang ulan",
+    "sky.rain": "Ulan",
+    "sky.heavyRain": "Malakas na ulan",
+    "sky.thunderstorm": "Pagkulog at pagkidlat",
+    "sky.snow": "Niyebe",
+    "sky.ice": "Nagyeyelong ulan o yelo",
+    "sky.unknown": "Walang datos ng panahon",
+
+    "flow.unknown": "Hindi alam ang pagbabago",
+    "flow.steady": "Matatag mula kahapon",
+    "flow.rising": "Tumataas ng {percent}% mula kahapon",
+    "flow.falling": "Bumababa ng {percent}% mula kahapon",
+
+    "day.latest": "Pinakabagong naitalang araw",
+    "day.today": "Ngayong araw hanggang sa kasalukuyan",
+    "day.unknownDate": "hindi alam na petsa",
+  }
+)

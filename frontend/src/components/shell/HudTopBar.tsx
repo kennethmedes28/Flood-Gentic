@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 
 import { GlassPanel } from "@/components/ui/GlassPanel"
+import { useT } from "@/context/LanguageContext"
 
 type HudTopBarProps = {
   /** Place name shown on the left. */
@@ -26,6 +27,7 @@ function formatTime(date: Date): string {
 
 /** HUD bar showing the place, the local time and the temperature. */
 export function HudTopBar({ place, placeNote, action, message, temperatureC, isSample = false }: HudTopBarProps) {
+  const t = useT()
   // Start empty so the server and browser render the same thing,
   // then fill in the real time after the page has loaded.
   const [time, setTime] = useState("")
@@ -60,7 +62,7 @@ export function HudTopBar({ place, placeNote, action, message, temperatureC, isS
           {temperatureC === null ? "--°C" : `${temperatureC}°C`}
           {isSample && (
             <span className="ml-1 text-xs" style={{ color: "var(--glass-text-muted)" }}>
-              (sample)
+              {t("bar.sample")}
             </span>
           )}
         </span>

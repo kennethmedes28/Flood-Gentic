@@ -1,5 +1,6 @@
 "use client"
 
+import { useLanguage } from "@/context/LanguageContext"
 import { useElementWidth } from "@/hooks/useElementWidth"
 import { LEVEL_STYLE, type FloodLevel } from "@/lib/flood-levels"
 import { shortDate } from "@/lib/rain-words"
@@ -16,13 +17,14 @@ type FlowChartProps = {
 
 /** The river's flow over the recorded days as a line. */
 export function FlowChart({ days, level }: FlowChartProps) {
+  const { t, locale } = useLanguage()
   const { ref, width } = useElementWidth<HTMLDivElement>()
   const points = days.filter((day): day is { date: string; riverFlowM3s: number } => day.riverFlowM3s !== null)
 
   if (points.length < 2) {
     return (
       <p className="text-base" style={{ color: "var(--glass-text-muted)" }}>
-        Not enough river readings for a chart.
+        {t("chart.notEnough")}
       </p>
     )
   }
@@ -41,12 +43,12 @@ export function FlowChart({ days, level }: FlowChartProps) {
 
   const first = points[0]
   const summary =
-    `River flow over the last ${points.length} recorded days, from ${first.riverFlowM3s.toFixed(1)} to ${last.riverFlowM3s.toFixed(1)} cubic metres per second.`
+    t("chart.summary", { days: points.length, first: first.riverFlowM3s.toFixed(1), last: last.riverFlowM3s.toFixed(1) })
 
   const labels = [
-    { index: 0, text: shortDate(first.date), anchor: "start" as const },
-    { index: Math.floor((points.length - 1) / 2), text: shortDate(points[Math.floor((points.length - 1) / 2)].date), anchor: "middle" as const },
-    { index: points.length - 1, text: shortDate(last.date), anchor: "end" as const },
+    { index: 0, text: shortDate(first.date, locale), anchor: "start" as const },
+    { index: Math.floor((points.length - 1) / 2), text: shortDate(points[Math.floor((points.length - 1) / 2)].date, locale), anchor: "middle" as const },
+    { index: points.length - 1, text: shortDate(last.date, locale), anchor: "end" as const },
   ]
 
   return (

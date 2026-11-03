@@ -7,11 +7,13 @@ import { LoadingLabel, Skeleton } from "@/components/ui/Skeleton"
 import { useCurrentCity } from "@/context/CurrentCityContext"
 import { useDashboardData } from "@/context/DashboardDataContext"
 import { CITIES, type CityReading } from "@/data/dashboard-cities"
-import { describeFlowChange } from "@/lib/flood-levels"
+import { describeFlowChange, type FlowChangeKey } from "@/lib/flood-levels"
 import { distanceKm } from "@/lib/geo"
 import { shortDate } from "@/lib/rain-words"
 import type { LiveCity } from "@/lib/dashboard-api"
 import { describeFlow, riskLook } from "@/lib/risk"
+import { useLanguage, type Translate } from "@/context/LanguageContext"
+import type { MessageKey } from "@/i18n/messages"
 
 /** How many cities are listed until the user asks for all of them. */
 const COLLAPSED_COUNT = 6
@@ -26,6 +28,14 @@ function citiesNearestFirst(current: CityReading): CityReading[] {
 /** How many recorded days the flow is compared with. */
 const COMPARE_DAYS = 7
 
+/** The short form of each flow change ("rising 12%"), used inside a sentence. */
+const SHORT_CHANGE: Record<FlowChangeKey, MessageKey> = {
+  "flow.unknown": "flowShort.unknown",
+  "flow.steady": "flowShort.steady",
+  "flow.rising": "flowShort.rising",
+  "flow.falling": "flowShort.falling",
+}
+
 /** The lowest and highest river flow of the last 7 recorded days, or null when there are no readings. */
 function flowRange(live: LiveCity): { low: number; high: number } | null {
   const flows = live.recent.slice(-COMPARE_DAYS).flatMap((day) => (day.riverFlowM3s === null ? [] : [day.riverFlowM3s]))
@@ -33,11 +43,12 @@ function flowRange(live: LiveCity): { low: number; high: number } | null {
 }
 
 /** One short line under a city: how its river flow changed since the day before, and the range over the last 7 days. */
-function flowDetail(live: LiveCity | undefined): string {
-  if (!live || live.riverFlowM3s === null) return "No river data for this city"
+function flowDetail(live: LiveCity | undefined, t: Translate): string {
+  if (!live || live.riverFlowM3s === null) return t("cities.noRiver")
   const change = describeFlowChange(live.recent.at(-2)?.riverFlowM3s, live.riverFlowM3s)
+  const changeText = t(change.key, { percent: change.percent })
   const range = flowRange(live)
-  return range ? `${change.text} · last 7 days ${range.low.toFixed(1)}–${range.high.toFixed(1)}` : change.text
+  return range ? t("cities.flowDetail", { change: changeText, low: range.low.toFixed(1), high: range.high.toFixed(1) }) : changeText
 }
 
 /** The rain (mm) of the last few recorded days added up, or null when none of them has a reading. */
@@ -55,11 +66,12 @@ export function CityList({ loading = false }: { loading?: boolean }) {
   const { city: current } = useCurrentCity()
   const { status, cityData } = useDashboardData()
   const [showAll, setShowAll] = useState(false)
+  const { t } = useLanguage()
 
   if (loading || status === "loading") {
     return (
       <GlassPanel className="flex-1 p-5">
-        <LoadingLabel>Loading nearby areas</LoadingLabel>
+        <LoadingLabel>{t("cities.loading")}</LoadingLabel>
         <Skeleton className="mb-3 h-5 w-32" />
         <div className="flex flex-col gap-2">
           {CITIES.slice(0, COLLAPSED_COUNT).map((city) => (
@@ -72,9 +84,9 @@ export function CityList({ loading = false }: { loading?: boolean }) {
 
   return (
     <GlassPanel className="flex-1 p-5">
-      <h2 className="font-semibold">Nearby areas</h2>
+      <h2 className="font-semibold">{t("cities.title")}</h2>
       <p className="mb-3 text-xs" style={{ color: "var(--glass-text-muted)" }}>
-        River flow in m³/s, with the flood risk level
+        {t("cities.subtitle")}
       </p>
       <ul className="flex flex-col gap-2">
         {citiesNearestFirst(current)
@@ -101,23 +113,23 @@ export function CityList({ loading = false }: { loading?: boolean }) {
                 </span>
                 {isCurrent && (
                   <span className="text-xs font-semibold" style={{ color: "var(--glass-accent)" }}>
-                    Current location
+                    {t("cities.current")}
                   </span>
                 )}
                 <span className="text-xs" style={{ color: "var(--glass-text-muted)" }}>
-                  {flowDetail(live)}
+                  {flowDetail(live, t)}
                 </span>
               </span>
               <span className="flex shrink-0 items-center gap-3">
                 <span className="whitespace-nowrap tabular-nums" style={{ color: "var(--glass-text-muted)" }}>
-                  {describeFlow(live?.riverFlowM3s)}
+                  {describeFlow(live?.riverFlowM3s, t)}
                 </span>
                 <span
                   className="flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium text-white"
                   style={{ background: risk.color }}
                 >
                   <span aria-hidden="true">{risk.symbol}</span>
-                  {risk.label}
+                  {t(risk.label)}
                 </span>
               </span>
             </li>
@@ -130,7 +142,7 @@ export function CityList({ loading = false }: { loading?: boolean }) {
         aria-expanded={showAll}
         className="mt-3 min-h-11 rounded-full px-4 text-sm font-medium"
       >
-        {showAll ? "Show fewer" : `Show all ${CITIES.length} cities`}
+        {showAll ? t("cities.showFewer") : t("cities.showAll", { count: CITIES.length })}
       </button>
 
       <FlowExplanation cityName={current.name} live={cityData(current.key)} />
@@ -143,10 +155,11 @@ export function CityList({ loading = false }: { loading?: boolean }) {
  * around it (the day before, how unusual it is, the rain). It says what the data shows, not what caused it.
  */
 function FlowExplanation({ cityName, live }: { cityName: string; live: LiveCity | undefined }) {
+  const { t, locale } = useLanguage()
   if (!live || live.riverFlowM3s === null || !live.dataDate) return null
 
   const flow = live.riverFlowM3s.toFixed(1)
-  const day = shortDate(live.dataDate)
+  const day = shortDate(live.dataDate, locale)
   const yesterday = live.recent.at(-2)?.riverFlowM3s
   const change = describeFlowChange(yesterday, live.riverFlowM3s)
   const range = flowRange(live)
@@ -155,27 +168,26 @@ function FlowExplanation({ cityName, live }: { cityName: string; live: LiveCity 
 
   return (
     <details className="mt-3 text-sm">
-      <summary className="min-h-11 cursor-pointer py-2 font-medium">Why is the flow {flow} m³/s in {cityName}?</summary>
+      <summary className="min-h-11 cursor-pointer py-2 font-medium">{t("flowWhy.summary", { flow, city: cityName })}</summary>
       <div className="space-y-2 pb-1" style={{ color: "var(--glass-text-muted)" }}>
         <p>
-          <strong style={{ color: "inherit" }}>What it is:</strong> the river flow is how much water passes a point each second, in cubic
-          metres. It is an estimate from a river model for {cityName}, not a reading from a gauge, and it is not a water height.
+          <strong style={{ color: "inherit" }}>{t("flowWhy.whatItIsLabel")}</strong> {t("flowWhy.whatItIs", { city: cityName })}
         </p>
         <p>
-          <strong style={{ color: "inherit" }}>What the data shows:</strong> on {day} the flow was {flow} m³/s.{" "}
-          {yesterday !== null && yesterday !== undefined && `The day before it was ${yesterday.toFixed(1)} m³/s (${change.text.replace(" since the day before", "").toLowerCase()}). `}
-          {range && `Over the last ${COMPARE_DAYS} recorded days it ranged from ${range.low.toFixed(1)} to ${range.high.toFixed(1)} m³/s.`}
+          <strong style={{ color: "inherit" }}>{t("flowWhy.dataLabel")}</strong> {t("flowWhy.data", { day, flow })}{" "}
+          {yesterday !== null && yesterday !== undefined && `${t("flowWhy.yesterday", { flow: yesterday.toFixed(1), change: t(SHORT_CHANGE[change.key], { percent: change.percent }) })} `}
+          {range && t("flowWhy.range", { days: COMPARE_DAYS, low: range.low.toFixed(1), high: range.high.toFixed(1) })}
         </p>
         {(rainToday !== null || rainThreeDays !== null) && (
           <p>
-            <strong style={{ color: "inherit" }}>Rain:</strong>{" "}
-            {rainToday !== null && `${rainToday.toFixed(1)} mm fell on ${day}`}
-            {rainThreeDays !== null && `, ${rainThreeDays.toFixed(1)} mm over the last 3 recorded days`}. Rain upstream raises a river with a
-            delay of a day or more, so the flow also reflects the days before, not only the last one.
+            <strong style={{ color: "inherit" }}>{t("flowWhy.rainLabel")}</strong>{" "}
+            {rainToday !== null && t("flowWhy.rainToday", { mm: rainToday.toFixed(1), day })}
+            {rainThreeDays !== null && t("flowWhy.rain3", { mm: rainThreeDays.toFixed(1) })}
+            {t("flowWhy.rainNote")}
           </p>
         )}
         <p>
-          The risk level combines this flow with the rain and how wet the ground is. It does not use the forecast.
+          {t("flowWhy.risk")}
         </p>
       </div>
     </details>

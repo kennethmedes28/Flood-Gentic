@@ -10,6 +10,8 @@ import { useDashboardData } from "@/context/DashboardDataContext"
 import { useLiveWeather } from "@/context/LiveWeatherContext"
 import { describeRain, manilaDay, shortDate, weekday } from "@/lib/rain-words"
 import { describeWeatherCode } from "@/lib/weather-codes"
+import { useLanguage } from "@/context/LanguageContext"
+import type { MessageKey } from "@/i18n/messages"
 
 const DAYS_SHOWN = 7
 
@@ -19,7 +21,7 @@ type View = "forecast" | "recorded"
 type DayItem = {
   date: string
   icon: string
-  iconText: string
+  iconText: MessageKey
   highC: number | null
   lowC: number | null
   /** Shown under the temperatures, for example "70% rain" or "6.8 mm". */
@@ -29,7 +31,7 @@ type DayItem = {
 const degrees = (value: number | null) => (value === null ? "–" : `${Math.round(value)}°`)
 
 /** The next days of the forecast, from the live weather (Tomorrow.io, stored once a day). */
-function forecastItems(daily: { time: string; values: Record<string, number | null> }[]): DayItem[] {
+function forecastItems(daily: { time: string; values: Record<string, number | null> }[], t: (key: MessageKey, params?: Record<string, string | number>) => string): DayItem[] {
   return daily.slice(0, DAYS_SHOWN).map(({ time, values }) => {
     const look = describeWeatherCode(values.weatherCodeMax)
     const chance = values.precipitationProbabilityMax
@@ -39,7 +41,7 @@ function forecastItems(daily: { time: string; values: Record<string, number | nu
       iconText: look.text,
       highC: values.temperatureMax ?? null,
       lowC: values.temperatureMin ?? null,
-      detail: chance === null || chance === undefined ? "–" : `${Math.round(chance)}% rain`,
+      detail: chance === null || chance === undefined ? "–" : t("strip.rainChance", { percent: Math.round(chance) }),
     }
   })
 }
@@ -68,9 +70,10 @@ export function DayStrip({ loading = false }: { loading?: boolean }) {
   const { city } = useCurrentCity()
   const { status, cityData } = useDashboardData()
   const { forecastFor } = useLiveWeather()
+  const { t, locale } = useLanguage()
   const [chosen, setChosen] = useState<View>("forecast")
 
-  const forecast = forecastItems(forecastFor(city.key)?.daily ?? [])
+  const forecast = forecastItems(forecastFor(city.key)?.daily ?? [], t)
   const recorded = recordedItems(cityData(city.key)?.recent ?? [])
   const view: View = forecast.length > 0 ? chosen : "recorded"
   const days = view === "forecast" ? forecast : recorded
@@ -78,7 +81,7 @@ export function DayStrip({ loading = false }: { loading?: boolean }) {
   if (loading || (status === "loading" && forecast.length === 0)) {
     return (
       <GlassPanel className="p-5">
-        <LoadingLabel>Loading forecast</LoadingLabel>
+        <LoadingLabel>{t("strip.loading")}</LoadingLabel>
         <Skeleton className="mb-3 h-5 w-32" />
         <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
           {Array.from({ length: DAYS_SHOWN }, (_, index) => (
@@ -93,19 +96,19 @@ export function DayStrip({ loading = false }: { loading?: boolean }) {
     <GlassPanel className="p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="font-semibold">{view === "forecast" ? "Forecast" : "Last 7 days"} · {city.name}</h2>
+          <h2 className="font-semibold">{view === "forecast" ? t("strip.forecast") : t("strip.last7")} · {city.name}</h2>
           <p className="text-xs" style={{ color: "var(--glass-text-muted)" }}>
-            {view === "forecast" ? "Tomorrow.io, fetched once a day" : "Recorded weather, not a forecast"}
+            {view === "forecast" ? t("strip.forecastNote") : t("strip.recordedNote")}
           </p>
         </div>
         {forecast.length > 0 && (
           <ToggleGroup
-            label="Days to show"
+            label={t("strip.daysToShow")}
             value={view}
             onChange={setChosen}
             options={[
-              { value: "forecast", text: "Forecast" },
-              { value: "recorded", text: "Last 7 days" },
+              { value: "forecast", text: t("strip.forecast") },
+              { value: "recorded", text: t("strip.last7") },
             ]}
           />
         )}
@@ -113,17 +116,17 @@ export function DayStrip({ loading = false }: { loading?: boolean }) {
 
       {days.length === 0 ? (
         <p className="text-sm" style={{ color: "var(--glass-text-muted)" }}>
-          No days are available for this city.
+          {t("strip.none")}
         </p>
       ) : (
         <ul className="grid grid-cols-4 gap-2 sm:grid-cols-7">
           {days.map((day) => (
             <li key={day.date} className="flex flex-col items-center gap-1 rounded-2xl py-2 text-center text-sm">
-              <span className="font-medium">{weekday(day.date)}</span>
+              <span className="font-medium">{weekday(day.date, locale)}</span>
               <span className="text-xs" style={{ color: "var(--glass-text-muted)" }}>
-                {shortDate(day.date)}
+                {shortDate(day.date, locale)}
               </span>
-              <span className="text-2xl" role="img" aria-label={day.iconText}>
+              <span className="text-2xl" role="img" aria-label={t(day.iconText)}>
                 {day.icon}
               </span>
               <span className="tabular-nums">

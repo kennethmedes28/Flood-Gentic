@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 
+import { useT } from "@/context/LanguageContext"
+
 /** Looping title animation (animated WebP) shown first, until the user presses the button. */
 const INTRO_ANIMATION = "/flood-gentic_intro_blink_full.webp"
 /** Animation played once after the button press, then the dashboard opens. */
@@ -33,6 +35,7 @@ let introSeen = false
  * start loading once they are needed.
  */
 export function IntroGate({ children }: { children: React.ReactNode }) {
+  const t = useT()
   const [phase, setPhase] = useState<Phase>(introSeen ? "dashboard" : "intro")
 
   // Download the gate animation while the intro is showing, so it starts
@@ -65,10 +68,10 @@ export function IntroGate({ children }: { children: React.ReactNode }) {
         <>
           {/* Plain <img>: next/image would try to optimise (and freeze) the animation. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={INTRO_ANIMATION} alt="Flood Gentic" className="h-full w-full object-cover" />
+          <img src={INTRO_ANIMATION} alt={t("intro.alt")} className="h-full w-full object-cover" />
           <button type="button" autoFocus onClick={startGate} className="enter-button">
             <span className="enter-button__face">
-              Enter
+              {t("intro.enter")}
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>

@@ -1,3 +1,4 @@
+import { KeyedError } from "@/i18n/keyed-error"
 import { API_URL } from "@/lib/chat-api"
 import type { FloodLevel } from "@/lib/flood-levels"
 
@@ -69,9 +70,9 @@ export async function fetchDashboard(cityKeys: string[], signal?: AbortSignal): 
   try {
     response = await fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout })
   } catch {
-    throw new Error("Can't reach the flood data service right now.")
+    throw new KeyedError("error.dashboardNetwork")
   }
-  if (!response.ok) throw new Error("The flood data service had a problem. Please try again.")
+  if (!response.ok) throw new KeyedError("error.dashboardProblem")
 
   const body = (await response.json()) as { data_date: string | null; cities: ApiCity[] }
   return {

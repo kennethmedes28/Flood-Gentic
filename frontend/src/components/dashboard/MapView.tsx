@@ -12,9 +12,11 @@ import { BASEMAPS, type Basemap } from "@/lib/basemaps"
 import { useDashboardData } from "@/context/DashboardDataContext"
 import { CITIES } from "@/data/dashboard-cities"
 import { describeFlow, RISK_STYLE, riskLook } from "@/lib/risk"
+import { useLanguage } from "@/context/LanguageContext"
 
 /** Flood map: street or satellite view with one risk marker per city. */
 export function MapView({ loading = false }: { loading?: boolean }) {
+  const { t } = useLanguage()
   const { city: current } = useCurrentCity()
   const { cityData } = useDashboardData()
   const currentRef = useRef(current) // the map is created once, on the city that is current at that moment
@@ -83,12 +85,12 @@ export function MapView({ loading = false }: { loading?: boolean }) {
         fillColor: risk.color,
       })
       marker?.setPopupContent(
-        `<strong>${city.name}</strong>${isCurrent ? " · Current location" : ""}<br>${risk.symbol} ${risk.label}${live?.risk ? " risk" : ""} · river ${describeFlow(live?.riverFlowM3s)}`
+        `<strong>${city.name}</strong>${isCurrent ? t("map.popupCurrent") : ""}<br>${t("map.popup", { symbol: risk.symbol, label: t(risk.label), risk: live?.risk ? t("map.popupRisk") : "", flow: describeFlow(live?.riverFlowM3s, t) })}`
       )
       if (isCurrent) marker?.bringToFront()
     }
     map.current.setView([current.lat, current.lng], map.current.getZoom(), { animate: !reducedMotion })
-  }, [current, ready, cityData])
+  }, [current, ready, cityData, t])
 
   // Swap the base layer whenever the toggle changes.
   useEffect(() => {
@@ -102,7 +104,7 @@ export function MapView({ loading = false }: { loading?: boolean }) {
   if (loading) {
     return (
       <GlassPanel className="flex min-h-56 flex-col p-5">
-        <LoadingLabel>Loading map</LoadingLabel>
+        <LoadingLabel>{t("map.loading")}</LoadingLabel>
         <Skeleton className="mb-3 h-5 w-24" />
         <Skeleton className="min-h-44 flex-1" />
       </GlassPanel>
@@ -112,8 +114,8 @@ export function MapView({ loading = false }: { loading?: boolean }) {
   return (
     <GlassPanel className="flex flex-1 flex-col p-5">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="font-semibold">Flood map</h2>
-        <div className="flex gap-1" role="group" aria-label="Map style">
+        <h2 className="font-semibold">{t("map.title")}</h2>
+        <div className="flex gap-1" role="group" aria-label={t("map.style")}>
           {(Object.keys(BASEMAPS) as Basemap[]).map((key) => (
             <button
               key={key}
@@ -122,7 +124,7 @@ export function MapView({ loading = false }: { loading?: boolean }) {
               aria-pressed={basemap === key}
               className="min-h-11 rounded-full px-4 text-sm font-medium aria-pressed:bg-[var(--glass-accent)] aria-pressed:text-white aria-pressed:[text-shadow:none]"
             >
-              {BASEMAPS[key].label}
+              {t(BASEMAPS[key].label)}
             </button>
           ))}
         </div>
@@ -130,7 +132,7 @@ export function MapView({ loading = false }: { loading?: boolean }) {
 
       {/* z-0 + isolate keep Leaflet's high z-index layers below the nav button. */}
       <div className="relative isolate z-0 min-h-72 flex-1 overflow-hidden rounded-2xl">
-        <div ref={mapElement} className="absolute inset-0" role="application" aria-label="Flood risk map" />
+        <div ref={mapElement} className="absolute inset-0" role="application" aria-label={t("map.aria")} />
       </div>
 
       <ul className="mt-3 flex flex-wrap gap-3 text-xs">
@@ -139,10 +141,10 @@ export function MapView({ loading = false }: { loading?: boolean }) {
             <span style={{ color: risk.color }} aria-hidden="true">
               {risk.symbol}
             </span>
-            {risk.label}
+            {t(risk.label)}
           </li>
         ))}
-        <li style={{ color: "var(--glass-text-muted)" }}>Rule-based estimate, not official</li>
+        <li style={{ color: "var(--glass-text-muted)" }}>{t("map.estimate")}</li>
       </ul>
     </GlassPanel>
   )
