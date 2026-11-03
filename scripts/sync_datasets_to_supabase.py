@@ -1,20 +1,21 @@
-"""Add the new rows of the dataset CSVs to Supabase. Append only.
+"""Add the new evacuation centers and emergency contacts from their CSV files to Supabase. Append only.
 
 Run from backend/ (or anywhere, with the Supabase settings in the environment):
 
     uv run python ../scripts/sync_datasets_to_supabase.py
 
-For each table the CSV rows are copied into a temporary staging table, then
-inserted with ``ON CONFLICT DO NOTHING``. A row whose (location_id, date) is
-already in Supabase is left exactly as it is (for evacuation centers the row is (city, barangay, name)), and nothing is ever updated or
-deleted, so running it twice in a row changes nothing.
+The CSV rows are copied into a temporary staging table, then inserted with ``ON CONFLICT DO NOTHING``. A row that is
+already in Supabase (for evacuation centers the row is (city, barangay, name)) is left exactly as it is, and nothing is
+ever updated or deleted, so running it twice in a row changes nothing.
 
 Tables (created if missing) and their CSV files:
 
-    ncr_locations              datasets/ncr_locations.csv
-    ncr_weather_daily          datasets/ncr_weather_daily_2020-2026.csv
-    ncr_flood_features_daily   datasets/ncr_flood_features_daily.csv
     evacuation_centers         datasets/ncr_evacuation_centers.csv
+    emergency_contacts         corpus/ph_emergency_contacts.csv (table: backend/sql/004_emergency_contacts.sql)
+
+The daily weather tables (ncr_locations, ncr_weather_daily, ncr_flood_features_daily) are NOT synced here. The nightly
+"Update datasets" workflow fills and revises them straight from Open-Meteo (scripts/update_supabase_from_open_meteo.py),
+and the CSV files are older than Supabase, so copying them back could only add stale values.
 
 Connection settings: see backend/.env.example (SUPABASE_DB_URL, or project ref + password + pooler host).
 """
@@ -26,19 +27,19 @@ from dotenv import load_dotenv
 
 REPO_DIR = Path(__file__).resolve().parent.parent
 DATASETS_DIR = REPO_DIR / "datasets"
+CONTACTS_CSV = REPO_DIR / "corpus" / "ph_emergency_contacts.csv"
+CONTACTS_TABLE_SQL = REPO_DIR / "backend" / "sql" / "004_emergency_contacts.sql"
 
 sys.path.insert(0, str(REPO_DIR / "backend"))  # so `checkpointer` and `src` can be imported
-sys.path.insert(0, str(REPO_DIR / "scripts"))  # so the table definitions can be shared
+sys.path.insert(0, str(REPO_DIR / "scripts"))  # so the table definitions can be shared and the contacts built
 load_dotenv()
 
-from load_to_supabase import DATASET_SCHEMA_SQL, DATASET_TABLES, read_csv_header  # noqa: E402
+from export_frontend_data import build_centers, build_contacts, read_csv  # noqa: E402
+from load_to_supabase import DATASET_SCHEMA_SQL, read_csv_header  # noqa: E402
 
-# The columns that identify a row in each table.
-KEY_COLUMNS = {
-    "ncr_locations": "location_id",
-    "ncr_weather_daily": "location_id, date",
-    "ncr_flood_features_daily": "location_id, date",
-    "evacuation_centers": "city, barangay, name",
+# The tables this script syncs, with the CSV file of each in datasets/ and the columns that identify a row.
+SYNCED_TABLES = {
+    "evacuation_centers": ("ncr_evacuation_centers.csv", "city, barangay, name"),
 }
 
 
@@ -57,9 +58,30 @@ def append_new_rows(conn, table: str, csv_path: Path) -> int:
 
         result = conn.execute(
             f"INSERT INTO {table} ({columns}) SELECT {columns} FROM staging "
-            f"ON CONFLICT ({KEY_COLUMNS[table]}) DO NOTHING"
+            f"ON CONFLICT ({SYNCED_TABLES[table][1]}) DO NOTHING"
         )
         return result.rowcount
+
+
+def append_new_contacts(conn) -> int:
+    """Insert the hotlines of the contacts list that are not in ``emergency_contacts`` yet. Returns how many were added.
+
+    The numbers are copied exactly as written. A hotline already stored (same agency, type and number) is left alone.
+    """
+    conn.execute(CONTACTS_TABLE_SQL.read_text(encoding="utf-8"))  # CREATE TABLE IF NOT EXISTS, safe to repeat
+    _, cities = build_centers(read_csv(DATASETS_DIR / "ncr_evacuation_centers.csv"))
+    contacts = build_contacts(read_csv(CONTACTS_CSV), cities)
+
+    added = 0
+    with conn.transaction():
+        for position, contact in enumerate(contacts):
+            result = conn.execute(
+                "INSERT INTO emergency_contacts (position, agency, category, contact_type, number, notes, cities) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (agency, contact_type, number) DO NOTHING",
+                [position, contact["agency"], contact["category"], contact["type"], contact["number"], contact["notes"], contact["cities"]],
+            )
+            added += result.rowcount
+    return added
 
 
 def main() -> None:
@@ -67,9 +89,10 @@ def main() -> None:
 
     with get_connection() as conn:
         conn.execute(DATASET_SCHEMA_SQL)  # CREATE TABLE IF NOT EXISTS, safe to repeat
-        for table, file_name in DATASET_TABLES:
+        for table, (file_name, _) in SYNCED_TABLES.items():
             added = append_new_rows(conn, table, DATASETS_DIR / file_name)
             print(f"{table}: {added} new rows added")
+        print(f"emergency_contacts: {append_new_contacts(conn)} new rows added")
 
 
 if __name__ == "__main__":

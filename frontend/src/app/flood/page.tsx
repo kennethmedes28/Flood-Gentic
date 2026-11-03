@@ -8,7 +8,7 @@ import { FloodLevelView } from "@/components/flood/FloodLevelView"
 
 /**
  * Flood level: the flood risk and river flow of each city, from the backend (recorded datasets) with the Tomorrow.io rain forecast.
- * The same video and glass look as the dashboard, and the same frame whose corners can be dragged to shrink it.
+ * The same glass look as the dashboard, and the same frame whose corners can be dragged to shrink it.
  * The data providers are opened here, as on the dashboard, because only these pages use them.
  */
 export default function FloodPage() {

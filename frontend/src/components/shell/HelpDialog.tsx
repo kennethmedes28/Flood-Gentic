@@ -17,12 +17,14 @@ const SECTIONS: { title: string; points: string[] }[] = [
     points: [
       "The slider on the right edge sets how frosted the panels are: up for more frost, down for clearer. With the keyboard, focus it and use the arrow keys.",
       "Theme, in the menu, switches between Default and Cyberpunk.",
+      "Text size, in the menu, makes all the text smaller or larger: Small, Default, Large or Extra large. Default follows your browser or device text size. It is remembered on this device.",
     ],
   },
   {
     title: "The hand cursor",
     points: [
       "On most pages the pointer is a 3D hand with a red laser dot. The dot is where you point and click. Choose the Left or Right hand in the menu.",
+      "Prefer the normal pointer? Set “Hand cursor” to Off in the menu. It is remembered on this device.",
       "Hold Alt and press the arrow keys to move the hand out of the way.",
       "The PAGASA satellite page uses your normal pointer.",
     ],
@@ -36,7 +38,7 @@ const SECTIONS: { title: string; points: string[] }[] = [
   },
   {
     title: "Reduced motion",
-    points: ["If your device is set to reduce motion, the opening animation is skipped and the background video stays paused."],
+    points: ["If your device is set to reduce motion, the opening animation is skipped."],
   },
   {
     title: "Please note",

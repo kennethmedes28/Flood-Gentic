@@ -37,6 +37,7 @@ flowchart TD
 | `/request` | Supply / assistance request form |
 | `/contacts` | Built. 911 first, then the rescue office and fire station of a chosen city, national agencies and hospitals. Numbers are copied exactly from `corpus/ph_emergency_contacts.csv`; only plain numbers are tap-to-call, ranges and text instructions are shown as written |
 | `/flood` | Flood level for any of the 17 cities: flood risk, river flow on a gauge (filled to today's flow, with marks at the lowest and highest flow of the last 7 recorded days), the last 7 recorded days of river flow and rain, the rain forecast for the next 24 hours, and what to do. Real data from the backend (`GET /dashboard` and the live weather); there is no water height in the data |
+| `/analytics` | Macro Weather Analytics: rainfall, temperature and heat, river flow vs rain, and wind and gusts since 2020, with city, year, month and day filters. Click a bar or point to drill down (years, months, days, one day); also a ranking of the 17 cities, the rainiest days and a table of the numbers. Charts use Recharts. Data from `GET /analytics/weather` |
 
 The data of the two pages above is generated, not typed: `scripts/export_frontend_data.py` copies the two CSV files into
 `frontend/src/data/evacuation-centers.ts` and `emergency-contacts.ts`. Run it again when a CSV changes (`--check` tells you if it is out of date).
@@ -150,38 +151,30 @@ sequenceDiagram
 ## AI Agent Flood Assistant: input modes
 
 The `/assistant` page (nav label "AI Agent Flood Assistant") has one round input button beside the message box.
-Hovering or focusing it opens a small menu to switch between **Voice** and **Photo / video**; a badge on the button's
+Hovering or focusing it opens a small menu to switch between **Voice** and **Photo**; a badge on the button's
 corner does the same on touch screens.
 
 - **Voice**: speech to text through `/ws/voice` (see `docs/voice_chat.md`). The text lands in the message box.
-- **Photo / video**: opens a file picker. Any words sent with it are a question about the picture and are answered by the chat model, with SAM's
-  measurements underneath (`docs/flood_media.md` section 12); the message box hint says so while something is attached. The file shows as a preview with a Remove button; pressing send sends it with the message to
+- **Photo**: opens a file picker. Any words sent with it are a question about the picture and are answered by the chat model, with SAM's
+  measurements underneath (`docs/flood_media.md` section 10); the message box hint says so while something is attached. The file shows as a preview with a Remove button; pressing send sends it with the message to
   `POST /chat/stream` (`lib/chat-api.ts`, `lib/media-check-api.ts`). The picture is scaled to 640 px wide JPEG in the browser and sent as
   base64 text in the `image` field. The typed text is the caption and may be empty. The backend checks the picture (valid base64, at most 2 MB, really a JPEG, PNG or WebP), saves it under a random
   name in the upload folder, runs the flood media check, and deletes it when the answer is done. The reply comes back in the same
-  conversation and the progress line says "Checking your photo or video for flood water".
-- **Videos are analysed whole**, not through one frame. The browser sends the file itself as the body of `POST /chat/stream/video`
-  (`sendChatVideoStream`; message, thread, location and `detailed` go in the query string), up to 200 MB (`MAX_VIDEO_BYTES`), as MP4, MOV or
-  WebM (checked on the first bytes, written to the upload folder piece by piece, deleted afterwards). The backend first shrinks a copy to 480 px wide
-  and 4 frames per second with the ffmpeg that comes with `imageio-ffmpeg` (`backend/video/video_prepare.py`), because the library that reads
-  SAM's answer decodes masks in plain Python: a 12 second 1080p clip took over 5 minutes and timed out, the shrunk copy takes about 20 seconds.
-  Measured: a 5 MB, 12 second clip took 22 s; a 35 MB, 36 second clip (144 frames) took 75 s. The progress line says "Analysing your
-  video for flood water. This can take a minute or two". Videos share the photo rate limit. With "count people and vehicles" on, a video
-  costs 4 SAM requests instead of 2; depth is only estimated for photos. If ffmpeg is missing the original is analysed, which is slow for large clips.
+  conversation and the progress line says "Checking your photo for flood water".
 - Each check calls the vision model on the backend and costs API credit. By default only water is checked: 4 SAM requests for a photo (two phrases, on the photo
-  and on a mirrored copy; see `docs/flood_media.md` section 11). The "count people and vehicles and estimate a rough depth" checkbox (off by default)
-  sends `detailed: true`: 2 more requests plus the local depth model. Photo checks
-  have their own rate limit (`MEDIA_PER_HOUR`, default 20), and a request to the other chat endpoints that declares a body over about 2.8 MB is refused with 413 (only the video endpoint takes more).
+  and on a mirrored copy; see `docs/flood_media.md` section 9). The "count people and vehicles" checkbox (off by default)
+  sends `detailed: true`: 2 more requests. Photo checks
+  have their own rate limit (`MEDIA_PER_HOUR`, default 20), and a request to the other chat endpoints that declares a body over about 2.8 MB is refused with 413.
 - Errors (unreadable file, picture too large, backend down, too many checks) appear as an assistant error message; if the vision service fails
   the reply says the picture could not be checked and repeats the 911 line.
-- `/ws/camera` (live webcam checks) is still available but the assistant page no longer uses it. `POST /chat` (not streamed) takes text only.
+- `POST /chat` (not streamed) takes text only.
 
 ## Dashboard data (recorded datasets, for now)
 
 The dashboard (`/`) reads `GET /dashboard?cities=...` (all 17 cities) from the backend
 (`backend/src/api/routers/dashboard.py`, `backend/src/services/dashboard_data.py`), through `lib/dashboard-api.ts` and
-`context/DashboardDataContext.tsx`. The backend reads the CSV files in `datasets/` (`ncr_weather_daily_2020-2026.csv`,
-`ncr_flood_features_daily.csv`, `ncr_locations.csv`; folder can be changed with `DATASETS_DIR`) and re-reads a file when it changes.
+`context/DashboardDataContext.tsx`. The backend reads the Supabase tables `ncr_weather_daily`, `ncr_flood_features_daily` and `ncr_locations`
+(kept current by the nightly workflow) and keeps them in memory for 5 minutes. If the database cannot be read the API answers 503.
 No weather service is called. "Today" is the **last recorded day**, which can be days behind; the page shows its date.
 
 | Dashboard part | From |
@@ -204,7 +197,7 @@ components/
   ui/           small reusable pieces with no app knowledge: Button (shadcn), GlassPanel, Skeleton, Switch
   shell/        the frame around every page: nav menu, hand cursor, intro gate, HUD bar, resizable frame, help dialog
   dashboard/    home page widgets (TodayCard, DayStrip, RainChart, CityList, MapView, ...)
-  assistant/    chat, voice and photo/video input
+  assistant/    chat, voice and photo input
   flood/  evacuation/  contacts/  satellite/    one folder per page
 context/        React providers: current city, dashboard data, glass level, hand, look, theme
 hooks/          reusable stateful logic: useVoiceTranscription, useMediaAttachment, useResizableFrame, ...
@@ -228,7 +221,7 @@ JSON object per line (`application/x-ndjson`):
 
 The label under the typing dots changes with each status line, and screen readers announce it. The "working" label names the agent
 that will really answer: it comes from the graph's own keyword routing (`backend/langgraph_orchestrator/stream.py`), so it costs
-nothing. A message with several topics also lists them. Photo/video checks show their own label.
+nothing. A message with several topics also lists them. Photo checks show their own label.
 
 Limit: the **words of the reply are not streamed** (the agents return the whole answer at once), only what the assistant is doing.
 `POST /chat` still works unchanged. The guard that blocks secrets runs first in both.

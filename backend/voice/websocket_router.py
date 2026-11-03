@@ -6,7 +6,7 @@ leaves the backend:
     browser mic --PCM frames--> /ws/voice --PCM frames--> Meta speech-to-text
     browser     <--JSON events-- /ws/voice <--events------ Meta speech-to-text
 
-Connect to ``/ws/voice?mode=endpointing&rate=24000``:
+Connect to ``/ws/voice?mode=endpointing&rate=24000&token=<access token>`` (the token is needed when sign-in is on):
 
     mode  endpointing (default, hands-free, several questions per connection)
           or push_to_talk (one transcript; send {"type": "end"} when the button is released)
@@ -29,7 +29,7 @@ import asyncio
 import json
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from websockets.exceptions import WebSocketException
@@ -58,12 +58,23 @@ def default_transcriber(mode: str, sample_rate: int) -> RealtimeTranscriber:
     )
 
 
-def create_voice_router(transcriber_factory: Callable[[str, int], RealtimeTranscriber] = default_transcriber) -> APIRouter:
-    """Build the router. Tests pass their own ``transcriber_factory`` to avoid real calls."""
+def create_voice_router(
+    transcriber_factory: Callable[[str, int], RealtimeTranscriber] = default_transcriber,
+    authenticate: Callable[[WebSocket], Awaitable[str | None]] | None = None,
+) -> APIRouter:
+    """Build the router. Tests pass their own ``transcriber_factory`` to avoid real calls.
+
+    ``authenticate`` decides whether a connection may be used (the app passes the sign-in and usage check). It returns None to
+    allow the connection, or the reason to refuse it; leaving it out allows everyone.
+    """
     router = APIRouter()
 
     @router.websocket("/ws/voice")
     async def voice_socket(websocket: WebSocket, mode: str = "endpointing", rate: int = 24000) -> None:
+        refusal = await authenticate(websocket) if authenticate is not None else None
+        if refusal is not None:
+            await websocket.close(code=CLOSE_POLICY_VIOLATION, reason=refusal)  # refused before it is accepted
+            return
         await websocket.accept()
 
         if mode not in ("endpointing", "push_to_talk") or rate not in AUDIO_ENCODINGS:

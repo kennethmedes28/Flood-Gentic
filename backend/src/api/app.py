@@ -14,9 +14,10 @@ Endpoints (see docs/backend_architecture.md section 4):
     GET  /weather/forecast      stored Tomorrow.io forecast (fetched once a day)
     GET  /weather/stream        the same, streamed live (server-sent events)
     GET  /dashboard             weather, rain, river flow and flood risk per city (recorded datasets)
+    GET  /analytics/weather     long-run weather statistics by city, year, month and day (recorded dataset)
     GET  /health, /health/ready what works
     /staff/...                  review reports and requests (only when STAFF_API_KEY is set)
-    WS   /ws/voice, /ws/camera  live speech-to-text and the webcam flood check
+    WS   /ws/voice              live speech-to-text
 
 Interactive documentation is served at /docs.
 """
@@ -24,20 +25,48 @@ Interactive documentation is served at /docs.
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
-from src.api.rate_limit import RateLimiter
-from src.api.routers import advisories, chat, dashboard, evacuation, health, help_requests, reports, staff, weather
+from src.api.rate_limit import RateLimiter, SharedRateLimiter
+from src.auth import TokenVerifier
+from src.services.usage import QuotaExceeded
+from src.cache import configure_cache
+from src.api.routers import account, advisories, analytics, chat, dashboard, evacuation, health, help_requests, places, reports, staff, weather
 from src.api.settings import Settings, load_settings
 from src.api.startup import real_services
-from src.services.media_upload import MAX_IMAGE_BASE64_CHARS, MAX_VIDEO_BYTES
-from video.camera_router import create_camera_router
+from src.services.media_upload import MAX_IMAGE_BASE64_CHARS
 from voice.websocket_router import create_voice_router
 
 
 MAX_REQUEST_BYTES = MAX_IMAGE_BASE64_CHARS + 100_000  # a photo as base64 text, plus room for the rest of the message
-VIDEO_PATH = "/chat/stream/video"  # the one endpoint whose body is a whole video, so it has a much larger limit
-MAX_VIDEO_REQUEST_BYTES = MAX_VIDEO_BYTES + 100_000
+
+
+async def authenticate_socket(websocket) -> str | None:
+    """Whether a WebSocket may be used: None when it may, otherwise the reason it is refused.
+
+    With sign-in off, anyone may. Otherwise the ``token`` in the address must be valid (a browser cannot set headers on a
+    WebSocket), and the user must still have voice sessions left today.
+    """
+    app = websocket.app
+    if not app.state.settings.require_auth:
+        return None
+    token = websocket.query_params.get("token", "")
+    if not token or app.state.verifier is None:
+        return "Sign in to use voice"
+    user = await run_in_threadpool(app.state.verifier.verify, token)  # may download the signing keys
+    if user is None:
+        return "Sign in to use voice"
+
+    tracker = getattr(app.state, "usage", None)
+    if tracker is not None:
+        try:
+            await run_in_threadpool(tracker.count_voice_session, user.id)
+        except QuotaExceeded:
+            return "Daily voice limit reached"
+        except Exception:
+            return "Voice is unavailable right now"
+    return None
 
 
 async def validation_error_response(request: Request, error: RequestValidationError) -> JSONResponse:
@@ -50,8 +79,8 @@ async def validation_error_response(request: Request, error: RequestValidationEr
     return JSONResponse(status_code=422, content={"detail": problems})
 
 
-def create_app(settings: Settings | None = None, lifespan=real_services) -> FastAPI:
-    """Build the app. Tests pass their own ``settings`` and a ``lifespan`` that sets fakes on ``app.state``."""
+def create_app(settings: Settings | None = None, lifespan=real_services, verifier=None) -> FastAPI:
+    """Build the app. Tests pass their own ``settings``, a ``lifespan`` that sets fakes on ``app.state``, and a fake ``verifier``."""
     settings = settings or load_settings()
 
     app = FastAPI(
@@ -61,22 +90,33 @@ def create_app(settings: Settings | None = None, lifespan=real_services) -> Fast
         lifespan=lifespan,
     )
     app.state.settings = settings
+    # Checks the sign-in tokens (Google or Facebook, through Supabase) of the browser. None means sign-in is off (local work and tests).
+    if verifier is None and settings.require_auth:
+        verifier = TokenVerifier(settings.supabase_url)
+    app.state.verifier = verifier
     app.add_exception_handler(RequestValidationError, validation_error_response)
+    cache = configure_cache(settings.redis_url)
+
+    def make_limiter(name: str, max_calls: int, window_seconds: int):
+        """A limit shared through Redis when it is set up, otherwise one counted in this process."""
+        if cache.enabled:
+            return SharedRateLimiter(name, max_calls, window_seconds, cache.client)
+        return RateLimiter(max_calls, window_seconds)
+
     app.state.limiters = {
-        "chat": RateLimiter(settings.chat_per_minute, window_seconds=60),
-        "reports": RateLimiter(settings.reports_per_hour, window_seconds=3600),
-        "requests": RateLimiter(settings.requests_per_hour, window_seconds=3600),
-        "staff": RateLimiter(settings.staff_per_minute, window_seconds=60),
-        "weather": RateLimiter(settings.weather_per_minute, window_seconds=60),
-        "media": RateLimiter(settings.media_per_hour, window_seconds=3600),
+        "chat": make_limiter("chat", settings.chat_per_minute, 60),
+        "reports": make_limiter("reports", settings.reports_per_hour, 3600),
+        "requests": make_limiter("requests", settings.requests_per_hour, 3600),
+        "staff": make_limiter("staff", settings.staff_per_minute, 60),
+        "weather": make_limiter("weather", settings.weather_per_minute, 60),
+        "media": make_limiter("media", settings.media_per_hour, 3600),
     }
 
     @app.middleware("http")
     async def limit_body_size(request: Request, call_next):
-        """Refuse a request that says its body is larger than its endpoint needs: a chat message with a photo, or a video."""
+        """Refuse a request that says its body is larger than its endpoint needs: a chat message with a photo."""
         declared = request.headers.get("content-length", "")
-        limit = MAX_VIDEO_REQUEST_BYTES if request.url.path == VIDEO_PATH else MAX_REQUEST_BYTES
-        if declared.isdigit() and int(declared) > limit:
+        if declared.isdigit() and int(declared) > MAX_REQUEST_BYTES:
             return JSONResponse(status_code=413, content={"detail": "That request is too large."})
         return await call_next(request)
 
@@ -85,13 +125,12 @@ def create_app(settings: Settings | None = None, lifespan=real_services) -> Fast
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
         allow_methods=["GET", "POST"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Content-Type", "Authorization"],
     )
 
-    for module in (health, chat, reports, help_requests, evacuation, advisories, dashboard, weather):
+    for module in (health, chat, account, reports, help_requests, evacuation, advisories, dashboard, analytics, places, weather):
         app.include_router(module.router)
     if settings.staff_api_key:  # without a key the staff endpoints simply do not exist
         app.include_router(staff.router)
-    app.include_router(create_voice_router())
-    app.include_router(create_camera_router())
+    app.include_router(create_voice_router(authenticate=authenticate_socket))
     return app

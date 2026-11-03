@@ -24,13 +24,9 @@ Example:
     print(risk.level, risk.reasons)
 """
 
-import csv
 import logging
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
-from functools import lru_cache
-from pathlib import Path
 
 import httpx
 
@@ -63,7 +59,6 @@ FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 FLOOD_API_URL = "https://flood-api.open-meteo.com/v1/flood"
 REQUEST_TIMEOUT_SECONDS = 10.0
 CACHE_SECONDS = 30 * 60
-DEFAULT_DATASET = Path(__file__).resolve().parents[2] / "datasets" / "ncr_flood_features_daily.csv"
 
 # Peak rain in one hour (mm/h), based on PAGASA's yellow / orange / red rainfall warnings.
 HOURLY_RAIN_WATCH_MM = 7.5
@@ -126,37 +121,27 @@ def higher_of(first: str, second: str) -> str:
     return max(first, second, key=RISK_ORDER.index)
 
 
-# ---------------------------------------------------------------- history from the dataset
+# ---------------------------------------------------------------- history from the recorded days
 
 
-@lru_cache(maxsize=1)
-def load_history() -> dict[str, dict[str, list[float]]]:
-    """Read the daily dataset once: ``{city: {"rain_3d": sorted values, "discharge": sorted values}}``.
+def load_history(get_connection) -> dict[str, dict[str, list[float]]]:
+    """``{city: {"rain_3d": sorted values, "discharge": sorted values}}`` from the recorded days in Supabase.
 
-    The dataset's ``location_id`` is the position of the city in ``NCR_LOCATIONS``.
-    Returns an empty dict if the file is missing.
+    These are the same recorded days the dashboard reads (kept in memory for a few minutes, see
+    ``src/services/dashboard_data.py``). With no connection, or when the database cannot be read, the history rules are skipped
+    and the other sources still count.
     """
-    path = Path(os.getenv("FLOOD_DATASET", DEFAULT_DATASET))
-    if not path.exists():
-        logger.warning("Flood dataset not found at %s; history rules are skipped.", path)
+    if get_connection is None:
         return {}
+    # Imported here because dashboard_data itself imports this module's thresholds.
+    from src.services.dashboard_data import get_records
 
-    cities = list(NCR_LOCATIONS)
-    history = {city: {"rain_3d": [], "discharge": []} for city in cities}
-    with open(path, newline="", encoding="utf-8") as file:
-        for row in csv.DictReader(file):
-            try:
-                city = cities[int(row["location_id"])]
-            except (ValueError, IndexError):
-                continue
-            for column, key in (("rain_3d_mm", "rain_3d"), ("river_discharge_m3s", "discharge")):
-                if row.get(column):
-                    history[city][key].append(float(row[column]))
-
-    for values in history.values():
-        values["rain_3d"].sort()
-        values["discharge"].sort()
-    return history
+    try:
+        records = get_records(get_connection)
+    except Exception as error:
+        logger.warning("Recorded history unavailable (%s); history rules are skipped.", type(error).__name__)
+        return {}
+    return {city: {"rain_3d": record["rain_3d_sorted"], "discharge": record["flow_sorted"]} for city, record in records.items()}
 
 
 def percentile_value(sorted_values: list[float], share: float) -> float | None:
@@ -221,17 +206,19 @@ def assess_flood_risk(
     now: datetime | None = None,
     rain: dict | None = None,
     river: dict | None = None,
+    get_connection=None,
 ) -> FloodRisk:
     """Work out the flood risk level for a city.
 
     ``rain`` and ``river`` are the downloaded Open-Meteo answers; when left
     out they are downloaded (tests pass them in). A source that fails is
-    listed in ``missing`` and the other sources still count.
+    listed in ``missing`` and the other sources still count. ``get_connection`` gives the database connection that the
+    recorded history (how wet the ground is, how high the river is for its history) is read from; without it those rules are skipped.
     """
     now = now or datetime.now(PHILIPPINE_TZ)
     lat, lng = NCR_LOCATIONS[city]
     risk = FloodRisk(city=city, level=RISK_LOW, as_of=now)
-    history = load_history().get(city, {})
+    history = load_history(get_connection).get(city, {})
 
     # 1. Official PAGASA rainfall warning colour.
     lowered_text = pagasa_text.lower()
@@ -359,7 +346,7 @@ def answer_flood_risk_question(question: str, context: ChatContext) -> AgentRepl
 
     pagasa_ok = is_pagasa_reliable(pages, context.now)
     pagasa_text = " ".join(page["text"] for page in pages) if pagasa_ok else ""
-    risk = assess_flood_risk(city, pagasa_text, now=context.now)
+    risk = assess_flood_risk(city, pagasa_text, now=context.now, get_connection=context.get_connection)
     if pagasa_ok:
         return AgentReply(text=format_risk(risk))
 

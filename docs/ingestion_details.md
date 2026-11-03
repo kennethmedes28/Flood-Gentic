@@ -298,7 +298,7 @@ flowchart LR
 - Fusion: `EnsembleRetriever` (RRF built in) or a small custom RRF function if per-query weights are needed.
 - Reranking: `ContextualCompressionRetriever` wrapping the cross-encoder.
 - Already in `backend/pyproject.toml`: `langchain`, `langchain-community`, `langgraph`.
-- Added so far: `sentence-transformers`, `pypdf`, `pymupdf`, `faiss-gpu`, `psycopg[binary]`,
+- Added so far: `sentence-transformers`, `pypdf`, `pymupdf`, `faiss-cpu`, `psycopg[binary]`,
   `colpali-engine` (benchmark only), `torch`. The Tesseract program must be installed for scans.
 - Still to add: `bm25s`. (`pgvector` is not needed: embeddings are sent as text and cast with `::vector`.)
 

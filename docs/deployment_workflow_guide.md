@@ -22,12 +22,11 @@ Secrets live in `backend/.env` (gitignored; never commit it). Variable names onl
 |---|---|
 | `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD`, `SUPABASE_POOLER_HOST` | Postgres connection through the Supabase transaction pooler (port 6543). `SUPABASE_DB_URL` can be set instead as one connection string |
 | `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_ACCESS_TOKEN` | Supabase REST and management access; not used by the current code. The secret key bypasses row-level security, so keep it out of the browser |
-| `MUSE_API` | Muse Spark chat models, the Muse speech-to-text and the SAM photo and video check (`api.meta.ai`) |
+| `MUSE_API` | Muse Spark chat models, the Muse speech-to-text and the SAM photo check (`api.meta.ai`) |
 | `TOMMORROW_IO_API` | The Tomorrow.io forecast key (also a repository secret for the forecast workflow). The spelling is the one the code reads |
-| `MEDIA_PER_HOUR`, `WEATHER_PER_MINUTE`, `MEDIA_UPLOAD_DIR`, `DATASETS_DIR` | Optional: photo and video check limit, forecast limit, where uploads are kept briefly, and which folder the dashboard reads the datasets from |
+| `MEDIA_PER_HOUR`, `WEATHER_PER_MINUTE`, `MEDIA_UPLOAD_DIR` | Optional: photo check limit, forecast limit, and where uploads are kept briefly |
 | `ORS_API_KEY` | OpenRouteService routing for the route agent |
 | `HF_TOKEN`, `EMBEDDING_MODEL` | Downloading and choosing the embedding model |
-| `DEPTH_MODEL` | Optional: the metric depth model for the flood depth estimate (default Depth Anything V2 Metric Outdoor Small, about 100 MB, downloaded on first use) |
 | `LANGSMITH_KEY`, `LANGSMITH_TRACE`, `LANGSMITH_PROJECT` | LangSmith tracing, see section 6 |
 | `GROQ_API_KEY`, `LLAMAINDEX_API_KEY` | Other model providers |
 
@@ -55,7 +54,7 @@ Check a run under the repository's Actions tab; the log shows how many rows were
 | A PDF or the emergency contacts changed | `uv run python ../scripts/ingest_corpus.py --supabase` | Re-embeds the whole corpus (slow, loads the embedding model) and saves a new FAISS run |
 | `corpus/ncr_locations.csv` changed | `uv run python ../scripts/refresh_location_chunks.py` | Re-embeds only the 17 location chunks, updates Supabase and saves a new FAISS run |
 | `datasets/ncr_locations.csv` changed | `uv run python ../scripts/update_open_meteo_datasets.py --rebuild`, then `load_to_supabase.py` | `location_id` is the key in both daily files and Supabase, so the history must be rebuilt (about 600 API calls, 20 to 30 minutes; rerun the same command to resume after an error) |
-| Catch up the datasets by hand | `uv run python ../scripts/update_open_meteo_datasets.py`, then `sync_datasets_to_supabase.py` | Same as the workflow; `--dry-run` shows the plan |
+| Catch up the datasets by hand | `uv run python ../scripts/update_supabase_from_open_meteo.py --refresh-days 7` | Same as the workflow |
 
 Both `locations` files (`corpus/` and `datasets/`) currently hold the same 17 city points. Change them together.
 
@@ -79,13 +78,193 @@ Tracing records every chat message as a run in LangSmith so slow or failing agen
 - **Privacy:** one shared client cleans every run before it is sent (`sanitize` in `utils/tracing.py`): phone-number-like digits become `[number]`,
   inputs named like a secret (key, token, password) become `[hidden]`, coordinates are rounded to 2 decimals (about 1 km) and long texts are cut.
   Message text is still sent, so do not trace real users without telling them.
-- **Free plan:** one seat, 5,000 base traces a month, 14-day retention (reviewed 2026-10-29). One chat message is one trace. The SAM webcam
-  and voice sockets are not traced, so they do not use the allowance.
+- **Free plan:** one seat, 5,000 base traces a month, 14-day retention (reviewed 2026-10-29). One chat message is one trace. The voice
+  socket is not traced, so they do not use the allowance.
 - **Tests:** `backend/tests/conftest.py` switches tracing off so test runs never reach LangSmith.
 - **Check it:** run a question through the graph and look for the `flood-gentic-chat` run in the LangSmith project, or list recent runs with the `langsmith` client.
 
-## 7. Planned
+## 7. Railway (backend, CPU only)
 
-- Railway services for the API and an ingestion worker, with the environment variables above set per service.
+Railway has no GPU, so the backend runs on CPU. The only models that run inside the backend are the document-search embedder; chat, speech and SAM are Muse API calls. The reranker is turned off in production (`RERANKER_MODEL=none`).
+
+Project `serene-alignment`, environment `production`:
+
+| Resource | What it is for |
+|---|---|
+| Service `Flood-Gentic` | The backend API, built from the GitHub repo (Docker build: see the Docker step) |
+| Volume `flood-gentic-volume` on `Flood-Gentic`, mounted at `/data` (5 GB) | Keeps the Hugging Face model cache, so the embedding model downloads once and not on every deploy |
+| Service `Redis` (with its own volume) | The cache and the shared rate limits (`src/cache.py`) |
+
+Variables set on `Flood-Gentic` so far: `HF_HOME=/data/huggingface` (model cache on the volume) and
+`REDIS_URL=${{Redis.REDIS_URL}}` (a reference to the Redis service, over Railway's private network). The keys and database
+settings from section 2 are still to be added before the first deploy.
+
+Adding or changing a volume makes Railway start a deployment of the service. Until the Dockerfile is in place and the
+service's root directory and variables are set, that build fails; that is expected.
+
+## 8. Sign-in (Google and Facebook)
+
+The assistant chat, the photo check and voice need a sign-in with a Google or a Facebook account, because they spend Muse credits.
+Everything else (dashboard, flood level, evacuation centers, contacts, analytics) is public. An emergency message typed into the assistant is
+answered without signing in (the fixed 911 text and the city's hotlines, no model call), so nobody in a flood is turned away.
+
+**How it works.** The browser signs in through Supabase and gets an access token. It sends the token as
+`Authorization: Bearer <token>` (for voice, as `?token=` in the socket address, because a browser cannot set headers on a
+WebSocket). The backend checks the token itself against the public keys Supabase publishes at
+`<project>/auth/v1/.well-known/jwks.json` (`src/auth.py`), so no secret is shared and Supabase is not called per request. The check does
+not depend on the provider: the page shows one button for each provider that is switched on in Supabase, and the backend treats both alike.
+Any Google or Facebook account may sign in; the per-user limits (section 9) protect the credits. A Facebook account made with a phone number has no email,
+so the page shows the person's name instead. Usage is counted by the Supabase user id, never by email. Someone who signs in with Google and with Facebook gets two
+separate accounts, each with its own limits, unless Supabase is set to link accounts that share an email.
+
+**One-time setup (the app secrets live only in Supabase and never go in the repository, on Railway or on Vercel).** Both providers are enabled in this project's Supabase.
+
+*Google* (Google Cloud Console):
+1. APIs and Services, Credentials: an *OAuth client ID* of type *Web application*, with the redirect URI `https://<project-ref>.supabase.co/auth/v1/callback`.
+2. OAuth consent screen: set the publishing status to **In production**. While it is in *Testing*, only the test users you list can sign in.
+
+*Facebook* (Meta for Developers):
+1. Your app, *Facebook Login*: add `https://<project-ref>.supabase.co/auth/v1/callback` under *Valid OAuth Redirect URIs*.
+2. Switch the app from *Development* to **Live**. In Development only people with a role on the app can sign in, so judges would be refused. Meta asks for
+   a privacy policy URL and a data deletion method before it allows Live mode.
+3. The app needs the `email` and `public_profile` permissions (both are available without review).
+
+*Supabase* (Authentication):
+1. Providers, Google and Facebook: enabled with the client ID or app ID and the secret.
+2. URL Configuration: set *Site URL* to the Vercel address, and add these *Redirect URLs*: `http://localhost:3000/**` and `https://<your-vercel-domain>/**`.
+
+**Variables:**
+
+| Where | Variable | Value |
+|---|---|---|
+| Vercel / `frontend/.env.local` | `NEXT_PUBLIC_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
+| Vercel / `frontend/.env.local` | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the publishable key (`sb_publishable_...`) |
+| Railway / `backend/.env` | `REQUIRE_AUTH` | `true` (the default). `false` only for local work without sign-in |
+| Railway / `backend/.env` | `SUPABASE_PROJECT_REF` (or `SUPABASE_URL`) | your project; the backend builds the key address from it |
+| Railway / `backend/.env` | `CORS_ORIGINS` | must include the Vercel address, so the browser may send the `Authorization` header |
+
+The Facebook app ID and secret (`META_OAUTH`, `FACEBOOK_SECRET` in your local `backend/.env`) are only needed in Supabase's provider settings. The
+application does not read them, and `scripts/set_railway_variables.py` does not copy them.
+With `REQUIRE_AUTH=true` and no Supabase address the backend refuses to start, with a message that says what to set.
+
+## 9. Spending caps
+
+Every signed-in user has limits, so a few people cannot use up the Muse credits. The counters are in the Supabase table
+`usage_counters` (`sql/005_usage_counters.sql`; the backend also creates it at start-up, with row-level security on and no
+policies). Code: `src/services/usage.py`, `src/services/usage_meter.py`.
+
+| Limit | Default | Variable |
+|---|---|---|
+| Assistant messages per user per day | 20 | `USER_REQUESTS_PER_DAY` |
+| Photo checks per user per day | 3 | `USER_UPLOADS_PER_DAY` |
+| Voice sessions per user per day | 8 | `USER_VOICE_PER_DAY` |
+| Chat-model tokens per user per month | 150,000 | `USER_TOKENS_PER_MONTH` |
+| Assistant messages, everyone, per day (circuit breaker) | 500 | `EVERYONE_REQUESTS_PER_DAY` |
+| Photo checks, everyone, per day (circuit breaker) | 100 | `EVERYONE_UPLOADS_PER_DAY` |
+
+A day is the Manila calendar day and a month is the Manila calendar month. The defaults are the "tight" setting for a small budget;
+change a variable and restart to change a limit.
+
+**How it counts.** A message (and a photo) is counted before it is answered, with one atomic statement that only succeeds while the
+counter is under its limit, so requests at the same moment cannot both slip through (checked against a real Postgres: 10 of 40 parallel
+requests got through a limit of 10). If the user's count passes but the whole-app count does not, the user's count is handed back.
+Tokens are only known afterwards: the monthly cap is checked before a message and the real tokens (read from the chat model's usage data)
+are added after it, so one message can take a user a little over. SAM requests are counted per day for information only; photo checks
+are what is capped.
+
+**What the person sees.** A used-up limit is a `429` whose text says what was used and when it starts again (also in `Retry-After`).
+The assistant page shows "Today: 3 of 20 messages, 1 of 3 photo checks" for the signed-in user (`GET /me/usage`).
+
+**Emergencies are never stopped.** An emergency message from a signed-in user who is over a limit, or when the counters cannot be
+reached, is answered with the fixed 911 text and the city's hotlines. Any other message is refused (`429`, or `503` when the counters
+are down), so a broken database cannot be used to skip the limits. Only signed-in users are counted: with `REQUIRE_AUTH=false` (local work) nothing is.
+
+## 10. Docker image (backend)
+
+`backend/Dockerfile` builds the image Railway runs. The Railway service's **root directory** is `backend`, so Railway finds and uses that
+Dockerfile, checks `/health` (120 s to start) and restarts a crashed service up to 5 times. These are settings on the service, not a file in the
+repository, because Railway has deprecated `railway.toml` config files.
+
+```
+docker build -t flood-gentic-backend backend/
+docker run --rm -p 8000:8000 --env-file backend/.env -e REQUIRE_AUTH=false flood-gentic-backend
+```
+
+- **Only what the API needs is installed** (`uv sync --no-dev`). Notebook, ingestion, evaluation and test tools are in the `dev`
+  dependency group of `backend/pyproject.toml` and are not in the image; `uv sync` on your machine still installs them.
+- **CPU only.** `torch` comes from PyTorch's CPU wheels (`[tool.uv.sources]` in `pyproject.toml`), which are far smaller than the CUDA build, and
+  `faiss-cpu` replaces `faiss-gpu`. Railway has no GPU, and this project uses none.
+- **Models are not in the image.** The embedding model (`intfloat/multilingual-e5-large`, about 2 GB) downloads on the first start into
+  `HF_HOME=/data/huggingface`, the persistent volume, and later deploys reuse it. A background thread loads it at start-up, so the service is
+  healthy at once; until it is loaded (a few minutes on the very first start) a document question waits for it. The reranker is off
+  (`RERANKER_MODEL=none`, set in the image).
+- **Behind Railway's proxy** set `TRUST_PROXY_HEADERS=true`, so rate limits count each visitor and not Railway's proxy.
+- **`uv.lock` is gitignored** in this repository, so Railway resolves the dependencies fresh on each build (within the `>=` versions in
+  `pyproject.toml`). To make builds exactly repeatable, remove `uv.lock` from `.gitignore` and commit `backend/uv.lock`; the Dockerfile
+  would then need `uv sync --frozen --no-dev`.
+
+**Measured locally** (the image run the way Railway will, with a fresh volume): image 900 MB; the container uses about 1.7 GiB of memory
+with the embedding model loaded; loading the model from the volume cache takes about 16 s and one query embedding 0.46 s; the first
+`/dashboard` call takes about 6 s (it loads the recorded days) and later ones are served from memory. Railway bills memory by use, so the
+loaded embedding model is the main cost of running this service.
+
+**Variables on the Railway service** (secrets are set from `backend/.env` by `python3 scripts/set_railway_variables.py`, which you run yourself; only what the running API needs is copied):
+
+| Variable | Value |
+|---|---|
+| `MUSE_API`, `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD`, `SUPABASE_POOLER_HOST`, `TOMMORROW_IO_API` | from `backend/.env` |
+| `REQUIRE_AUTH` | `true` |
+| `TRUST_PROXY_HEADERS` | `true` |
+| `CORS_ORIGINS` | the Vercel address, set once the frontend is deployed (default is `http://localhost:3000` only) |
+| `HF_HOME`, `REDIS_URL` | already set (volume path and the Redis reference) |
+
+Not copied on purpose: `SUPABASE_SECRET_KEY` and `SUPABASE_ACCESS_TOKEN` (full-power keys the API does not use), `HF_TOKEN`,
+`GROQ_API_KEY`, `LLAMAINDEX_API_KEY`. LangSmith tracing is left off in production, so signed-in users' messages are not sent to a third party; turn it on by adding the three `LANGSMITH_*` variables.
+
+## 11. CI/CD
+
+```mermaid
+flowchart LR
+    P[git push to deployment] --> GH[GitHub]
+    GH --> CI["CI workflow<br/>.github/workflows/ci.yml"]
+    CI -->|all green| R["Railway builds the backend image"]
+    GH --> V["Vercel builds the frontend"]
+```
+
+**CI** (`.github/workflows/ci.yml`) runs on every push to `deployment` or `main` and on every pull request into them. Three jobs run at the same time:
+
+| Job | What it does |
+|---|---|
+| Backend tests | `uv run --no-dev --with pytest python -m pytest tests` (the same packages as the Docker image, no secrets, database or network: the tests use fakes), then `export_frontend_data.py --check`, which fails when the built-in hotline list or the frontend's copies are out of date with the CSV files |
+| Frontend type check and build | `npm ci`, `npx tsc --noEmit`, `npm run build` (with placeholder public variables) |
+| Backend image builds | `docker build backend/`, the same image Railway builds, so a broken Dockerfile or an uninstallable dependency is found before a deploy |
+
+A newer push to the same branch cancels the run that is still going. Lint is not a CI step yet: `npm run lint` reports 4 existing errors
+(`react-hooks/set-state-in-effect`) in `GlassContext`, `HandContext`, `LookContext` and `useDraggable`, which need a code change to fix.
+
+**Deploying.** Both platforms deploy from GitHub when `deployment` changes:
+
+- **Railway** (done): the `Flood-Gentic` service in project `serene-alignment` deploys the `deployment` branch with **Wait for CI** on
+  (`checkSuites`), so a push is only built after the CI checks pass, and a failed check means no deploy.
+- **Vercel** (you set this up once): import the GitHub repository, set the **root directory** to `frontend`, the **production branch** to `deployment`,
+  and add the four variables below. Vercel's Git integration deploys every push to that branch by itself; it does not wait for GitHub Actions on the
+  free plan, so a push whose tests fail would still be deployed to the frontend. Treat a red CI run as "do not use this build", or protect the branch
+  in GitHub (require the three CI jobs to pass before merging), and push to `deployment` only through pull requests.
+
+| Vercel variable | Value |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | the Railway service address (`https://<name>.up.railway.app`) |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the publishable key (`sb_publishable_...`) |
+
+After the first Vercel deploy, set `CORS_ORIGINS` on Railway to the Vercel address (`python3 scripts/set_railway_variables.py --cors-origins https://<name>.vercel.app`),
+and add that address to the Supabase redirect URLs (section 8).
+
+## 12. Planned
+
+
+
+
+
 - Vercel frontend with `NEXT_PUBLIC_API_URL`, and the backend CORS list allowing its domains. The voice socket must be served over `wss`.
 - A scheduled job that runs the full ingestion instead of by hand.

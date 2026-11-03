@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react"
 import { HelpDialog } from "@/components/shell/HelpDialog"
 import { useHand, type Hand } from "@/context/HandContext"
 import { useLook, type Look } from "@/context/LookContext"
+import { useTextSize, type TextSize } from "@/context/TextSizeContext"
 import { useDraggable } from "@/hooks/useDraggable"
 
 const BUTTON_SIZE = 68
@@ -15,6 +16,18 @@ const MENU_WIDTH = 260
 const HANDS: { value: Hand; label: string }[] = [
   { value: "left", label: "Left" },
   { value: "right", label: "Right" },
+]
+
+const TEXT_SIZES: { value: TextSize; label: string }[] = [
+  { value: "small", label: "Small" },
+  { value: "default", label: "Default" },
+  { value: "large", label: "Large" },
+  { value: "xlarge", label: "Extra large" },
+]
+
+const CURSOR_STATES: { value: "on" | "off"; label: string }[] = [
+  { value: "on", label: "On" },
+  { value: "off", label: "Off" },
 ]
 
 const LOOKS: { value: Look; label: string }[] = [
@@ -31,6 +44,7 @@ const HAZARD_MAP_URL = "https://noah.up.edu.ph/know-your-hazards/flood"
 const PAGES = [
   { href: "/", label: "Live view" },
   { href: "/flood", label: "Flood level" },
+  { href: "/analytics", label: "Macro Weather Analytics" },
   { href: "/satellite", label: "Live PAGASA Satellite View" },
   { href: "/evacuation", label: "Evacuation" },
   { href: "/assistant", label: "AI Agent Flood Assistant" },
@@ -43,8 +57,9 @@ const PAGES = [
  */
 export function FloatingNav() {
   const pathname = usePathname()
-  const { hand, setHand } = useHand()
+  const { hand, setHand, enabled: handEnabled, setEnabled: setHandEnabled } = useHand()
   const { look, setLook } = useLook()
+  const { size: textSize, setSize: setTextSize } = useTextSize()
   const [open, setOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const menuButton = useRef<HTMLButtonElement>(null)
@@ -108,7 +123,7 @@ export function FloatingNav() {
 
       {open && (
         <nav
-          className="glass-panel fixed z-50 flex flex-col p-2"
+          className="glass-panel fixed z-50 flex max-h-[calc(100svh-1rem)] flex-col overflow-y-auto p-2"
           style={{
             width: MENU_WIDTH,
             left: menuLeft,
@@ -165,7 +180,14 @@ export function FloatingNav() {
 
           {/* Settings. Picking an option keeps the menu open. */}
           <OptionRow label="Theme" options={LOOKS} value={look} onChange={setLook} />
-          <OptionRow label="Cursor hand" options={HANDS} value={hand} onChange={setHand} />
+          <OptionRow label="Text size" options={TEXT_SIZES} value={textSize} onChange={setTextSize} twoColumns />
+          <OptionRow
+            label="Hand cursor"
+            options={CURSOR_STATES}
+            value={handEnabled ? "on" : "off"}
+            onChange={(state) => setHandEnabled(state === "on")}
+          />
+          {handEnabled && <OptionRow label="Cursor hand" options={HANDS} value={hand} onChange={setHand} />}
         </nav>
       )}
 
@@ -180,18 +202,21 @@ function OptionRow<T extends string>({
   options,
   value,
   onChange,
+  twoColumns = false,
 }: {
   label: string
   options: { value: T; label: string }[]
   value: T
   onChange: (value: T) => void
+  /** Lay the options out in two columns, for rows with four options that would not fit on one line. */
+  twoColumns?: boolean
 }) {
   return (
     <div className="mt-1 border-t border-white/40 px-2 pt-2" role="group" aria-label={label}>
       <p className="mb-1 px-2 text-xs" style={{ color: "var(--glass-text-muted)" }}>
         {label}
       </p>
-      <div className="flex gap-1">
+      <div className={twoColumns ? "grid grid-cols-2 gap-1" : "flex gap-1"}>
         {options.map((option) => (
           <button
             key={option.value}

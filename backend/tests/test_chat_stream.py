@@ -141,12 +141,10 @@ class ChatStreamPhotoTests(unittest.TestCase):
     def test_by_default_only_water_is_looked_for(self):
         _, graph = self.send({"image": as_base64(JPEG)})
         self.assertFalse(graph.seen["media"]["include_people_and_vehicles"])
-        self.assertFalse(graph.seen["media"]["estimate_depth"])
 
-    def test_detailed_also_counts_people_and_estimates_depth(self):
+    def test_detailed_also_counts_people_and_vehicles(self):
         _, graph = self.send({"image": as_base64(JPEG), "detailed": True})
         self.assertTrue(graph.seen["media"]["include_people_and_vehicles"])
-        self.assertTrue(graph.seen["media"]["estimate_depth"])
 
     def test_something_that_is_not_a_picture_is_refused_and_nothing_is_saved(self):
         response, graph = self.send({"image": as_base64(b"%PDF-1.7 not a picture")})

@@ -1,0 +1,87 @@
+name: CI
+
+# Runs on every push to the deployment and main branches and on every pull request into them.
+# Railway and Vercel deploy from the same branch: turn on "Wait for CI" in the Railway service settings (and keep the Vercel
+# production branch protected) so a deploy only goes out when these checks are green. See docs/deployment_workflow_guide.md.
+on:
+  push:
+    branches: [deployment, main]
+  pull_request:
+    branches: [deployment, main]
+  workflow_dispatch:
+
+# The jobs only read the repository.
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the run that is still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/pyproject.toml
+
+      # Only the packages the API needs (the same ones as the Docker image), not the notebook and ingestion tools,
+      # so a test that quietly depended on one of those fails here instead of in production.
+      # The tests use fakes: no secrets, no database, no network.
+      - name: Run the tests
+        run: uv run --no-dev --python 3.11 --with pytest python -m pytest tests -q
+
+      # The built-in hotline list and the frontend's copies must match the CSV files they are made from.
+      - name: Check the generated data is current
+        run: uv run --no-dev --python 3.11 python ../scripts/export_frontend_data.py --check
+
+  frontend:
+    name: Frontend type check and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      # The Supabase variables are public placeholders: the build only needs the page code to compile.
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-publishable-key
+
+  docker:
+    name: Backend image builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      # Builds the same image Railway builds, so a broken Dockerfile or a dependency that no longer installs is found here.
+      # Nothing is pushed, and no secrets are used.
+      - name: Build the backend image
+        run: docker build --tag flood-gentic-backend backend/

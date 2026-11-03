@@ -1,18 +1,18 @@
-"""Flood media agent: checks a photo or video of a street for flood water, and answers questions about it.
+"""Flood media agent: checks a photo of a street for flood water, and answers questions about it.
 
 Two steps:
 
     1. Measure: SAM 3.1 (see ``video/``) finds flood water, people and vehicles. These numbers are always worked out
        the same way, so they are the grounded part of the answer.
     2. Answer the question: when the person asked something of their own ("can a car pass?", "ilan ang tao?"),
-       a chat model that can see pictures looks at the photo (or a few stills of the video), the question and the
+       a chat model that can see pictures looks at the photo, the question and the
        measurements, and answers it. Its rules are in ``ANSWER_RULES``. When no question was asked, or the model is not
        available, the fixed bilingual report is used instead, with no model call.
 
 What it can and cannot say:
 
     * It reports how much of the picture is covered by water and how many people or vehicles stand in it.
-    * It never says a road is safe, and a depth is only ever a rough guess. A picture can be old, edited or from
+    * It never says a road is safe and never gives a water depth. A picture can be old, edited or from
       another place, so the result is unverified evidence and never overrides PAGASA or NDRRMC.
 
 Needs the ``MUSE_API`` environment variable (the same key as the chat models).
@@ -23,19 +23,18 @@ Example:
 """
 
 import base64
+import hashlib
 import logging
 import os
 from io import BytesIO
-from pathlib import Path
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.flood_types import AgentReply, ChatContext
-from video.flood_depth import BAND_ANKLE, BAND_CHEST, BAND_KNEE, BAND_NONE, BAND_WAIST
+from src.cache import get_cache
 from video.flood_scene import LEVEL_NONE, LEVEL_SOME, FloodSceneReport, analyze_flood_media
-from video.sam_client import ImageInput, VideoInput
-from video.video_prepare import video_stills
+from video.sam_client import ImageInput
 from utils.call_budget import model_budget
 from utils.tracing import traced_agent
 
@@ -47,22 +46,22 @@ NO_KEY_ANSWER = (
     "If someone is in danger, call 911."
 )
 FAILED_ANSWER = (
-    "I could not check that picture or video. Please try again, or describe what you see.\n"
-    "Hindi ko ma-check ang larawan o video. Subukan ulit, o ilarawan ang nakikita mo.\n"
+    "I could not check that picture. Please try again, or describe what you see.\n"
+    "Hindi ko ma-check ang larawan. Subukan ulit, o ilarawan ang nakikita mo.\n"
     "If someone is in danger, call 911."
 )
 SAFETY_TEXT = (
-    "This is an automatic check of the picture or video only. It cannot tell whether a road is passable, any depth shown "
-    "is only a rough guess, and the picture may be old. Do not walk or drive through flood water. If someone is in danger, call 911.\n"
-    "Awtomatikong pagsusuri lang ito ng larawan o video. Hindi nito matutukoy kung madadaanan ang kalsada, hula lang ang anumang "
-    "lalim na ipinapakita, at maaaring luma ang larawan. Huwag lumusong o magmaneho sa baha. Kung may nasa panganib, tumawag sa 911."
+    "This is an automatic check of the picture only. It cannot tell whether a road is passable or how deep the water is, "
+    "and the picture may be old. Do not walk or drive through flood water. If someone is in danger, call 911.\n"
+    "Awtomatikong pagsusuri lang ito ng larawan. Hindi nito matutukoy kung madadaanan ang kalsada o gaano kalalim ang baha, "
+    "at maaaring luma ang larawan. Huwag lumusong o magmaneho sa baha. Kung may nasa panganib, tumawag sa 911."
 )
 
 
 # The rules the chat model follows when it answers a question about a picture. They keep it to what can be seen,
 # and away from the things a flood photo must never be used for (judging a road safe, a precise depth, a person's identity).
-ANSWER_RULES = """You help people in Metro Manila understand a photo or video of a possible flood.
-You get the picture (for a video, a few stills from it), measurements from an automatic flood check, and the person's question.
+ANSWER_RULES = """You help people in Metro Manila understand a photo of a possible flood.
+You get the picture, measurements from an automatic flood check, and the person's question.
 
 Rules:
 - Answer the question directly, in the same language the person used (English, Filipino or a mix), in at most 6 short sentences.
@@ -71,8 +70,8 @@ Rules:
   If what you see disagrees with them, say both.
 - Never say that a road or an area is safe to walk, wade or drive through, and never encourage anyone to enter flood water.
   If asked, say that a picture cannot show how deep or fast the water is, and that they should not cross.
-- Do not give a water depth in centimetres or metres unless the measurements include an estimate; you may describe it relative
-  to people or cars ("up to the knees of the people") and say it is a rough look, not a measurement.
+- Do not give a water depth in centimetres or metres; you may describe it relative to people or cars ("up to the knees
+  of the people") and say it is a rough look, not a measurement.
 - Do not identify people, guess who they are, or read out licence plates or house numbers.
 - You cannot tell where or when the picture was taken; do not claim to.
 - If anyone in the picture looks in danger, start with: call 911 now.
@@ -83,46 +82,54 @@ ANSWER_PICTURE_WIDTH = 1024
 ANSWER_HEADING = "Measured by the automatic check:"
 
 
-DEPTH_WORDS = {
-    BAND_NONE: ("almost none", "halos wala"),
-    BAND_ANKLE: ("ankle-deep", "hanggang bukung-bukong"),
-    BAND_KNEE: ("about knee-deep", "mga hanggang tuhod"),
-    BAND_WAIST: ("about waist-deep", "mga hanggang baywang"),
-    BAND_CHEST: ("chest-deep or deeper", "hanggang dibdib o mas malalim"),
-}
+SAM_CACHE_SECONDS = 24 * 60 * 60  # the same photo gives the same measurements; a day saves paid SAM requests on repeats
+
+
+def measure_flood_media(media: ImageInput, api_key: str, include_people_and_vehicles: bool) -> FloodSceneReport:
+    """The SAM measurements of the picture. A photo that was checked before is answered from the cache.
+
+    Only the numbers are cached, under a hash of the photo's bytes: the photo itself is never stored.
+    """
+    cache = get_cache()
+    key = None
+    if cache.enabled:
+        digest = hashlib.sha256(media.read_bytes()).hexdigest()
+        key = f"sam:{digest}:{int(include_people_and_vehicles)}"
+        found = cache.get_json(key)
+        if found is not None:
+            return FloodSceneReport(**found)
+
+    report = analyze_flood_media(media, api_key, include_people_and_vehicles)
+    if key is not None:
+        cache.set_json(key, report.to_dict(), SAM_CACHE_SECONDS)
+    return report
 
 
 @traced_agent("flood_media_agent")
 def answer_flood_media_question(
-    media: ImageInput | VideoInput,
+    media: ImageInput,
     context: ChatContext,
     api_key: str | None = None,
-    estimate_depth: bool = False,
     include_people_and_vehicles: bool = True,
     question: str | None = None,
     llm: BaseChatModel | None = None,
-    video_path: str | Path | None = None,
 ) -> AgentReply:
-    """Analyse a photo or video, and answer the person's question about it.
+    """Analyse a photo, and answer the person's question about it.
 
     ``question`` is what the person asked with the picture; leave it out (or None) when they only sent the picture,
     and the fixed report is given. With a question and a chat model (``llm``), the model answers it from the picture
-    and the measurements, and the measurements follow under ``ANSWER_HEADING``. ``video_path`` is where a video file
-    is, so stills can be taken from it for the model.
+    and the measurements, and the measurements follow under ``ANSWER_HEADING``.
 
-    ``estimate_depth=True`` (photos only) adds a rough depth from the people standing in the water.
-    ``include_people_and_vehicles=False`` looks for water only. Water is asked for with two phrases, and for a photo also
-    on a mirrored copy (see ``WATER_CONCEPTS`` in ``video/flood_scene.py``): 4 SAM requests for a photo, 2 for a video.
-    Counting people and vehicles adds 2 more. A question adds one chat model call.
+    ``include_people_and_vehicles=False`` looks for water only. Water is asked for with two phrases, also on a mirrored
+    copy of the photo (see ``WATER_CONCEPTS`` in ``video/flood_scene.py``): 4 SAM requests. Counting people and vehicles
+    adds 2 more. A question adds one chat model call.
     """
     api_key = api_key or os.getenv("MUSE_API")
     if not api_key:
         return AgentReply(text=NO_KEY_ANSWER)
 
     try:
-        report = analyze_flood_media(
-            media, api_key, estimate_depth=estimate_depth, include_people_and_vehicles=include_people_and_vehicles
-        )
+        report = measure_flood_media(media, api_key, include_people_and_vehicles)
     except Exception as error:
         # SamError (a refused request, a limit), OSError (network problems, unreadable files) and ValueError are the usual
         # ones. The SAM stream library also wraps them in its own error type, so anything else is treated the same way:
@@ -137,8 +144,7 @@ def answer_flood_media_question(
         return AgentReply(text=fixed_report)
 
     try:
-        counted = include_people_and_vehicles or estimate_depth  # the depth estimate always counts people too
-        answer = answer_with_model(llm, question.strip(), pictures_for_model(media, video_path), report, counted)
+        answer = answer_with_model(llm, question.strip(), pictures_for_model(media), report, include_people_and_vehicles)
     except Exception as error:  # the model failed or timed out: the measurements are still a useful answer
         logger.error("Answering the question about the picture failed: %s", error)
         return AgentReply(text=fixed_report)
@@ -147,12 +153,8 @@ def answer_flood_media_question(
     return AgentReply(text=f"{answer}\n\n{ANSWER_HEADING}\n{fixed_report}")
 
 
-def pictures_for_model(media: ImageInput | VideoInput, video_path: str | Path | None) -> list[bytes]:
-    """The JPEG pictures the chat model looks at: the photo (made smaller), or a few stills of the video."""
-    if isinstance(media, VideoInput):
-        path = video_path or media.path
-        return video_stills(Path(path)) if path else []
-
+def pictures_for_model(media: ImageInput) -> list[bytes]:
+    """The JPEG pictures the chat model looks at: the photo, made smaller."""
     from PIL import Image
 
     with Image.open(BytesIO(media.read_bytes())) as picture:
@@ -170,19 +172,13 @@ def describe_measurements(report: FloodSceneReport, counted: bool = True) -> str
     ``counted`` says whether people and vehicles were looked for at all, so "not counted" is never read as "none there".
     """
     lines = [
-        f"Kind: {report.media_kind}.",
         f"Flood water level: {report.level} (about {report.water_coverage:.0%} of the picture).",
     ]
-    if report.media_kind == "video":
-        lines.append(f"Water was seen in {report.frames_with_water:.0%} of {report.frames_checked} frames.")
     if not counted:
         lines.append("People and vehicles were not counted by this check (it was not asked to); count them yourself from the picture if asked.")
     else:
         lines.append(f"People: {report.people} ({report.people_in_water} in water). Vehicles: {report.vehicles} ({report.vehicles_in_water} in water).")
-    if report.depth_cm is not None:
-        lines.append(f"Rough depth estimate: about {report.depth_cm:.0f} cm (could be {report.depth_low_cm:.0f} to {report.depth_high_cm:.0f} cm).")
-    else:
-        lines.append("No depth estimate.")
+    lines.append("No depth estimate.")
     return "\n".join(lines)
 
 
@@ -191,7 +187,7 @@ def answer_with_model(
 ) -> str:
     """Ask the chat model the person's question, with the pictures and the measurements. Returns its plain-text answer."""
     if pictures:
-        seen = "the photo" if report.media_kind != "video" else f"{len(pictures)} stills taken from the video, in order"
+        seen = "the photo"
     else:
         seen = "no picture (it could not be shown to you), so answer only from the measurements and say so"
     content = [
@@ -207,8 +203,7 @@ def answer_with_model(
 
 def format_report(report: FloodSceneReport, context: ChatContext) -> str:
     """Write the report as English and Filipino text for the user."""
-    kind = "video" if report.media_kind == "video" else "picture"
-    kind_fil = "video" if report.media_kind == "video" else "larawan"
+    kind, kind_fil = "picture", "larawan"
 
     if report.level == LEVEL_NONE:
         english = f"I did not find clear flood water in the {kind}."
@@ -226,21 +221,6 @@ def format_report(report: FloodSceneReport, context: ChatContext) -> str:
     if report.vehicles:
         english_lines.append(f"{report.vehicles} vehicles are visible, {report.vehicles_in_water} of them in water.")
         filipino_lines.append(f"May {report.vehicles} sasakyang nakikita, {report.vehicles_in_water} sa kanila ay nasa baha.")
-    if report.media_kind == "video":
-        english_lines.append(f"Water was seen in {report.frames_with_water:.0%} of the {report.frames_checked} frames checked.")
-        filipino_lines.append(f"Nakita ang baha sa {report.frames_with_water:.0%} ng {report.frames_checked} frame na sinuri.")
-
-    if report.depth_cm is not None:
-        words, words_fil = DEPTH_WORDS[report.depth_band]
-        english_lines.append(
-            f"Rough depth estimate: {words} (about {report.depth_cm:.0f} cm, could be {report.depth_low_cm:.0f} to "
-            f"{report.depth_high_cm:.0f} cm), from {report.depth_people_used} people standing in the water. This is a guess, not a measurement."
-        )
-        filipino_lines.append(
-            f"Tantiyang lalim: {words_fil} (mga {report.depth_cm:.0f} cm, maaaring {report.depth_low_cm:.0f} hanggang "
-            f"{report.depth_high_cm:.0f} cm), batay sa {report.depth_people_used} taong nasa baha. Hula lang ito, hindi sukat."
-        )
-
     place = ""
     if context.location is not None:
         place = f"Place given by you: {context.location.name} (not confirmed from the {kind}).\n"

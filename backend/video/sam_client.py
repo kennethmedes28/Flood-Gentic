@@ -1,7 +1,6 @@
-"""Client for Meta's SAM 3.1 model: finds every object that matches a short phrase in a photo or video.
+"""Client for Meta's SAM 3.1 model: finds every object that matches a short phrase in a photo.
 
-SAM answers with a box and a pixel mask for each match, plus a stable object id that follows the
-object from frame to frame in a video. Use it for "where is the flood water?" or "how many people
+SAM answers with a box and a pixel mask for each match. Use it for "where is the flood water?" or "how many people
 are in the picture?", not for reading text or describing a scene.
 
     async with SamClient(api_key) as sam:
@@ -11,8 +10,7 @@ are in the picture?", not for reading text or describing a scene.
 
 One request looks for ONE phrase (SAM's own rule), so ask once per kind of object.
 API notes (https://dev.meta.ai/docs/sam/segmenting): ``POST /v1/responses``, model ``sam-3.1``, the
-answer is streamed as text that ``meta_sam_parser`` turns into typed records. Videos must be MP4 or
-MOV (H.264, H.265 or MPEG-4), up to about 10 minutes, and are billed per frame (at least 50 frames).
+answer is streamed as text that ``meta_sam_parser`` turns into typed records.
 """
 
 import base64
@@ -25,15 +23,15 @@ from pathlib import Path
 import httpx
 from meta_sam_parser import (
     ImageSegmentationResult,
-    VideoSegmentationResult,
     image_segmentation_format,
     parse_responses_stream,
-    video_segmentation_format,
 )
+
+from src.services.usage_meter import add_sam_request
 
 BASE_URL = "https://api.meta.ai/v1"
 MODEL = "sam-3.1"
-REQUEST_TIMEOUT_SECONDS = 300.0  # a long video streams for a while
+REQUEST_TIMEOUT_SECONDS = 300.0  # a request streams for a while
 MAX_IMAGE_BYTES = 20 * 1024 * 1024  # guard for what we are willing to base64-encode ourselves
 
 
@@ -77,15 +75,6 @@ class ImageInput:
         return f"data:{mime_type};base64,{base64.b64encode(raw).decode('ascii')}"
 
 
-@dataclass(frozen=True)
-class VideoInput:
-    """A video: a public ``url`` or a local ``path`` (uploaded once, then used by file id)."""
-
-    url: str | None = None
-    path: str | Path | None = None
-    file_id: str | None = None  # set when the file was uploaded before
-
-
 class SamError(RuntimeError):
     """SAM refused the request or the stream failed."""
 
@@ -104,16 +93,11 @@ class SamClient:
     async def __aexit__(self, *exc_info) -> None:
         await self._http.aclose()
 
-    async def segment(
-        self, concept: str, media: ImageInput | VideoInput
-    ) -> ImageSegmentationResult | VideoSegmentationResult:
-        """Find every ``concept`` (a short noun phrase such as "flood water") in the media."""
-        if isinstance(media, VideoInput):
-            media_part = {"type": "input_video", **await self._video_reference(media)}
-            parser_format = video_segmentation_format()
-        else:
-            media_part = {"type": "input_image", "image_url": media.image_url()}
-            parser_format = image_segmentation_format()
+    async def segment(self, concept: str, media: ImageInput) -> ImageSegmentationResult:
+        """Find every ``concept`` (a short noun phrase such as "flood water") in the photo."""
+        add_sam_request()  # counted against the signed-in user's usage (see src/services/usage_meter.py)
+        media_part = {"type": "input_image", "image_url": media.image_url()}
+        parser_format = image_segmentation_format()
 
         body = {
             "model": MODEL,
@@ -132,28 +116,6 @@ class SamClient:
         async for _snapshot in parsed:  # reading to the end is what finishes the parse
             pass
         return await parsed.final_result()
-
-    async def upload_video(self, path: str | Path) -> str:
-        """Upload a local video once and return its file id (reuse it for several concepts)."""
-        with open(path, "rb") as file:
-            response = await self._http.post(
-                f"{self._base_url}/files",
-                headers=self._headers(),
-                data={"purpose": "user_data"},
-                files={"file": (Path(path).name, file)},
-            )
-        if response.status_code != 200:
-            raise SamError(f"Video upload failed ({response.status_code}): {response.text[:300]}")
-        return response.json()["id"]
-
-    async def _video_reference(self, video: VideoInput) -> dict:
-        if video.file_id:
-            return {"file_id": video.file_id}
-        if video.url:
-            return {"video_url": video.url}
-        if video.path:
-            return {"file_id": await self.upload_video(video.path)}
-        raise ValueError("Give a url, path or file_id for the video.")
 
     def _headers(self) -> dict:
         return {"Authorization": f"Bearer {self._api_key}"}

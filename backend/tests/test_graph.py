@@ -43,7 +43,7 @@ class RoutingTests(unittest.TestCase):
 
 
 class MediaTests(unittest.TestCase):
-    """A photo or video attached to a message is checked once, by the flood media node."""
+    """A photo attached to a message is checked once, by the flood media node."""
 
     def setUp(self):
         self.upload_dir = tempfile.TemporaryDirectory()
@@ -66,11 +66,10 @@ class MediaTests(unittest.TestCase):
         photo = Path(self.upload_dir.name) / "street.jpg"
         photo.write_bytes(b"jpeg")
         self.assertEqual(chat_graph.media_from_dict({"kind": "image", "path": str(photo)}).path, photo.resolve())
-        self.assertEqual(chat_graph.media_from_dict({"kind": "video", "url": "https://example.com/v.mp4"}).url,
-                         "https://example.com/v.mp4")
 
         bad = [
             {"kind": "audio", "url": "https://example.com/a"},
+            {"kind": "video", "url": "https://example.com/v.mp4"},
             {"kind": "image"},
             {"kind": "image", "url": "https://example.com/a", "path": str(photo)},
             {"kind": "image", "url": "http://example.com/a.jpg"},       # not https
@@ -84,11 +83,11 @@ class MediaTests(unittest.TestCase):
             with self.assertRaises(ValueError, msg=media):
                 chat_graph.media_from_dict(media)
 
-    def test_the_graph_checks_the_media_once_and_passes_the_depth_option(self):
+    def test_the_graph_checks_the_media_once(self):
         seen = {}
 
-        def fake_agent(media, context, estimate_depth=False, include_people_and_vehicles=True, **_other_options):
-            seen["media"], seen["depth"], seen["people"] = media, estimate_depth, include_people_and_vehicles
+        def fake_agent(media, context, include_people_and_vehicles=True, **_other_options):
+            seen["media"], seen["people"] = media, include_people_and_vehicles
             return AgentReply(text="Flood water covers a large part of the picture.")
 
         graph = chat_graph.build_graph(FakeListChatModel(responses=["unused"]), checkpointer=MemorySaver())
@@ -97,7 +96,7 @@ class MediaTests(unittest.TestCase):
             with mock.patch.object(chat_graph, "answer_flood_media_question", fake_agent):
                 first = await chat_graph.ask(
                     graph, "", "thread-media",
-                    media={"kind": "image", "url": "https://example.com/a.jpg", "estimate_depth": True},
+                    media={"kind": "image", "url": "https://example.com/a.jpg"},
                 )
                 second = await chat_graph.ask(graph, "hello", "thread-media")  # no media: must not be checked again
             return first, second
@@ -105,14 +104,13 @@ class MediaTests(unittest.TestCase):
         first, second = asyncio.run(talk())
         self.assertIn("Flood water covers", first)
         self.assertEqual(seen["media"].url, "https://example.com/a.jpg")
-        self.assertTrue(seen["depth"])
         self.assertTrue(seen["people"])  # people and vehicles are included unless the caller turns them off
         self.assertNotIn("Flood water covers", second)
 
     def test_the_graph_can_be_told_to_look_for_water_only(self):
         seen = {}
 
-        def fake_agent(media, context, estimate_depth=False, include_people_and_vehicles=True, **_other_options):
+        def fake_agent(media, context, include_people_and_vehicles=True, **_other_options):
             seen["people"] = include_people_and_vehicles
             return AgentReply(text="Flood water covers a large part of the picture.")
 

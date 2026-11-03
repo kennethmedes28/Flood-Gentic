@@ -73,7 +73,7 @@ class ChatStreamRequest(StrictModel):
     location: Coordinates | None = None
     # A JPEG, PNG or WebP picture as base64 text. It is checked and limited in src/services/media_upload.py.
     image: Annotated[str, StringConstraints(max_length=MAX_IMAGE_BASE64_CHARS)] | None = None
-    # With a photo: also count people and vehicles and estimate a rough depth. Slower: 6 SAM requests instead of 4.
+    # With a photo: also count people and vehicles. Slower: 6 SAM requests instead of 4.
     detailed: bool = False
 
     @model_validator(mode="after")
@@ -162,6 +162,46 @@ class EvacuationCenterOut(BaseModel):
     notes: str | None = None
 
 
+class UsageOut(BaseModel):
+    """A signed-in user's usage against the spending caps (GET /me/usage)."""
+
+    messages_today: int
+    messages_limit: int
+    photos_today: int
+    photos_limit: int
+    voice_today: int
+    voice_limit: int
+    tokens_this_month: int
+    tokens_limit: int
+    resets_in_seconds: int
+
+
+class PlaceCenterOut(BaseModel):
+    """One evacuation center as the Evacuation page lists it (GET /places/evacuation-centers)."""
+
+    id: str
+    city: str
+    barangay: str
+    name: str
+    type: str
+    status: str
+    source: str
+    lat: float
+    lng: float
+    notes: str
+
+
+class ContactOut(BaseModel):
+    """One emergency contact number (GET /places/contacts). The number is exactly as written in the list."""
+
+    agency: str
+    category: str
+    type: str
+    number: str
+    notes: str
+    cities: list[str]
+
+
 class AdvisoryOut(BaseModel):
     """One official page (a PAGASA bulletin or advisory), shortened."""
 
@@ -219,6 +259,87 @@ class DashboardOut(BaseModel):
 
     data_date: date | None = None  # the newest day in the data
     cities: list[DashboardCityOut]
+
+
+# --- Macro weather analytics (long-run statistics from the recorded dataset) ----------------------
+
+
+class AnalyticsStatsOut(BaseModel):
+    """Totals, averages and extremes for a group of days. A value that is not in the data is null."""
+
+    days: int
+    rain_total_mm: float | None = None
+    rain_max_day_mm: float | None = None
+    rain_days: int = 0
+    heavy_rain_days: int = 0
+    high_avg_c: float | None = None
+    high_max_c: float | None = None
+    hot_days: int = 0
+    low_avg_c: float | None = None
+    low_min_c: float | None = None
+    wind_max_kmh: float | None = None
+    gust_max_kmh: float | None = None
+    river_avg_m3s: float | None = None
+    river_max_m3s: float | None = None
+
+
+class AnalyticsPointOut(AnalyticsStatsOut):
+    """One year, month or day on a chart. ``period`` is "2024", "2024-07" or "2024-07-15"."""
+
+    period: str
+    label: str
+
+
+class AnalyticsDayValueOut(BaseModel):
+    """A day and a value, for example the wettest day and how much rain fell."""
+
+    date: date
+    value: float
+
+
+class AnalyticsDayOut(BaseModel):
+    """The recorded numbers of one day."""
+
+    date: date
+    rain_mm: float | None = None
+    high_c: float | None = None
+    low_c: float | None = None
+    wind_kmh: float | None = None
+    gust_kmh: float | None = None
+    river_flow_m3s: float | None = None
+
+
+class AnalyticsCityOut(BaseModel):
+    """One city in the ranking for the chosen period."""
+
+    city: str
+    rain_total_mm: float | None = None
+    high_avg_c: float | None = None
+    river_max_m3s: float | None = None
+    gust_max_kmh: float | None = None
+
+
+class AnalyticsOut(BaseModel):
+    """Long-run weather statistics for the chosen city and period. Recorded data, not a forecast."""
+
+    city: str | None = None  # null means all of Metro Manila combined
+    level: str  # "year", "month" or "day": what each point in ``points`` stands for
+    year: int | None = None
+    month: int | None = None
+    day: int | None = None
+    years_available: list[str]
+    data_first_date: date | None = None
+    data_last_date: date | None = None
+    summary: AnalyticsStatsOut
+    wettest_day: AnalyticsDayValueOut | None = None
+    hottest_day: AnalyticsDayValueOut | None = None
+    coolest_night: AnalyticsDayValueOut | None = None
+    strongest_gust: AnalyticsDayValueOut | None = None
+    peak_river_day: AnalyticsDayValueOut | None = None
+    rainiest_days: list[AnalyticsDayValueOut]
+    points: list[AnalyticsPointOut]
+    day_detail: AnalyticsDayOut | None = None
+    city_ranking: list[AnalyticsCityOut]
 
 
 # --- Weather forecast (Tomorrow.io, stored in Supabase) -----------------------------------------

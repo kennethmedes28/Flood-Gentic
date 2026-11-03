@@ -109,22 +109,6 @@ html[data-glass-tone="clear"] {
 
 /* ---------- Scene ---------- */
 
-/* One slow walking sway; the only motion that runs on its own. */
-@keyframes scene-sway {
-  0%, 100% { transform: translate3d(-4px, 0, 0) scale(1.04); }
-  50%      { transform: translate3d(4px, -3px, 0) scale(1.04); }
-}
-
-.scene-video {
-  animation: scene-sway 9s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .scene-video {
-    animation: none;
-  }
-}
-
 /*
  * Accent card (e.g. today's risk).
  * Its blue follows the slider all the way down: no blue at --g = 0, fully
@@ -142,7 +126,7 @@ html[data-glass-tone="clear"] {
 /*
  * Fade everything (panels AND text) out as the slider reaches its minimum.
  * Fully visible from --g = 0.17 upwards, fully invisible at --g = 0, so the
- * video can be seen with nothing on top. The slider and nav button sit
+ * plain background can be seen with nothing on top. The slider and nav button sit
  * outside this wrapper and always stay visible.
  */
 .glass-fade {
@@ -299,7 +283,7 @@ html[data-look="cyberpunk"] .help-dialog .help-muted {
   outline-offset: 2px;
 }
 
-/* Light haze over the video so text stays readable. */
+/* Light haze over the background so text stays readable. */
 .scene-haze {
   background: rgba(255, 255, 255, 0.1);
 }
@@ -362,7 +346,7 @@ html[data-look="cyberpunk"] .glass-accent {
   box-shadow: 0 0 22px rgba(255, 61, 208, calc(var(--g) * 0.5));
 }
 
-/* The video is graded purple, with faint scanlines. */
+/* The background is graded purple, with faint scanlines. */
 html[data-look="cyberpunk"] .scene-haze {
   background:
     repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.12) 0 1px, transparent 1px 3px),

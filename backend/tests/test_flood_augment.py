@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from video import flood_scene
 from video.flood_scene import Detection, build_report, mirror_back, mirrored_photo, water_grid
-from video.sam_client import ImageInput, VideoInput
+from video.sam_client import ImageInput
 
 FRAME = (200, 100)  # width, height
 
@@ -99,12 +99,6 @@ class VoteTests(unittest.TestCase):
         self.assertAlmostEqual(report.water_coverage, 0.5, places=2)
 
 
-class WeakMatchTests(unittest.TestCase):
-    def test_a_video_whose_matches_were_all_too_weak_gives_no_water_instead_of_an_error(self):
-        report = build_report("video", FRAME, [], [], [])
-        self.assertEqual((report.level, report.frames_checked, report.water_coverage), ("none", 1, 0.0))
-
-
 class FakeSam:
     """Answers every request with one water box on the left quarter, and records what was asked."""
 
@@ -149,10 +143,6 @@ class AnalysisRequestTests(unittest.TestCase):
         self.assertIn(original, media)
         self.assertTrue(any(m is not original and m.data != original.data for m in media))
 
-    def test_a_video_is_never_mirrored(self):
-        self.run_analysis(VideoInput(file_id="f-1"), water_concepts=("flood water",), mirror_photo=True)
-        self.assertEqual(self.concepts_asked(), ["flood water"])
-
     def test_people_and_vehicles_are_asked_only_on_the_original(self):
         original = ImageInput(data=photo_bytes())
         asyncio.run(flood_scene.analyze_flood_media_async(original, "key", water_concepts=("flood water",), mirror_photo=True))
@@ -164,12 +154,7 @@ class AnalysisRequestTests(unittest.TestCase):
         self.assertEqual(sorted(self.concepts_asked()), ["a", "b", "c"])
 
 
-class WebcamCostTests(unittest.TestCase):
-    def test_the_webcam_keeps_to_one_water_request_per_frame(self):
-        from video import camera_router
-
-        self.assertEqual(camera_router.WEBCAM_ANALYZE.keywords, {"water_concepts": ("flood water",), "mirror_photo": False})
-
+class MeasuredSettingsTests(unittest.TestCase):
     def test_the_chat_check_uses_the_measured_settings(self):
         self.assertEqual(flood_scene.WATER_CONCEPTS, ("flood water", "muddy water"))
         self.assertTrue(flood_scene.MIRROR_PHOTOS)

@@ -25,7 +25,7 @@ export function locate(): Promise<Located> {
         resolve(city ? { kind: "city", city } : { kind: "outside" })
       },
       (failure) => resolve({ kind: failure.code === failure.PERMISSION_DENIED ? "denied" : "failed" }),
-      { timeout: 10_000 }
+      { timeout: 10_000, maximumAge: 60_000 }
     )
   })
 }

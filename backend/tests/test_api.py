@@ -552,18 +552,28 @@ class SettingsTests(unittest.TestCase):
             return load_settings()
 
     def test_defaults(self):
-        settings = self.load()
+        settings = self.load(REQUIRE_AUTH="false")
         self.assertEqual(settings.cors_origins, ("http://localhost:3000",))
         self.assertEqual((settings.checkpointer, settings.enable_rag, settings.trust_proxy_headers), ("postgres", True, False))
 
     def test_values_are_read(self):
-        settings = self.load(CORS_ORIGINS="https://a.org, https://b.org", CHECKPOINTER="MEMORY", ENABLE_RAG="no", CHAT_PER_MINUTE="5")
+        settings = self.load(
+            CORS_ORIGINS="https://a.org, https://b.org", CHECKPOINTER="MEMORY", ENABLE_RAG="no", CHAT_PER_MINUTE="5", REQUIRE_AUTH="false"
+        )
         self.assertEqual(settings.cors_origins, ("https://a.org", "https://b.org"))
         self.assertEqual((settings.checkpointer, settings.enable_rag, settings.chat_per_minute), ("memory", False, 5))
 
     def test_wrong_checkpointer_stops_start_up(self):
         with self.assertRaises(RuntimeError):
-            self.load(CHECKPOINTER="redis")
+            self.load(CHECKPOINTER="redis", REQUIRE_AUTH="false")
+
+    def test_sign_in_is_required_by_default_and_needs_the_project_address(self):
+        with self.assertRaises(RuntimeError):
+            self.load()  # REQUIRE_AUTH defaults to true, and there is no Supabase address
+        settings = self.load(SUPABASE_PROJECT_REF="abcd")
+        self.assertTrue(settings.require_auth)
+        self.assertEqual(settings.supabase_url, "https://abcd.supabase.co")
+        self.assertEqual(self.load(SUPABASE_URL="https://x.example.org").supabase_url, "https://x.example.org")
 
 
 class StartupTests(unittest.IsolatedAsyncioTestCase):

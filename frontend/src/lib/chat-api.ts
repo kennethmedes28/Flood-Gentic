@@ -6,7 +6,10 @@
  * suggested evacuation center.
  */
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+import { authHeaders } from "@/lib/supabase"
+
+// A trailing slash is removed, so "https://api.example.com/" does not turn "/chat" into "//chat".
+export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/+$/, "")
 
 export type Coordinates = { lat: number; lng: number }
 
@@ -21,7 +24,12 @@ export type ChatReply = {
 }
 
 /** An error whose message is already safe and friendly to show to the user. */
-export class ChatError extends Error {}
+export class ChatError extends Error {
+  /** True when the backend refused because nobody is signed in, so the page can point to the sign-in button. */
+  needsSignIn = false
+}
+
+const SIGN_IN_MESSAGE = "Please sign in with Google or Facebook to use the assistant. If you are in danger, call 911."
 
 /** Turn FastAPI's validation error (a string or a list of problems) into one sentence. */
 function readDetail(detail: unknown): string | null {
@@ -40,7 +48,7 @@ type SendOptions = {
   location: Coordinates | null
   /** A JPEG picture as base64 text, to be checked for flood water (see media-check-api.ts). */
   image?: string
-  /** With a picture: also count people and vehicles and estimate a rough depth. Slower and costs more. */
+  /** With a picture: also count people and vehicles. Slower and costs more. */
   detailed?: boolean
 }
 
@@ -57,8 +65,15 @@ const NETWORK_MESSAGE = "I can't reach the assistant right now. Please check you
 /** Turn a failed answer into a friendly ChatError. Does nothing when the answer is fine. */
 async function throwIfFailed(response: Response): Promise<void> {
   if (response.ok) return
+  if (response.status === 401) {
+    const error = new ChatError(SIGN_IN_MESSAGE)
+    error.needsSignIn = true
+    throw error
+  }
   if (response.status === 429) {
-    throw new ChatError("You're sending messages too fast. Please wait a moment and try again.")
+    // A spending cap says what was used up and when it starts again; the speed limit just says to wait.
+    const body = await response.json().catch(() => null)
+    throw new ChatError(readDetail(body?.detail) ?? "You're sending messages too fast. Please wait a moment and try again.")
   }
   if (response.status === 413) {
     throw new ChatError("That file is too large. Please choose a smaller one.")
@@ -76,7 +91,7 @@ async function postMessage(path: string, options: SendOptions, signal?: AbortSig
   try {
     response = await fetch(`${API_URL}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
       body: JSON.stringify({
         message: options.message,
         thread_id: options.threadId,
@@ -94,7 +109,7 @@ async function postMessage(path: string, options: SendOptions, signal?: AbortSig
 }
 
 /** The reply fields of the backend's answer (snake_case) as a ChatReply. */
-function toReply(data: { thread_id: string; reply: string; safe_answer?: boolean; blocked?: boolean }): ChatReply {
+function toReply(data: { thread_id: string; reply: string; safe_answer?: boolean; blocked?: boolean}): ChatReply {
   return {
     threadId: data.thread_id,
     text: data.reply,
@@ -127,41 +142,6 @@ export async function sendChatMessageStream(
   signal?: AbortSignal
 ): Promise<ChatReply> {
   return readReplyStream(await postMessage("/chat/stream", options, signal), onProgress, signal)
-}
-
-/**
- * Send a video (POST /chat/stream/video) and report progress while it is analysed.
- *
- * The video is the request body itself, so it is streamed from the file and never held in memory as text; the
- * message, conversation and location go in the query string. The backend analyses the whole video, which can take a
- * minute or two, and answers with the same progress lines as a text message.
- */
-export async function sendChatVideoStream(
-  video: File,
-  options: Omit<SendOptions, "image">,
-  onProgress: (progress: ChatProgress) => void,
-  signal?: AbortSignal
-): Promise<ChatReply> {
-  const query = new URLSearchParams({ message: options.message, detailed: String(Boolean(options.detailed)) })
-  if (options.threadId) query.set("thread_id", options.threadId)
-  if (options.location) {
-    query.set("lat", String(options.location.lat))
-    query.set("lng", String(options.location.lng))
-  }
-
-  let response: Response
-  try {
-    response = await fetch(`${API_URL}/chat/stream/video?${query}`, {
-      method: "POST",
-      headers: { "Content-Type": video.type || "video/mp4" },
-      body: video,
-      signal,
-    })
-  } catch {
-    throw new ChatError(NETWORK_MESSAGE)
-  }
-  await throwIfFailed(response)
-  return readReplyStream(response, onProgress, signal)
 }
 
 /** Read the lines of a chat stream: progress is passed on, and the reply is returned. */

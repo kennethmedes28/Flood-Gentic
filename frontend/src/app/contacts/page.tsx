@@ -6,7 +6,7 @@ import { ContactsView } from "@/components/contacts/ContactsView"
 
 /**
  * Emergency contacts: 911 first, then the hotlines of one city, national agencies and hospitals.
- * The same video and glass look as the other pages, with the same frame whose corners can be dragged to shrink it.
+ * The same glass look as the other pages, with the same frame whose corners can be dragged to shrink it.
  */
 export default function ContactsPage() {
   return (

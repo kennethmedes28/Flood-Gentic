@@ -359,8 +359,8 @@ export const EVACUATION_CENTERS: EvacuationCenter[] = [
     "type": "Permanent evacuation center",
     "status": "Used 2024-2025 (Kristine/habagat)",
     "source": "DSWD/PNA Manila evacuation reports",
-    "lat": 14.5785,
-    "lng": 120.9615,
+    "lat": 14.5907,
+    "lng": 120.958,
     "notes": "Coordinates approximate (site/barangay location); confirm before routing"
   },
   {
@@ -371,8 +371,8 @@ export const EVACUATION_CENTERS: EvacuationCenter[] = [
     "type": "School",
     "status": "Used 2025 (largest Manila EC, 266 families)",
     "source": "PNA 2025 (Manila 6 evacuation centers)",
-    "lat": 14.5795,
-    "lng": 120.9625,
+    "lat": 14.5939,
+    "lng": 120.9613,
     "notes": "Coordinates approximate (site/barangay location); confirm before routing"
   },
   {

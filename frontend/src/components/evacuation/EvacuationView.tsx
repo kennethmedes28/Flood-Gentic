@@ -8,6 +8,8 @@ import { Switch } from "@/components/ui/Switch"
 import { CentersMap } from "@/components/evacuation/CentersMap"
 import { useCurrentCity } from "@/context/CurrentCityContext"
 import { EVACUATION_CENTERS, NCR_CITIES, type EvacuationCenter } from "@/data/evacuation-centers"
+import { useSupabaseList } from "@/hooks/useSupabaseList"
+import { fetchEvacuationCenters } from "@/lib/places-api"
 import { useMyPosition } from "@/hooks/useMyPosition"
 import { matchCity, plainText } from "@/lib/ncr-city-match"
 import { distanceKm, formatDistance } from "@/lib/geo"
@@ -85,7 +87,8 @@ function CenterCard({ item, selected, onSelect }: { item: Listed; selected: bool
 /**
  * Evacuation centers: pick a city or search, see them listed with how current each entry is, and on a map.
  * "Nearest first" asks for the user's position only when it is switched on. Distances are in a straight line.
- * The data is copied from datasets/ncr_evacuation_centers.csv (see scripts/export_frontend_data.py).
+ * The data comes from Supabase (GET /places/evacuation-centers), copied from datasets/ncr_evacuation_centers.csv. If the
+ * backend cannot be reached, the built-in copy of that list is shown (see scripts/export_frontend_data.py).
  */
 export function EvacuationView() {
   const { city: dashboardCity } = useCurrentCity()
@@ -96,11 +99,12 @@ export function EvacuationView() {
   const [showAll, setShowAll] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const mine = useMyPosition()
+  const centers = useSupabaseList(EVACUATION_CENTERS, fetchEvacuationCenters) // from Supabase, the built-in list until it arrives
 
   // Every center that matches the city and the search, nearest first when the position is shared.
   const matches = useMemo<Listed[]>(() => {
     const words = plainText(search).split(/\s+/).filter(Boolean)
-    const found = EVACUATION_CENTERS.filter((center) => {
+    const found = centers.filter((center) => {
       if (cityFilter !== ALL_CITIES && center.city !== cityFilter) return false
       const text = plainText(`${center.name} ${center.barangay} ${center.type} ${center.city}`)
       return words.every((word) => text.includes(word))
@@ -114,7 +118,7 @@ export function EvacuationView() {
         ? a.km - b.km
         : a.center.city.localeCompare(b.center.city) || a.center.name.localeCompare(b.center.name)
     )
-  }, [cityFilter, search, mine.position])
+  }, [centers, cityFilter, search, mine.position])
 
   const shown = showAll ? matches : matches.slice(0, FIRST_SHOWN)
   const visibleCenters = useMemo(() => matches.map((item) => item.center), [matches])

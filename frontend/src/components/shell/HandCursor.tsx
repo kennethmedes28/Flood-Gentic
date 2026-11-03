@@ -46,6 +46,8 @@ const PAGES_WITHOUT_HAND = ["/satellite"]
 
 export function HandCursor() {
   const pathname = usePathname()
+  const { enabled } = useHand()
+  if (!enabled) return null // unmounting also puts the normal pointer back
   if (pathname && PAGES_WITHOUT_HAND.includes(pathname)) return null
   return <HandCursorLayer />
 }

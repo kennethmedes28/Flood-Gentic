@@ -1,19 +1,15 @@
-"""Contacts agent: looks up emergency numbers for the user's city from the contacts CSV.
+"""Contacts agent: looks up emergency numbers for the user's city from the built-in contacts list.
 
-No chat model is used: phone numbers are copied exactly from the file, never
+No chat model is used: phone numbers are copied exactly from the list, never
 generated, because a wrong digit can cost a life.
 """
 
-import csv
-import os
 from functools import lru_cache
-from pathlib import Path
 
 from agents.flood_types import AgentReply, ChatContext
 from agents.location_agent import ASK_FOR_LOCATION, plain_text, find_city
+from agents.reference_data import CONTACT_ROWS
 from utils.tracing import traced_agent
-
-DEFAULT_CONTACTS = Path(__file__).resolve().parents[2] / "corpus" / "ph_emergency_contacts.csv"
 
 # National lines shown to everyone, as (agency, number type).
 NATIONAL_AGENCIES = ["National Emergency Hotline", "NDRRMC", "Philippine Red Cross", "MMDA"]
@@ -23,12 +19,11 @@ MAX_PER_AGENCY = 3
 
 @lru_cache(maxsize=1)
 def load_contacts() -> list[dict]:
-    """Read the contacts file once. The BOM at the start of the file is handled."""
-    path = Path(os.getenv("CONTACTS_CSV", DEFAULT_CONTACTS))
-    if not path.exists():
-        return []
-    with open(path, newline="", encoding="utf-8-sig") as file:
-        return list(csv.DictReader(file))
+    """The hotlines, from the built-in list (``agents/reference_data.py``, generated from the contacts file).
+
+    They are built in, not read from a file or the database, so an emergency number is available even when the network is down.
+    """
+    return [dict(row) for row in CONTACT_ROWS]
 
 
 def contacts_for_city(city: str | None, contacts: list[dict] | None = None) -> list[tuple[str, list[str]]]:

@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react"
 
 import { GlassPanel } from "@/components/ui/GlassPanel"
+import { useAuth } from "@/context/AuthContext"
 import { useVoiceTranscription } from "@/hooks/useVoiceTranscription"
-import { ChatError, sendChatMessageStream, sendChatVideoStream, type Coordinates } from "@/lib/chat-api"
+import { ChatError, sendChatMessageStream, type Coordinates } from "@/lib/chat-api"
 import { useMediaAttachment } from "@/hooks/useMediaAttachment"
-import { checkVideoSize, isVideo, MediaCheckError, preparePhotoForChat } from "@/lib/media-check-api"
+import { MediaCheckError, preparePhotoForChat } from "@/lib/media-check-api"
 
+import { AuthBar } from "./AuthBar"
 import { InputModeButton, type InputMode } from "./InputModeButton"
 import { MessageBubble, TypingIndicator, type ChatMessage } from "./MessageBubble"
 import { QuickPrompts } from "./QuickPrompts"
@@ -15,6 +17,8 @@ import { QuickPrompts } from "./QuickPrompts"
 const MAX_LENGTH = 1000
 /** The counter only appears when the message is close to the limit. */
 const COUNTER_FROM = 800
+/** How long to wait for the browser's position before giving up. */
+const LOCATION_TIMEOUT_MS = 10_000
 
 const WELCOME: ChatMessage = {
   id: "welcome",
@@ -23,7 +27,7 @@ const WELCOME: ChatMessage = {
   text:
     "Hi! I'm the AI Agent Flood Assistant. Ask me about flood risk, evacuation centers, " +
     "emergency contacts or what to prepare. You can write in English or Filipino, " +
-    "or attach a photo or video to check it for flood water.",
+    "or attach (or drag and drop) a photo to check it for flood water.",
 }
 
 let nextId = 0
@@ -46,10 +50,12 @@ function withSpeech(typedBefore: string, spoken: string): string {
  * comes back as a friendly error message.
  */
 export function ChatWindow() {
+  const auth = useAuth()
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME])
   const [threadId, setThreadId] = useState<string | null>(null)
   const [location, setLocation] = useState<Coordinates | null>(null)
   const [locationNote, setLocationNote] = useState("")
+  const [locating, setLocating] = useState(false)
   const [draft, setDraft] = useState("")
   const [pending, setPending] = useState(false)
   /** What the assistant is doing right now, shown next to the typing dots. */
@@ -58,6 +64,10 @@ export function ChatWindow() {
   const { attachment, attachError, attachFile, removeAttachment, takeAttachment } = useMediaAttachment()
   /** Also count people and vehicles / estimate depth: more detail, but more API credit per check. */
   const [moreDetail, setMoreDetail] = useState(false)
+  /** True while a file is being dragged over the chat, to show the drop hint. */
+  const [dragging, setDragging] = useState(false)
+  /** dragenter/dragleave also fire for every child element, so the enters are counted to know when the file really left. */
+  const dragDepth = useRef(0)
   const endOfMessages = useRef<HTMLDivElement>(null)
   const inputBox = useRef<HTMLTextAreaElement>(null)
   /** What was in the message box when the microphone was turned on; the spoken words are added after it. */
@@ -89,9 +99,8 @@ export function ChatWindow() {
   }
 
   /**
-   * Send the message, with the attached photo or video if there is one. A photo is made small in the browser and goes
-   * to the backend with the message; a video is sent whole and analysed in full, which takes longer. Either way the
-   * backend checks it for flood water and answers in the same conversation. The text is then the caption: it may be empty.
+   * Send the message, with the attached photo if there is one. The photo is made small in the browser and goes to the
+   * backend with the message, which checks it for flood water and answers in the same conversation. The text is then the caption: it may be empty.
    */
   async function send(text: string) {
     const message = text.trim()
@@ -99,12 +108,17 @@ export function ChatWindow() {
     const item = attachment
     if (!message && !item) return
 
-    const video = item ? isVideo(item.file) : false
+    // A photo check costs paid requests, so it needs sign-in; say so before uploading anything.
+    if (item && auth.status === "signedOut") {
+      addMessage({ role: "assistant", kind: "error", text: "Please sign in with Google or Facebook to check a photo. If you are in danger, call 911." })
+      return
+    }
+
     addMessage({
       role: "user",
       kind: "normal",
-      text: message || (video ? "Check this video for flood water." : "Check this photo for flood water."),
-      media: item ? { url: item.url, isVideo: video } : undefined,
+      text: message, // a photo sent without a caption shows just the picture, with no default sentence
+      media: item ? { url: item.url } : undefined,
     })
     takeAttachment() // the preview now lives in the message, so its address is not revoked here
     setDraft("")
@@ -112,15 +126,8 @@ export function ChatWindow() {
 
     try {
       const onProgress = (step: { label: string }) => setProgress(step.label)
-      let reply
-      if (item && video) {
-        checkVideoSize(item.file)
-        setProgress("Uploading your video") // the upload itself has no progress lines: they start when it arrives
-        reply = await sendChatVideoStream(item.file, { message, threadId, location, detailed: moreDetail }, onProgress)
-      } else {
-        const image = item ? await preparePhotoForChat(item.file) : undefined
-        reply = await sendChatMessageStream({ message, threadId, location, image, detailed: moreDetail }, onProgress)
-      }
+      const image = item ? await preparePhotoForChat(item.file) : undefined
+      const reply = await sendChatMessageStream({ message, threadId, location, image, detailed: moreDetail }, onProgress)
       setThreadId(reply.threadId)
       addMessage({
         role: "assistant",
@@ -136,23 +143,74 @@ export function ChatWindow() {
     }
   }
 
-  /** Ask the browser for the position, only after the user taps the button. */
+  /**
+   * Ask the browser for the position, only after the user taps the button. Tapping it again while the position is
+   * shared switches sharing off. The request has a time limit, so "Finding your location…" can never hang forever.
+   */
   function shareLocation() {
+    if (locating) return
+    if (location) {
+      setLocation(null)
+      setLocationNote("Location off. Answers will be general.")
+      return
+    }
     if (!navigator.geolocation) {
       setLocationNote("Your browser can't share a location.")
       return
     }
+    setLocating(true)
     setLocationNote("Finding your location…")
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        setLocating(false)
         setLocation({ lat: position.coords.latitude, lng: position.coords.longitude })
         setLocationNote("Using your location for answers.")
       },
-      () => {
+      (failure) => {
+        setLocating(false)
         setLocation(null)
-        setLocationNote("Location not shared. Answers will be general.")
-      }
+        setLocationNote(
+          failure.code === failure.PERMISSION_DENIED
+            ? "Location not shared. Answers will be general."
+            : "Couldn't find your location. Check that location is on for this device and try again. Answers will be general."
+        )
+      },
+      { timeout: LOCATION_TIMEOUT_MS, maximumAge: 60_000 }
     )
+  }
+
+  /** True when the drag carries a file (and not, say, selected text). */
+  function carriesFiles(event: React.DragEvent): boolean {
+    return Array.from(event.dataTransfer.types).includes("Files")
+  }
+
+  function onDragEnter(event: React.DragEvent) {
+    if (!carriesFiles(event) || pending) return
+    event.preventDefault()
+    dragDepth.current += 1
+    setDragging(true)
+  }
+
+  function onDragOver(event: React.DragEvent) {
+    if (!carriesFiles(event) || pending) return
+    event.preventDefault() // required, or the browser refuses the drop
+    event.dataTransfer.dropEffect = "copy"
+  }
+
+  function onDragLeave(event: React.DragEvent) {
+    if (!carriesFiles(event)) return
+    dragDepth.current = Math.max(0, dragDepth.current - 1)
+    if (dragDepth.current === 0) setDragging(false)
+  }
+
+  /** Dropping a photo attaches it, the same as picking it with the input button (the first file only). */
+  function onDrop(event: React.DragEvent) {
+    if (!carriesFiles(event)) return
+    event.preventDefault()
+    dragDepth.current = 0
+    setDragging(false)
+    const file = event.dataTransfer.files[0]
+    if (file && !pending && !voiceActive) attachFile(file)
   }
 
   function clearConversation() {
@@ -164,7 +222,22 @@ export function ChatWindow() {
   const showPrompts = messages.length === 1 && !pending
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div
+      className="relative flex h-full min-h-0 flex-col gap-3"
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dragging && (
+        <div
+          className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-3xl border-2 border-dashed border-[var(--glass-accent)] bg-black/40 text-lg font-semibold text-white"
+          role="status"
+        >
+          Drop a photo to check it for flood water
+        </div>
+      )}
+
       {/* Header */}
       <GlassPanel className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
         <div>
@@ -178,9 +251,10 @@ export function ChatWindow() {
             type="button"
             onClick={shareLocation}
             aria-pressed={location !== null}
+            aria-busy={locating}
             className="min-h-11 rounded-full px-4 text-sm font-medium aria-pressed:bg-[var(--glass-accent)] aria-pressed:text-white aria-pressed:[text-shadow:none]"
           >
-            {location ? "Location on" : "Use my location"}
+            {locating ? "Finding location…" : location ? "Location on" : "Use my location"}
           </button>
           <button
             type="button"
@@ -198,6 +272,8 @@ export function ChatWindow() {
         )}
       </GlassPanel>
 
+      <AuthBar refreshKey={messages.length} />
+
       {/* Messages */}
       <GlassPanel className="min-h-0 flex-1 overflow-y-auto p-4">
         <ol className="flex flex-col gap-3" role="log" aria-live="polite" aria-label="Conversation">
@@ -211,22 +287,16 @@ export function ChatWindow() {
 
       {showPrompts && <QuickPrompts onPick={send} disabled={pending} />}
 
-      {/* The photo or video waiting to be checked */}
+      {/* The photo waiting to be checked */}
       {attachment && (
         <GlassPanel className="flex flex-wrap items-center gap-3 px-4 py-2">
-          {isVideo(attachment.file) ? (
-            <video src={attachment.url} muted preload="metadata" className="size-12 rounded-lg object-cover" aria-hidden="true" />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element -- a local preview of the user's own file
-            <img src={attachment.url} alt="" className="size-12 rounded-lg object-cover" />
-          )}
+          {/* eslint-disable-next-line @next/next/no-img-element -- a local preview of the user's own file */}
+          <img src={attachment.url} alt="" className="size-12 rounded-lg object-cover" />
           <div className="min-w-0 flex-1 text-sm">
             <p className="truncate font-medium">{attachment.file.name}</p>
             <label className="flex min-h-11 items-center gap-2 text-xs">
               <input type="checkbox" checked={moreDetail} onChange={(event) => setMoreDetail(event.target.checked)} className="size-4" />
-              {isVideo(attachment.file)
-                ? "Also count people and vehicles (slower, uses twice the credit)"
-                : "Also count people and vehicles and estimate a rough depth (slower, uses more credit)"}
+              Also count people and vehicles (slower, uses more credit)
             </label>
           </div>
           <button type="button" onClick={removeAttachment} className="min-h-11 rounded-full px-4 text-sm font-medium">
