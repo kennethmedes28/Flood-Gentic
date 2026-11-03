@@ -137,3 +137,19 @@ A picture sent without words gets the fixed report only, with no model call. If 
 "around the lower legs, as a rough look", and that a picture cannot show whether a car can pass, so not to cross. "Hanggang saan ang baha? Ligtas bang
 lumusong dito?" was answered in Filipino the same way. The model's answers are not deterministic and have not been measured on a labelled set.
 
+
+
+## 11. Finding named objects (segmentation)
+
+A message that names objects is a segmentation request, the way the SAM playground (dev.meta.ai/playground/segmentation) works: "human, child, car",
+"how many trees?", "find the dog", "is there a boat?", "ilan ang tao?". `video/object_search.py` turns the message into short names
+(`object_query_concepts`), sends each to SAM 3.1 as its own request, all at the same time (SAM looks for one phrase per request), and counts the matches
+at 30% confidence or more, by third of the picture. No flood check and no chat model are used, so it costs one SAM request per name (at most 5).
+
+Before this, the agent only ever asked SAM for "flood water", "person" and "vehicle", and sent every other question to the chat model, so a
+name such as "child" never reached SAM. A message is an object request when it starts with words such as "how many", "find", "where are" or
+"ilan ang", when it is a list, or when it is one to three words with no question word. A question such as "Can a car pass here?" still gets the
+flood check, and "What does the sign say?" still goes to the chat model. Tests: `backend/tests/test_object_search.py`.
+
+Measured on a sample flood photo (`evaluation/.../images/1000.jpg`, production key): "human, child, car" took 5.0 s (human 5, child 0, car 0),
+"how many trees?" 6.9 s (48), "ilan ang bahay?" 3.9 s (house 11).

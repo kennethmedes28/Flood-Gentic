@@ -35,7 +35,7 @@ export const assistant = defineMessages(
     "assistant.prompts.label": "Suggested questions",
     "assistant.prompts.1": "Is my area at risk of flooding today?",
     "assistant.prompts.2": "Where is the nearest evacuation center?",
-    "assistant.prompts.3": "What should I pack in a go-bag?",
+    "assistant.prompts.3": "Will it rain in my area today?",
     "assistant.prompts.4": "Emergency hotlines in Quezon City",
     "assistant.prompts.5": "Is it safe to travel now?",
 
@@ -106,6 +106,7 @@ export const assistant = defineMessages(
     "progress.outside": "Checking whether your place is covered",
     "progress.generic": "Working on your question",
     "progress.photoQuestion": "Looking at your photo to answer your question",
+    "progress.photoObjects": "Finding those objects in your photo",
   },
   {
     "assistant.welcome": "Kumusta! Ako ang AI Agent na Katulong sa Baha. Magtanong tungkol sa panganib ng baha, evacuation center, emergency contact o kung ano ang dapat ihanda. Puwede kang magsulat sa English o Filipino, o mag-attach (o i-drag at i-drop) ng larawan at magtanong ng kahit ano tungkol dito.",
@@ -140,7 +141,7 @@ export const assistant = defineMessages(
     "assistant.prompts.label": "Mga mungkahing tanong",
     "assistant.prompts.1": "Nasa panganib ba ng baha ang lugar ko ngayon?",
     "assistant.prompts.2": "Saan ang pinakamalapit na evacuation center?",
-    "assistant.prompts.3": "Ano ang dapat kong ilagay sa go-bag?",
+    "assistant.prompts.3": "Uulan ba sa lugar ko ngayon?",
     "assistant.prompts.4": "Mga emergency hotline sa Quezon City",
     "assistant.prompts.5": "Ligtas bang bumiyahe ngayon?",
 
@@ -211,5 +212,6 @@ export const assistant = defineMessages(
     "progress.outside": "Sinusuri kung saklaw ang lugar mo",
     "progress.generic": "Inaasikaso ang tanong mo",
     "progress.photoQuestion": "Tinitingnan ang larawan mo para masagot ang tanong mo",
+    "progress.photoObjects": "Hinahanap ang mga bagay na iyon sa larawan mo",
   }
 )

@@ -81,8 +81,8 @@ class AgentTests(unittest.TestCase):
 
     def test_the_model_gets_the_question_the_measurements_the_picture_and_the_rules(self):
         model = RecordingModel()
-        self.ask("Ilan ang tao?", model)
-        self.assertIn("Ilan ang tao?", model.question_text())
+        self.ask("Bakit maraming tao sa baha?", model)  # a question, not a list of names ("Ilan ang tao?" is an object search now)
+        self.assertIn("Bakit maraming tao sa baha?", model.question_text())
         self.assertIn("about 30% of the picture", model.question_text())
         self.assertIn("People: 3 (2 in water)", model.question_text())
         self.assertEqual(len(model.pictures()), 1)
@@ -92,7 +92,7 @@ class AgentTests(unittest.TestCase):
 
     def test_when_counting_was_off_the_model_is_told_so_instead_of_none_found(self):
         model = RecordingModel()
-        answer_flood_media_question(self.photo, ChatContext(), api_key="key", question="How many people?", llm=model,
+        answer_flood_media_question(self.photo, ChatContext(), api_key="key", question="Are people standing in the water?", llm=model,
                                     include_people_and_vehicles=False)
         self.assertIn("were not counted by this check", model.question_text())
         self.assertNotIn("People: 3", model.question_text())
@@ -155,7 +155,7 @@ class FreeQuestionTests(unittest.TestCase):
 
     def test_the_rules_allow_any_question_but_keep_the_flood_and_privacy_limits(self):
         model = RecordingModel()
-        self.ask("How many cats are there?", model)
+        self.ask("Is the cat on the roof scared?", model)
         rules = model.sent[0][0].content
         self.assertIn("They can ask anything about the picture", rules)
         self.assertIn("never say that a road or an area is safe", rules)

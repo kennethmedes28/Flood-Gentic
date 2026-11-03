@@ -93,8 +93,12 @@ is built for it. These are real prompts the agents answer today.
 
 ### Ask about a photo
 
-Attach a photo (hover the round button beside the message box and choose **Photo**, or drag and drop one) and **ask anything about it**: "What does the sign say?", "How many cats are there?",
-"What is in this picture?". The answer comes from a model that looks at the picture. If your question is about flooding ("Can a car pass here?", "Hanggang saan ang baha?"), the answer is
+Attach a photo (hover the round button beside the message box and choose **Photo**, or drag and drop one) and **ask anything about it**.
+
+- **Find objects (segmentation).** Name what to look for, as in Meta's SAM playground: "human, child, car", "how many trees?", "find the dog", "ilan ang tao?". Each name is sent to SAM 3.1
+  as its own request, and the answer says how many were found, where (left, middle, right) and how sure SAM is. Common Filipino names (tao, bata, kotse, bahay...) are put in English for SAM.
+  Up to 5 names per message.
+- **Any other question** ("What does the sign say?", "What is in this picture?") is answered by a model that looks at the picture. The answer comes from a model that looks at the picture. If your question is about flooding ("Can a car pass here?", "Hanggang saan ang baha?"), the answer is
 followed by the automatic measurements: how much of the picture is covered by flood water and, if you tick the option, how many people and vehicles are in the water. A photo sent with no question gets
 the flood check by default. It needs a sign-in, it is automatic and unverified, it never says a road is safe, and it does not identify people or read licence plates.
 

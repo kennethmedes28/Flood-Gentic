@@ -1,13 +1,16 @@
 """Flood media agent: answers any question about a photo, and checks a photo of a street for flood water.
 
-Three cases:
+Four cases, checked in this order:
 
-    1. A photo with a question that is NOT about flooding ("what does the sign say?", "how many cats?") goes straight to a chat
-       model that can see pictures, with no paid SAM check (see ``answer_free_question``). Any question about the picture is welcome.
-    2. A photo with a flood question ("can a car pass?", "ilan ang tao?"): first SAM 3.1 (see ``video/``) measures flood water,
-       people and vehicles, which is the grounded part of the answer; then the chat model answers the question from the picture and the
+    1. A message that names objects ("human, child, car", "how many trees?", "find the dog", "ilan ang tao?") is a segmentation
+       request, like the SAM playground: each name goes to SAM 3.1 as its own request and the answer says how many were found and
+       where (see ``video/object_search.py`` and ``answer_object_search``). No flood check and no chat model.
+    2. A photo with a question that is NOT about flooding ("what does the sign say?") goes straight to a chat model that can see
+       pictures, with no paid SAM check (see ``answer_free_question``). Any question about the picture is welcome.
+    3. A photo with a flood question ("can a car pass here?"): first SAM 3.1 (see ``video/``) measures flood water, people and
+       vehicles, which is the grounded part of the answer; then the chat model answers the question from the picture and the
        measurements, and the measurements follow under ``ANSWER_HEADING``.
-    3. A photo with no question, or no chat model available, gets the fixed bilingual flood report, with no model call.
+    4. A photo with no question, or no chat model available, gets the fixed bilingual flood report, with no model call.
 
 The model's rules are in ``ANSWER_RULES``.
 
@@ -37,6 +40,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from agents.flood_types import AgentReply, ChatContext
 from src.cache import get_cache
 from video.flood_scene import LEVEL_NONE, LEVEL_SOME, FloodSceneReport, analyze_flood_media
+from video.object_search import find_objects, format_object_report, object_query_concepts
 from video.sam_client import ImageInput
 from utils.call_budget import model_budget
 from utils.tracing import traced_agent
@@ -155,6 +159,12 @@ def answer_flood_media_question(
     if not api_key:
         return AgentReply(text=NO_KEY_ANSWER)
 
+    # A message that names objects ("human, child, car", "how many trees?", "ilan ang tao?") is a segmentation request:
+    # each name goes to SAM as its own request, the way the SAM playground works. No flood check and no chat model.
+    concepts = object_query_concepts(question)
+    if concepts:
+        return answer_object_search(media, concepts, api_key)
+
     # Any question that is not about flooding goes straight to the chat model with the picture, with no paid SAM flood check.
     if question and question.strip() and llm is not None and not is_flood_question(question):
         return answer_free_question(media, question.strip(), llm)
@@ -182,6 +192,16 @@ def answer_flood_media_question(
     if not answer:
         return AgentReply(text=fixed_report)
     return AgentReply(text=f"{answer}\n\n{ANSWER_HEADING}\n{fixed_report}")
+
+
+def answer_object_search(media: ImageInput, concepts: list[str], api_key: str) -> AgentReply:
+    """Find each named object in the photo with SAM and say how many there are and where (one SAM request per name)."""
+    try:
+        report = find_objects(media, concepts, api_key)
+    except Exception as error:  # a refused request, a limit, a network problem: the same friendly answer as the flood check
+        logger.error("Object search failed for %s: %s", concepts, error)
+        return AgentReply(text=FAILED_ANSWER)
+    return AgentReply(text=format_object_report(report))
 
 
 def answer_free_question(media: ImageInput, question: str, llm: BaseChatModel) -> AgentReply:

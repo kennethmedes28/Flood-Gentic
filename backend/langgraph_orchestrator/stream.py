@@ -21,6 +21,7 @@ from agents.location_agent import location_from_coordinates
 from langgraph_orchestrator import graph as chat_graph
 from langgraph_orchestrator.intents import split_by_intent
 from utils.input_guard import blocked_reply, check_message
+from video.object_search import object_query_concepts
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,8 @@ WORKING_LABELS = {
 GENERIC_LABEL = "Working on your question"
 # With a question of their own, the picture is also read by the chat model to answer it.
 PHOTO_QUESTION_LABEL = "Looking at your photo to answer your question"
+# A message that names objects ("human, child, car") is a segmentation request (see video/object_search.py).
+PHOTO_OBJECTS_LABEL = "Finding those objects in your photo"
 
 
 async def next_node(graph, question: str, config: dict, media: dict | None) -> str | None:
@@ -90,7 +93,7 @@ async def ask_stream(
     if node == chat_graph.FLOOD_MEDIA_NODE and media:
         asked = bool(question.strip()) and question not in chat_graph.DEFAULT_MEDIA_QUESTIONS.values()
         if asked:
-            label = PHOTO_QUESTION_LABEL
+            label = PHOTO_OBJECTS_LABEL if object_query_concepts(question) else PHOTO_QUESTION_LABEL
     event = {"type": "status", "step": "working", "label": label}
     if node == chat_graph.MULTI_NODE:
         event["topics"] = [intent for intent, _ in split_by_intent(question) or []]
