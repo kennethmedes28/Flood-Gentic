@@ -28,7 +28,6 @@ function findScroller(start: HTMLElement | null): HTMLElement | null {
  *
  * The pages scroll inside a frame (see ResizableFrame), not the window, so the scrolling area is found from `insideRef`.
  * The button is drawn on the page body, because the frame can be shrunk with a transform, which would move a fixed button.
- * It sits just above the background video button.
  */
 export function BackToTopButton({ insideRef, focusRef }: BackToTopButtonProps) {
   const [visible, setVisible] = useState(false)

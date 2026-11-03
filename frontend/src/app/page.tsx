@@ -14,7 +14,7 @@ import { MapView } from "@/components/dashboard/MapView"
 import { RainChart } from "@/components/dashboard/RainChart"
 
 /**
- * Dashboard over the video background, laid out like a weather app:
+ * Dashboard over the plain background, laid out like a weather app:
  * current conditions and forecast on top, chart and map in the middle,
  * nearby areas at the bottom. The numbers are the last recorded day, from the backend's GET /dashboard
  * (see DashboardDataContext).

@@ -5,7 +5,7 @@ import { SceneBackground } from "@/components/shell/SceneBackground"
 import { ChatWindow } from "@/components/assistant/ChatWindow"
 
 /**
- * The AI assistant: the same video and glass look as the dashboard, with a
+ * The AI assistant: the same glass look as the dashboard, with a
  * chat that fills the screen height. The frame fades the chat out when the
  * glass slider is at its minimum, as on the dashboard, and its corner brackets
  * can be dragged toward the centre to shrink it (see ResizableFrame).

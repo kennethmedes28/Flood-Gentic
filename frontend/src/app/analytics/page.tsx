@@ -6,7 +6,7 @@ import { AnalyticsView } from "@/components/analytics/AnalyticsView"
 
 /**
  * Macro Weather Analytics: long-run rain, temperature, river flow and wind since 2020, by city, year, month and day,
- * from the backend (GET /analytics/weather). Same video, glass look and resizable frame as the other pages.
+ * from the backend (GET /analytics/weather). Same glass look and resizable frame as the other pages.
  */
 export default function AnalyticsPage() {
   return (

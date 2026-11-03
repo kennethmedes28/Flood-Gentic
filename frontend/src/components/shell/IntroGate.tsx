@@ -30,7 +30,7 @@ let introSeen = false
  *   2. pressing the button plays the gate GIF once,
  *   3. the dashboard (the children) opens.
  *
- * The dashboard is not rendered until step 3, so its video and map only
+ * The dashboard is not rendered until step 3, so its map only
  * start loading once they are needed.
  */
 export function IntroGate({ children }: { children: React.ReactNode }) {
@@ -44,7 +44,6 @@ export function IntroGate({ children }: { children: React.ReactNode }) {
     preload.src = GATE_GIF
 
     // The map's code is small: fetch it now so the map can start as soon as the dashboard opens.
-    // (The 37 MB background video is left alone: it would compete with the gate GIF for bandwidth.)
     void import("leaflet")
   }, [phase])
 

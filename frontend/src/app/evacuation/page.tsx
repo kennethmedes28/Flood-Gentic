@@ -6,7 +6,7 @@ import { EvacuationView } from "@/components/evacuation/EvacuationView"
 
 /**
  * Evacuation centers: a list and a map of the designated shelters, filtered by city or search.
- * The same video and glass look as the other pages, with the same frame whose corners can be dragged to shrink it.
+ * The same glass look as the other pages, with the same frame whose corners can be dragged to shrink it.
  */
 export default function EvacuationPage() {
   return (

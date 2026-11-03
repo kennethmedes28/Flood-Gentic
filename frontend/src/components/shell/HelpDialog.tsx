@@ -37,12 +37,8 @@ const SECTIONS: { title: string; points: string[] }[] = [
     ],
   },
   {
-    title: "Background video",
-    points: ["The looping background video is off at first. Use the “Video on / Video off” button near the bottom-right corner to turn it on or off. It is remembered on this device."],
-  },
-  {
     title: "Reduced motion",
-    points: ["If your device is set to reduce motion, the opening animation is skipped and the background video stays paused."],
+    points: ["If your device is set to reduce motion, the opening animation is skipped."],
   },
   {
     title: "Please note",

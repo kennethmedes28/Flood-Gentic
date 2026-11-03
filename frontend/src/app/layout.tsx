@@ -2,9 +2,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 
 import "./globals.css"
 import "./glass.css"
-import { BackgroundVideoButton } from "@/components/shell/BackgroundVideoButton"
 import { HandCursor } from "@/components/shell/HandCursor"
-import { BackgroundVideoProvider } from "@/context/BackgroundVideoContext"
 import { CurrentCityProvider } from "@/context/CurrentCityContext"
 import { LookProvider } from "@/context/LookContext"
 import { HandProvider } from "@/context/HandContext"
@@ -37,12 +35,7 @@ export default function RootLayout({
             <LookProvider>
               <HandProvider>
                 <CurrentCityProvider>
-                  <BackgroundVideoProvider>
-                    <TextSizeProvider>
-                      {children}
-                      <BackgroundVideoButton />
-                    </TextSizeProvider>
-                  </BackgroundVideoProvider>
+                  <TextSizeProvider>{children}</TextSizeProvider>
                   <HandCursor />
                 </CurrentCityProvider>
               </HandProvider>
