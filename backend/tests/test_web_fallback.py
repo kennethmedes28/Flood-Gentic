@@ -17,6 +17,7 @@ from agents import backup_sources, document_agents, flood_risk_agent, weather_ag
 from agents.flood_types import ChatContext, Location
 from agents.safe_answer import SAFE_ANSWER
 from src.rag.models import PHILIPPINE_TZ, Chunk
+from utils.call_budget import BUSY_ANSWER
 
 WEB_PAGE = {"page": "web", "source": "https://ndrrmc.gov.ph/update", "title": "Update", "text": "Flood update text"}
 # A bulletin long enough to count as reliable (see backup_sources.MIN_PAGASA_CHARS).
@@ -60,38 +61,26 @@ class DocumentFallbackTests(unittest.TestCase):
         self.assertTrue(document_agents.is_low_confidence([chunk_with_score(0.1)]))
         self.assertFalse(document_agents.is_low_confidence([chunk_with_score(0.1), chunk_with_score(0.9)]))
 
-    def test_weak_match_uses_the_web(self):
-        with mock.patch.object(document_agents, "find_sources", return_value=[chunk_with_score(0.1)]), \
-             mock.patch.object(document_agents, "answer_from_web", return_value="web answer") as web:
-            answer = document_agents.answer_document_question("question", FakeLLM(), retriever=None)
-        self.assertEqual(answer.text, "web answer")
-        self.assertFalse(answer.safe_answer)
-        web.assert_called_once()
-
-    def test_very_low_confidence_skips_the_web_and_gives_the_safe_answer(self):
-        self.assertTrue(document_agents.is_very_low_confidence([chunk_with_score(0.05)]))
-        self.assertFalse(document_agents.is_very_low_confidence([]))  # nothing found: the web is still tried
-        with mock.patch.object(document_agents, "find_sources", return_value=[chunk_with_score(0.05)]), \
-             mock.patch.object(document_agents, "answer_from_web") as web:
-            answer = document_agents.answer_document_question("question", FakeLLM(), retriever=None)
-        web.assert_not_called()
-        self.assertEqual(answer.text, SAFE_ANSWER)
-        self.assertTrue(answer.safe_answer)
-
-    def test_nothing_on_the_web_gives_the_fixed_reply(self):
-        with mock.patch.object(document_agents, "find_sources", return_value=[]), \
-             mock.patch.object(document_agents, "answer_from_web", return_value=None):
-            answer = document_agents.answer_document_question("question", FakeLLM(), retriever=None)
-        self.assertEqual(answer.text, SAFE_ANSWER)
-        self.assertTrue(answer.safe_answer)
-
-    def test_confident_match_does_not_use_the_web(self):
-        with mock.patch.object(document_agents, "find_sources", return_value=[chunk_with_score(0.9)]), \
-             mock.patch.object(document_agents, "answer_from_web") as web, \
+    def ask_with_a_busy_budget(self, sources):
+        """Ask a question with these search results and a used-up model budget: the reply is the "busy" text, which shows the
+        question got as far as the model (no fixed refusal, no web search)."""
+        with mock.patch.object(document_agents, "find_sources", return_value=sources), \
              mock.patch.object(document_agents, "model_budget") as budget:
-            budget.try_use.return_value = False  # stop right after the confidence check
-            document_agents.answer_document_question("question", FakeLLM(), retriever=None)
-        web.assert_not_called()
+            budget.try_use.return_value = False
+            return document_agents.answer_document_question("question", FakeLLM(), retriever=None)
+
+    def test_a_weak_match_still_goes_to_the_model(self):
+        answer = self.ask_with_a_busy_budget([chunk_with_score(0.1)])
+        self.assertEqual(answer.text, BUSY_ANSWER)
+        self.assertFalse(answer.safe_answer)
+
+    def test_a_very_low_match_or_no_match_still_goes_to_the_model(self):
+        self.assertTrue(document_agents.is_very_low_confidence([chunk_with_score(0.05)]))
+        self.assertFalse(document_agents.is_very_low_confidence([]))
+        for sources in ([chunk_with_score(0.05)], []):
+            answer = self.ask_with_a_busy_budget(sources)
+            self.assertEqual(answer.text, BUSY_ANSWER)
+            self.assertFalse(answer.safe_answer)
 
 
 class WeatherFallbackTests(unittest.TestCase):

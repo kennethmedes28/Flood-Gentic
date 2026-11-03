@@ -13,7 +13,7 @@ another model without editing code):
 
     MUSE_API               the API key (required)
     MUSE_CHAT_MODEL        model name, default ``muse-wonder-1.0``
-    MUSE_REASONING_EFFORT  ``minimal``, ``low``, ``medium`` or ``high`` (default)
+    MUSE_REASONING_EFFORT  ``minimal``, ``low`` (default), ``medium`` or ``high``
 
 High effort gives the most careful answers but the slowest ones: much of the
 time is hidden thinking, billed as output (see docs/agent_benchmarks.md, where
@@ -32,8 +32,8 @@ from src.services.usage_meter import TokenCounter
 
 BASE_URL = "https://api.meta.ai/v1"
 DEFAULT_MODEL = "muse-wonder-1.0"
-DEFAULT_REASONING_EFFORT = "high"
-REQUEST_TIMEOUT_SECONDS = 120.0  # high effort can think for a while before the first word
+DEFAULT_REASONING_EFFORT = "low"  # the server has no GPU, and "low" is several times faster than "high" (docs/agent_benchmarks.md)
+REQUEST_TIMEOUT_SECONDS = 45.0  # a stalled call fails with the "try again" reply instead of leaving the page waiting
 
 # Meta's API sometimes answers "model_not_found" (HTTP 404) for a model that exists and works a moment later (seen in the
 # production logs, for documents and photos alike). The OpenAI client does not retry a 404, so this module does.

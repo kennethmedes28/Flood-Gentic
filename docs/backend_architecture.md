@@ -128,7 +128,13 @@ How the API behaves:
   Supabase, and a stored row is never replaced. A failed fetch stores nothing and is not retried for 30 minutes. `src/services/tomorrow_forecast.py`, and the daily workflow `fetch-tomorrow-forecast.yml`.
 - **Conversations:** `thread_id` must be a UUID. Without one, `/chat` starts a new conversation and returns the id to send back.
 - **Soft failures:** without `MUSE_API` the weather and document answers fail but everything that needs no model keeps working;
-  if document search cannot start, the document agent gives the fixed safe answer.
+  if document search cannot start, the document agent still asks the model, which then answers without sources.
+
+**Open questions.** The document agent never gives the fixed "could not find a reliable answer" text. It always asks the Muse model: sources that fit are cited,
+weak ones are left for the model to judge, and with none (or only noise) the model answers from general knowledge, labelled "General guidance" for preparedness advice.
+The prompt still forbids answering official or time-sensitive facts (warnings, orders, phone numbers, whether a road is safe) from memory. The fixed safe answer remains
+for the weather and flood-risk agents when they have no data at all, so the model never invents the weather. On Railway (CPU only) the model runs at reasoning effort
+`low` with a 45-second timeout (`MUSE_REASONING_EFFORT`, `utils/llm.py`), and the reranker is off.
 - **Staff access:** the `/staff` endpoints exist only when `STAFF_API_KEY` is set (at least 24 characters). Every call must send
   `Authorization: Bearer <key>`; a missing or wrong key gets the same 401. They share a rate limit (`STAFF_PER_MINUTE`) that applies before the key is checked,
   which slows guessing. There is one shared key and no accounts, so a status change records what changed but not who changed it.

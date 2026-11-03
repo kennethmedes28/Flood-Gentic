@@ -113,12 +113,17 @@ class DocumentAgentWithoutRerankerTests(unittest.TestCase):
         self.assertIn("Pack food", reply.text)
         self.assertIn("flashlight", seen["sources"])
 
-    def test_a_clearly_unrelated_match_still_gets_the_fixed_safe_answer(self):
-        reply, _ = self.run_agent(similarity=0.70)
-        self.assertTrue(reply.safe_answer)
+    def test_a_clearly_unrelated_match_is_not_shown_to_the_model_but_it_still_answers(self):
+        reply, seen = self.run_agent(similarity=0.70)
+        self.assertFalse(reply.safe_answer)
+        self.assertEqual(seen["sources"], document_agents.NO_SOURCES)
 
 
 class PromptTests(unittest.TestCase):
+    def test_any_question_may_be_answered_but_never_a_safe_road(self):
+        self.assertIn("you may answer any", DOCUMENT_SYSTEM_PROMPT)
+        self.assertIn("Never say that a road, place or building is safe", DOCUMENT_SYSTEM_PROMPT)
+
     def test_general_preparedness_advice_is_allowed_but_labelled(self):
         self.assertIn("General guidance (not from the official documents):", DOCUMENT_SYSTEM_PROMPT)
         self.assertIn("go-bag", DOCUMENT_SYSTEM_PROMPT)

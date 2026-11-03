@@ -34,8 +34,6 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.output_parsers import StrOutputParser
 
 from agents.flood_types import AgentReply
-from agents.safe_answer import safe_reply
-from agents.web_lookup_agent import answer_from_web
 from prompts.document_prompt import DOCUMENT_PROMPT
 from src.rag.models import Chunk, SearchFilter
 from src.rag.reranking import rerank
@@ -68,6 +66,9 @@ MODEL_ERROR_ANSWER = (
     "Hindi ako makabuo ng sagot ngayon. Subukan muli, "
     "o tumawag sa 911 kung nasa panganib kayo."
 )
+
+# Given to the model in place of the sources when nothing stored matches the question.
+NO_SOURCES = "(No stored document matches this question.)"
 
 # Answers to repeated questions, kept briefly to avoid repeat model calls.
 answer_cache = TTLCache(ttl_seconds=ANSWER_CACHE_SECONDS)
@@ -176,8 +177,8 @@ def answer_document_question(
 ) -> AgentReply:
     """Answer a flood question from the stored documents, with numbered citations.
 
-    When the evidence is too weak the reply is the fixed safe answer (``safe_answer=True``),
-    never a model guess.
+    The model always answers. With no matching document it answers from general knowledge and says so; the prompt keeps it
+    from inventing official facts (warnings, orders, phone numbers).
     """
     # The same question can have different answers per city, so the city is part of the key.
     city = search_filter.city if search_filter else None
@@ -192,25 +193,20 @@ def answer_document_question(
         logger.error("Document search failed: %s", error)
         sources = []
 
+    # The model answers every question. Matches that are only noise are not given to it; weak ones are, and the prompt tells it
+    # to use a source only when it really fits (otherwise it answers as general guidance and flags what is not verified).
     if is_very_low_confidence(sources):
-        logger.info("Very low document confidence; giving the safe answer.")
-        return safe_reply()
-
-    if is_low_confidence(sources):
-        # The stored documents do not clearly answer this: ask the trusted websites instead.
-        logger.info("Low document confidence; searching trusted websites.")
-        web_answer = answer_from_web(question, llm)
-        if web_answer:
-            answer_cache.set(cache_key, web_answer)
-            return AgentReply(text=web_answer)
-        return safe_reply()
+        logger.info("Very low document confidence; the model answers without sources.")
+        sources = []
+    elif is_low_confidence(sources):
+        logger.info("Low document confidence; the model decides whether the sources fit.")
 
     if not model_budget.try_use():  # hourly cap on model calls (see utils/call_budget.py)
         return AgentReply(text=BUSY_ANSWER)
 
     chain = DOCUMENT_PROMPT | llm | StrOutputParser()
     try:
-        answer = chain.invoke({"question": question, "sources": format_sources(sources)})
+        answer = chain.invoke({"question": question, "sources": format_sources(sources) if sources else NO_SOURCES})
     except Exception as error:  # Provider outage, rate limit, and so on.
         logger.error("Document answer failed: %s", error)
         return AgentReply(text=MODEL_ERROR_ANSWER)
