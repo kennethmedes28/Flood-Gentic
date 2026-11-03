@@ -1,9 +1,11 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useState } from "react"
 
 import { GlassPanel } from "@/components/ui/GlassPanel"
 import { useAuth } from "@/context/AuthContext"
+import { ACCESS_REQUEST_SUBJECT, CONTACT_EMAIL, mailtoLink } from "@/lib/contact"
 import { fetchUsage, type Usage } from "@/lib/usage-api"
 
 /**
@@ -39,6 +41,10 @@ export function AuthBar({ refreshKey }: { refreshKey: number }) {
               Today: {usage.messagesToday} of {usage.messagesLimit} messages · {usage.photosToday} of {usage.photosLimit} photo checks
             </p>
           )}
+          <p className="text-xs">
+            <Link href="/privacy" className="underline underline-offset-2">Privacy</Link> ·{" "}
+            <Link href="/data-deletion" className="underline underline-offset-2">Data deletion</Link>
+          </p>
         </div>
         <button type="button" onClick={() => void signOut()} className="min-h-11 rounded-full px-4 text-sm font-medium">
           Sign out
@@ -53,6 +59,14 @@ export function AuthBar({ refreshKey }: { refreshKey: number }) {
         <p className="font-medium">Sign in to chat, check photos or use voice.</p>
         <p className="text-xs" style={{ color: "var(--glass-text-muted)" }}>
           In an emergency you can still type it here without signing in, and you can always call 911.
+        </p>
+        <p className="text-xs" style={{ color: "var(--glass-text-muted)" }}>
+          Can&apos;t sign in? Google and Facebook sign-in may be limited to approved accounts while the apps are under review. To request access, email{" "}
+          <a href={mailtoLink(ACCESS_REQUEST_SUBJECT)} className="underline underline-offset-2">
+            {CONTACT_EMAIL}
+          </a>
+          . <Link href="/privacy" className="underline underline-offset-2">Privacy</Link> ·{" "}
+          <Link href="/data-deletion" className="underline underline-offset-2">Data deletion</Link>
         </p>
         {error && (
           <p className="text-xs font-medium" role="alert">

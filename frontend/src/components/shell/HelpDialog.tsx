@@ -43,8 +43,9 @@ const SECTIONS: { title: string; points: string[] }[] = [
   {
     title: "Please note",
     points: [
-      "The weather now and the forecast come from Tomorrow.io. Rain, river flow and the flood risk level are from the last recorded day, which can be days behind today. None of it is an official flood warning.",
+      "The weather now and the forecast come from Tomorrow.io. Rain, river flow and the flood risk level are from the latest recorded day, refreshed four times a day (today so far, until the day ends). None of it is an official flood warning.",
       "For official warnings, see pagasa.dost.gov.ph and ndrrmc.gov.ph. In an emergency, call 911 and your local DRRMO.",
+      "The assistant needs a Google or Facebook sign-in. To request access, or to ask for your data to be deleted, email kennethmedes28@gmail.com. See /privacy and /data-deletion.",
     ],
   },
 ]
