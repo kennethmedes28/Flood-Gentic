@@ -1,3 +1,4 @@
+import { Message } from "@/components/ui/Message"
 import { cn } from "@/lib/utils"
 
 /**
@@ -15,10 +16,10 @@ export function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 /** Visually hidden text so screen readers announce the loading state. */
-export function LoadingLabel({ children = "Loading" }: { children?: string }) {
+export function LoadingLabel({ children }: { children?: string }) {
   return (
     <span role="status" className="sr-only">
-      {children}
+      {children ?? <Message id="ui.loading" />}
     </span>
   )
 }

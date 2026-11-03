@@ -3,11 +3,12 @@ import Link from "next/link"
 import { FloatingNav } from "@/components/shell/FloatingNav"
 import { SceneBackground } from "@/components/shell/SceneBackground"
 import { GlassPanel } from "@/components/ui/GlassPanel"
+import { Localized, Message } from "@/components/ui/Message"
 
 type LegalPageProps = {
-  title: string
-  /** When the text was last changed, for example "3 November 2026". */
-  updated: string
+  title: { en: string; fil: string }
+  /** When the text was last changed, in both languages, for example "3 November 2026". */
+  updated: { en: string; fil: string }
   children: React.ReactNode
 }
 
@@ -29,9 +30,12 @@ export function LegalPage({ title, updated, children }: LegalPageProps) {
               Flood-Gentic
             </Link>
           </p>
-          <h1 className="mt-2 text-2xl font-semibold">{title}</h1>
+          <h1 className="mt-2 text-2xl font-semibold"><Localized en={title.en} fil={title.fil} /></h1>
           <p className="mt-1 text-sm" style={{ color: "var(--glass-text-muted)" }}>
-            Last updated {updated}
+            <Localized
+              en={<Message id="legal.lastUpdated" params={{ date: updated.en }} />}
+              fil={<Message id="legal.lastUpdated" params={{ date: updated.fil }} />}
+            />
           </p>
           <div className="mt-6 flex flex-col gap-4 text-base leading-relaxed [&_a]:underline [&_a]:underline-offset-2 [&_h2]:mt-4 [&_h2]:text-lg [&_h2]:font-semibold [&_li]:ml-5 [&_li]:list-disc [&_ul]:flex [&_ul]:flex-col [&_ul]:gap-1.5">
             {children}

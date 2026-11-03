@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 
 import { LegalPage } from "@/components/legal/LegalPage"
+import { Localized } from "@/components/ui/Message"
 import { ACCESS_REQUEST_SUBJECT, CONTACT_EMAIL, DELETION_REQUEST_SUBJECT, mailtoLink } from "@/lib/contact"
 
 export const metadata: Metadata = {
@@ -12,7 +13,10 @@ export const metadata: Metadata = {
 /** How to have data deleted, which Facebook and Google ask for before an app can be public. */
 export default function DataDeletionPage() {
   return (
-    <LegalPage title="Data deletion and access requests" updated="3 November 2026">
+    <LegalPage title={{ en: "Data deletion and access requests", fil: "Pagbura ng datos at mga hiling ng access" }} updated={{ en: "3 November 2026", fil: "3 Nobyembre 2026" }}>
+      <Localized
+        en={
+          <>
       <p>
         This page explains how to have your Flood-Gentic data deleted. What we hold about you and why is in the{" "}
         <Link href="/privacy">privacy policy</Link>.
@@ -60,6 +64,61 @@ export default function DataDeletionPage() {
         Supabase data or dashboard, write to <a href={mailtoLink(ACCESS_REQUEST_SUBJECT)}>{CONTACT_EMAIL}</a> with the subject &quot;{ACCESS_REQUEST_SUBJECT}&quot;, the
         sign-in provider and the email on that account, and what you need access for.
       </p>
+          </>
+        }
+        fil={
+          <>
+      <p>
+        Ipinapaliwanag ng pahinang ito kung paano ipabubura ang iyong datos sa Flood-Gentic. Nasa <Link href="/privacy">patakaran sa privacy</Link> kung ano
+        ang hawak namin tungkol sa iyo at bakit.
+      </p>
+
+      <h2>Hilingin sa amin na burahin ang datos mo</h2>
+      <ol className="flex list-decimal flex-col gap-1.5 pl-5">
+        <li>
+          Magpadala ng email sa <a href={mailtoLink(DELETION_REQUEST_SUBJECT)}>{CONTACT_EMAIL}</a> na may paksang &quot;{DELETION_REQUEST_SUBJECT}&quot;.
+        </li>
+        <li>
+          Sumulat mula sa email address ng Google o Facebook account na ginamit mo sa pag-sign in, at sabihin kung alin iyon. Kung walang email ang Facebook
+          account mo, sabihin ang pangalan sa account. Ginagamit namin ito para matiyak na sa iyo ang hiling; maaari kaming sumagot ng tanong.
+        </li>
+        <li>Buburahin namin ang account mo at kukumpirmahin sa pamamagitan ng email, sa loob ng 30 araw.</li>
+      </ol>
+
+      <h2>Ano ang binubura</h2>
+      <ul>
+        <li>Ang account mo: pangalan, email at account ID ng provider, kaya pati ang kakayahan mong mag-sign in.</li>
+        <li>Ang bilang ng iyong paggamit.</li>
+      </ul>
+
+      <h2>Ano ang nangangailangan ng kaunti pang tulong mo</h2>
+      <ul>
+        <li>
+          <strong>Mga usapan.</strong> Naka-save ang mga ito sa ilalim ng random na conversation ID na hindi naka-link sa account mo, kaya hindi namin
+          mahahanap ang sa iyo gamit ang pangalan mo. Kung gusto mong alisin ang ilang mensahe, ipadala sa amin ang teksto at humigit-kumulang kung kailan mo
+          ito isinulat, at buburahin namin ang usapan.
+        </li>
+        <li>
+          <strong>Mga ulat ng baha at hiling ng tulong.</strong> Hindi rin ang mga ito nakatali sa account. Sabihin sa amin ang lugar, ang mga detalye at
+          humigit-kumulang kung kailan mo ito ipinadala, at buburahin namin ito.
+        </li>
+      </ul>
+
+      <h2>Ihinto mismo ang access ng sign-in</h2>
+      <p>
+        Maaari mo ring alisin ang Flood-Gentic sa mga konektadong app ng account mo: sa Facebook sa Settings, Apps and Websites, at sa Google sa Security,
+        Third-party access. Hihinto nito ang pag-sign in ngunit hindi nito buburahin ang hawak na namin, kaya ipadala rin sa amin ang hiling sa itaas.
+      </p>
+
+      <h2>Humiling ng access</h2>
+      <p>
+        Para payagang mag-sign in gamit ang Google o Facebook habang limitado pa ang mga sign-in app sa mga aprubadong account, o para humingi ng access sa
+        datos o dashboard ng Supabase ng proyekto, sumulat sa <a href={mailtoLink(ACCESS_REQUEST_SUBJECT)}>{CONTACT_EMAIL}</a> na may paksang
+        &quot;{ACCESS_REQUEST_SUBJECT}&quot;, ang sign-in provider at ang email sa account na iyon, at kung para saan mo kailangan ang access.
+      </p>
+          </>
+        }
+      />
     </LegalPage>
   )
 }

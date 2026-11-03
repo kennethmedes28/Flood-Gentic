@@ -1,5 +1,6 @@
 import { FloatingNav } from "@/components/shell/FloatingNav"
 import { GlassPanel } from "@/components/ui/GlassPanel"
+import { Message } from "@/components/ui/Message"
 import { GlassSlider } from "@/components/shell/GlassSlider"
 import { IntroGate } from "@/components/shell/IntroGate"
 import { ResizableFrame } from "@/components/shell/ResizableFrame"
@@ -75,9 +76,11 @@ export default function Page() {
                     </div>
 
                     <GlassPanel className="order-6 p-5 text-xs">
-                      <p className="font-semibold">Disclaimer</p>
+                      <p className="font-semibold">
+                        <Message id="home.disclaimerTitle" />
+                      </p>
                       <p className="mt-1" style={{ color: "var(--glass-text-muted)" }}>
-                        The weather now and the forecast come from Tomorrow.io (fetched once a day). Rain, river flow and the risk level are from the latest recorded day, which is refreshed four times a day (today so far, until the day ends); the risk is a rule-based estimate from that day and does not use the forecast. PAGASA warnings are not included. Not an official flood warning: see pagasa.dost.gov.ph.
+                        <Message id="home.disclaimer" />
                       </p>
                     </GlassPanel>
                   </div>
