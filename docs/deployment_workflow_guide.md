@@ -170,8 +170,9 @@ are down), so a broken database cannot be used to skip the limits. Only signed-i
 
 ## 10. Docker image (backend)
 
-`backend/Dockerfile` builds the image Railway runs. `backend/railway.toml` tells Railway to use it, to check `/health`, and to restart a
-crashed service up to 5 times. Set the Railway service's **root directory** to `backend`.
+`backend/Dockerfile` builds the image Railway runs. The Railway service's **root directory** is `backend`, so Railway finds and uses that
+Dockerfile, checks `/health` (120 s to start) and restarts a crashed service up to 5 times. These are settings on the service, not a file in the
+repository, because Railway has deprecated `railway.toml` config files.
 
 ```
 docker build -t flood-gentic-backend backend/
@@ -209,7 +210,47 @@ loaded embedding model is the main cost of running this service.
 Not copied on purpose: `SUPABASE_SECRET_KEY` and `SUPABASE_ACCESS_TOKEN` (full-power keys the API does not use), `HF_TOKEN`,
 `GROQ_API_KEY`, `LLAMAINDEX_API_KEY`. LangSmith tracing is left off in production, so signed-in users' messages are not sent to a third party; turn it on by adding the three `LANGSMITH_*` variables.
 
-## 11. Planned
+## 11. CI/CD
+
+```mermaid
+flowchart LR
+    P[git push to deployment] --> GH[GitHub]
+    GH --> CI["CI workflow<br/>.github/workflows/ci.yml"]
+    CI -->|all green| R["Railway builds the backend image"]
+    GH --> V["Vercel builds the frontend"]
+```
+
+**CI** (`.github/workflows/ci.yml`) runs on every push to `deployment` or `main` and on every pull request into them. Three jobs run at the same time:
+
+| Job | What it does |
+|---|---|
+| Backend tests | `uv run --no-dev --with pytest python -m pytest tests` (the same packages as the Docker image, no secrets, database or network: the tests use fakes), then `export_frontend_data.py --check`, which fails when the built-in hotline list or the frontend's copies are out of date with the CSV files |
+| Frontend type check and build | `npm ci`, `npx tsc --noEmit`, `npm run build` (with placeholder public variables) |
+| Backend image builds | `docker build backend/`, the same image Railway builds, so a broken Dockerfile or an uninstallable dependency is found before a deploy |
+
+A newer push to the same branch cancels the run that is still going. Lint is not a CI step yet: `npm run lint` reports 4 existing errors
+(`react-hooks/set-state-in-effect`) in `GlassContext`, `HandContext`, `LookContext` and `useDraggable`, which need a code change to fix.
+
+**Deploying.** Both platforms deploy from GitHub when `deployment` changes:
+
+- **Railway** (done): the `Flood-Gentic` service in project `serene-alignment` deploys the `deployment` branch with **Wait for CI** on
+  (`checkSuites`), so a push is only built after the CI checks pass, and a failed check means no deploy.
+- **Vercel** (you set this up once): import the GitHub repository, set the **root directory** to `frontend`, the **production branch** to `deployment`,
+  and add the four variables below. Vercel's Git integration deploys every push to that branch by itself; it does not wait for GitHub Actions on the
+  free plan, so a push whose tests fail would still be deployed to the frontend. Treat a red CI run as "do not use this build", or protect the branch
+  in GitHub (require the three CI jobs to pass before merging), and push to `deployment` only through pull requests.
+
+| Vercel variable | Value |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | the Railway service address (`https://<name>.up.railway.app`) |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the publishable key (`sb_publishable_...`) |
+
+After the first Vercel deploy, set `CORS_ORIGINS` on Railway to the Vercel address (`python scripts/set_railway_variables.py --cors-origins https://<name>.vercel.app`),
+and add that address to the Supabase redirect URLs (section 8).
+
+## 12. Planned
+
 
 
 
