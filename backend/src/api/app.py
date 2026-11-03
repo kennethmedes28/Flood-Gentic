@@ -27,7 +27,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from src.api.rate_limit import RateLimiter
+from src.api.rate_limit import RateLimiter, SharedRateLimiter
+from src.cache import configure_cache
 from src.api.routers import advisories, analytics, chat, dashboard, evacuation, health, help_requests, places, reports, staff, weather
 from src.api.settings import Settings, load_settings
 from src.api.startup import real_services
@@ -63,13 +64,21 @@ def create_app(settings: Settings | None = None, lifespan=real_services) -> Fast
     )
     app.state.settings = settings
     app.add_exception_handler(RequestValidationError, validation_error_response)
+    cache = configure_cache(settings.redis_url)
+
+    def make_limiter(name: str, max_calls: int, window_seconds: int):
+        """A limit shared through Redis when it is set up, otherwise one counted in this process."""
+        if cache.enabled:
+            return SharedRateLimiter(name, max_calls, window_seconds, cache.client)
+        return RateLimiter(max_calls, window_seconds)
+
     app.state.limiters = {
-        "chat": RateLimiter(settings.chat_per_minute, window_seconds=60),
-        "reports": RateLimiter(settings.reports_per_hour, window_seconds=3600),
-        "requests": RateLimiter(settings.requests_per_hour, window_seconds=3600),
-        "staff": RateLimiter(settings.staff_per_minute, window_seconds=60),
-        "weather": RateLimiter(settings.weather_per_minute, window_seconds=60),
-        "media": RateLimiter(settings.media_per_hour, window_seconds=3600),
+        "chat": make_limiter("chat", settings.chat_per_minute, 60),
+        "reports": make_limiter("reports", settings.reports_per_hour, 3600),
+        "requests": make_limiter("requests", settings.requests_per_hour, 3600),
+        "staff": make_limiter("staff", settings.staff_per_minute, 60),
+        "weather": make_limiter("weather", settings.weather_per_minute, 60),
+        "media": make_limiter("media", settings.media_per_hour, 3600),
     }
 
     @app.middleware("http")

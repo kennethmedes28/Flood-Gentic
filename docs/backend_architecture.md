@@ -81,7 +81,8 @@ backend/
       settings.py           environment settings (CORS_ORIGINS, CHECKPOINTER, rate limits, ...)
       schemas.py            request and response models (Pydantic)
       deps.py               shared dependencies, rate-limit check and error texts
-      rate_limit.py         in-memory sliding-window limiter
+      rate_limit.py         in-memory sliding-window limiter, and a Redis-backed one shared by all replicas
+      ../cache.py           Redis cache (do-nothing when REDIS_URL is not set)
       routers/              chat, reports, help_requests, evacuation, advisories, health, staff
     services/             # fetch_postgre_database.py, shared_connection.py
   tests/                  # agents, graph, voice and camera WebSockets, tracing helpers (conftest.py keeps tests out of LangSmith)
@@ -345,6 +346,11 @@ Actions workflow (`docs/dataset_updates.md`), and the Tomorrow.io forecast by a 
   `SUPABASE_PASSWORD`, `SUPABASE_POOLER_HOST` (or one `SUPABASE_DB_URL`), `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`,
   `HF_TOKEN`, `LANGSMITH_KEY`, `LANGSMITH_TRACE`, `LANGSMITH_PROJECT`, `GROQ_API_KEY`, and `LLAMAINDEX_API_KEY`.
   Optional: `ORS_API_KEY` (routing), `EMBEDDING_MODEL`. The secret key bypasses row-level security, so it must never reach the browser.
+- **Redis cache** (`src/cache.py`, optional): set `REDIS_URL` to cache small JSON answers (`/dashboard` and `/analytics/weather` for 5 and 10 minutes,
+  the evacuation and contacts lists for an hour, the stored forecast for 10 minutes, and the SAM measurements of a photo for a day, keyed by a hash
+  of the photo) and to share the rate limits between replicas. Photos, videos and model files are never cached. Without `REDIS_URL`, or when Redis
+  is down, nothing is cached and the limits are counted in memory, so a Redis outage never stops the API. Chat answers are not cached: they depend on
+  the conversation, the place and the live weather, and an old answer in a flood is worse than a slow one.
 - **Safety**: community reports are stored with a low trust level and never presented as official. Answers about evacuation or warnings must cite an official source or fall back to hotlines.
 - **Security**: rate-limit `/chat` and `/reports` per IP; strip PII (phone numbers) from logs; restrict CORS to the Vercel origin.
 - **Observability**: LangSmith tracing is on when `LANGSMITH_TRACE=true` and `LANGSMITH_KEY` are set in `backend/.env` (project `flood-gentic`).

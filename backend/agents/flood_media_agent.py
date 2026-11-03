@@ -23,6 +23,7 @@ Example:
 """
 
 import base64
+import hashlib
 import logging
 import os
 from io import BytesIO
@@ -32,6 +33,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.flood_types import AgentReply, ChatContext
+from src.cache import get_cache
 from video.flood_depth import BAND_ANKLE, BAND_CHEST, BAND_KNEE, BAND_NONE, BAND_WAIST
 from video.flood_scene import LEVEL_NONE, LEVEL_SOME, FloodSceneReport, analyze_flood_media
 from video.sam_client import ImageInput, VideoInput
@@ -92,6 +94,33 @@ DEPTH_WORDS = {
 }
 
 
+SAM_CACHE_SECONDS = 24 * 60 * 60  # the same photo gives the same measurements; a day saves paid SAM requests on repeats
+
+
+def measure_flood_media(
+    media: ImageInput | VideoInput, api_key: str, estimate_depth: bool, include_people_and_vehicles: bool
+) -> FloodSceneReport:
+    """The SAM measurements of the picture. A photo that was checked before is answered from the cache.
+
+    Only the numbers are cached, under a hash of the photo's bytes: the photo itself is never stored. Videos are
+    always measured fresh.
+    """
+    options = {"estimate_depth": estimate_depth, "include_people_and_vehicles": include_people_and_vehicles}
+    cache = get_cache()
+    key = None
+    if cache.enabled and isinstance(media, ImageInput):
+        digest = hashlib.sha256(media.read_bytes()).hexdigest()
+        key = f"sam:{digest}:{int(estimate_depth)}{int(include_people_and_vehicles)}"
+        found = cache.get_json(key)
+        if found is not None:
+            return FloodSceneReport(**found)
+
+    report = analyze_flood_media(media, api_key, **options)
+    if key is not None:
+        cache.set_json(key, report.to_dict(), SAM_CACHE_SECONDS)
+    return report
+
+
 @traced_agent("flood_media_agent")
 def answer_flood_media_question(
     media: ImageInput | VideoInput,
@@ -120,9 +149,7 @@ def answer_flood_media_question(
         return AgentReply(text=NO_KEY_ANSWER)
 
     try:
-        report = analyze_flood_media(
-            media, api_key, estimate_depth=estimate_depth, include_people_and_vehicles=include_people_and_vehicles
-        )
+        report = measure_flood_media(media, api_key, estimate_depth, include_people_and_vehicles)
     except Exception as error:
         # SamError (a refused request, a limit), OSError (network problems, unreadable files) and ValueError are the usual
         # ones. The SAM stream library also wraps them in its own error type, so anything else is treated the same way:

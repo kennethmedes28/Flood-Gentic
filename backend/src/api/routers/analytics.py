@@ -10,9 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from agents.location_agent import find_city
 from src.api.deps import UNKNOWN_CITY, get_optional_db
 from src.api.schemas import AnalyticsOut
+from src.cache import get_cache
 from src.services.weather_analytics import InvalidFilter, build_analytics
 
 router = APIRouter(tags=["analytics"])
+
+CACHE_SECONDS = 10 * 60  # the recorded days change at most once a night
 
 
 @router.get("/analytics/weather", response_model=AnalyticsOut)
@@ -30,6 +33,11 @@ def weather_analytics(
         if key is None:
             raise HTTPException(status_code=422, detail=UNKNOWN_CITY)
     try:
-        return AnalyticsOut(**build_analytics(city=key, year=year, month=month, day=day, get_connection=get_connection))
+        data = get_cache().get_or_set(
+            f"analytics:{key}:{year}:{month}:{day}",
+            CACHE_SECONDS,
+            lambda: build_analytics(city=key, year=year, month=month, day=day, get_connection=get_connection),
+        )
+        return AnalyticsOut(**data)
     except InvalidFilter as error:
         raise HTTPException(status_code=422, detail=str(error))

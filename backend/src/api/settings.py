@@ -20,6 +20,8 @@ Variables, all optional:
     STAFF_API_KEY        secret for the /staff endpoints (list and review reports and requests).
                          At least 24 characters, e.g. from `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
                          Without it the /staff endpoints do not exist at all
+    REDIS_URL            Redis address (for example ``redis://default:password@host:6379``). Turns on the cache and the
+                         shared rate limits. Without it nothing is cached and the limits are counted in memory
     STAFF_PER_MINUTE     calls to /staff allowed per client per minute (default 60); this also slows key guessing
 """
 
@@ -48,6 +50,7 @@ class Settings:
     staff_per_minute: int = 60
     weather_per_minute: int = 30
     media_per_hour: int = 20  # photo checks, which use paid SAM requests
+    redis_url: str | None = None  # turns on the Redis cache and shared rate limits
 
 
 def read_bool(name: str, default: bool) -> bool:
@@ -84,4 +87,5 @@ def load_settings() -> Settings:
         staff_per_minute=int(os.getenv("STAFF_PER_MINUTE", "60")),
         weather_per_minute=int(os.getenv("WEATHER_PER_MINUTE", "30")),
         media_per_hour=int(os.getenv("MEDIA_PER_HOUR", "20")),
+        redis_url=os.getenv("REDIS_URL") or None,
     )

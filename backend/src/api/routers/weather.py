@@ -26,6 +26,7 @@ from fastapi.responses import StreamingResponse
 from agents.location_agent import find_city
 from src.api.deps import DATABASE_UNAVAILABLE, get_db, limit_requests
 from src.api.schemas import CityForecastOut, ForecastOut
+from src.cache import get_cache
 from src.services.tomorrow_forecast import DASHBOARD_CITIES, conditions_at, latest_forecasts, refresh_if_needed, today_in_manila
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ router = APIRouter(tags=["weather"], dependencies=[Depends(limit_requests("weath
 TICK_SECONDS = 60
 MAX_STREAM_SECONDS = 10 * 60  # then the browser reconnects and gets a fresh snapshot
 STREAM_HOURS = 24  # the snapshot carries this many hours per city; the stored forecast has 120
+FORECAST_CACHE_SECONDS = 10 * 60  # the stored forecast is written once a day; every viewer of the stream reads it
 PROBLEM_RETRY_SECONDS = 30  # after a problem the browser waits this long before it reconnects
 MAX_OPEN_STREAMS = 100  # each one holds a connection open
 UNKNOWN_FORECAST_CITY = "Unknown city. Forecasts are kept for the cities of Metro Manila (NCR), for example Manila, Quezon City or Marikina."
@@ -62,8 +64,14 @@ def parse_cities(text: str | None) -> tuple[str, ...]:
 
 def load_forecasts(get_connection, cities: tuple[str, ...]) -> list[dict]:
     """Fetch what is missing for today (at most once a day), then read what is stored."""
-    refresh_if_needed(get_connection, cities)
-    return latest_forecasts(get_connection(), cities)
+
+    def read() -> list[dict]:
+        refresh_if_needed(get_connection, cities)
+        return latest_forecasts(get_connection(), cities)
+
+    # The key has the Manila day, so a new day never serves yesterday's forecast.
+    key = f"forecast:{today_in_manila()}:{','.join(cities)}"
+    return get_cache().get_or_set(key, FORECAST_CACHE_SECONDS, read)
 
 
 def to_city_forecast(row: dict, now: datetime | None = None, max_hours: int | None = None) -> CityForecastOut:
