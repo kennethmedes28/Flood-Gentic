@@ -10,10 +10,13 @@ type AuthValue = {
    * build (local work), so the app shows no sign-in controls.
    */
   status: "loading" | "signedIn" | "signedOut" | "unconfigured"
-  /** The signed-in person's email, for showing who is signed in. */
-  email: string | null
-  /** Opens Google's sign-in page and comes back to this page afterwards. */
-  signInWithGoogle: () => Promise<void>
+  /**
+   * Who is signed in, for showing it: their Facebook name, or their email. A Facebook account can have no email (it can be
+   * made with a phone number), so this can be null even when signed in.
+   */
+  displayName: string | null
+  /** Opens Facebook's sign-in page and comes back to this page afterwards. */
+  signInWithFacebook: () => Promise<void>
   signOut: () => Promise<void>
   /** A plain sentence when sign-in failed, or "". */
   error: string
@@ -21,8 +24,8 @@ type AuthValue = {
 
 const EMPTY: AuthValue = {
   status: "unconfigured",
-  email: null,
-  signInWithGoogle: async () => {},
+  displayName: null,
+  signInWithFacebook: async () => {},
   signOut: async () => {},
   error: "",
 }
@@ -30,21 +33,22 @@ const EMPTY: AuthValue = {
 const AuthContext = createContext<AuthValue>(EMPTY)
 
 /**
- * Keeps track of who is signed in (Google, through Supabase) and shares it with the page. The library keeps the session in
- * the browser, refreshes it before it expires, and finishes the sign-in when Google sends the person back.
+ * Keeps track of who is signed in (Facebook, through Supabase) and shares it with the page. The library keeps the session in
+ * the browser, refreshes it before it expires, and finishes the sign-in when Facebook sends the person back.
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthValue["status"]>(authConfigured ? "loading" : "unconfigured")
-  const [email, setEmail] = useState<string | null>(null)
+  const [displayName, setDisplayName] = useState<string | null>(null)
   const [error, setError] = useState("")
 
   useEffect(() => {
     const supabase = getSupabase()
     if (!supabase) return
 
-    function apply(session: { user: { email?: string | null } } | null) {
+    function apply(session: { user: { email?: string | null; user_metadata?: Record<string, unknown> } } | null) {
       setStatus(session ? "signedIn" : "signedOut")
-      setEmail(session?.user.email ?? null)
+      const name = session?.user.user_metadata?.full_name ?? session?.user.user_metadata?.name
+      setDisplayName((typeof name === "string" && name) || session?.user.email || null)
     }
 
     // Called once with the saved session (or none), and again whenever the person signs in or out.
@@ -52,12 +56,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => data.subscription.unsubscribe()
   }, [])
 
-  const signInWithGoogle = useCallback(async () => {
+  const signInWithFacebook = useCallback(async () => {
     const supabase = getSupabase()
     if (!supabase) return
     setError("")
     const { error: failure } = await supabase.auth.signInWithOAuth({
-      provider: "google",
+      provider: "facebook",
       options: { redirectTo: `${window.location.origin}/assistant` },
     })
     if (failure) setError("Sign-in could not start. Please try again in a moment.")
@@ -67,7 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await getSupabase()?.auth.signOut()
   }, [])
 
-  const value = useMemo<AuthValue>(() => ({ status, email, signInWithGoogle, signOut, error }), [status, email, signInWithGoogle, signOut, error])
+  const value = useMemo<AuthValue>(() => ({ status, displayName, signInWithFacebook, signOut, error }), [status, displayName, signInWithFacebook, signOut, error])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

@@ -90,7 +90,7 @@ def create_app(settings: Settings | None = None, lifespan=real_services, verifie
         lifespan=lifespan,
     )
     app.state.settings = settings
-    # Checks the Google sign-in tokens of the browser. None means sign-in is off (local work and tests).
+    # Checks the sign-in tokens (Facebook, through Supabase) of the browser. None means sign-in is off (local work and tests).
     if verifier is None and settings.require_auth:
         verifier = TokenVerifier(settings.supabase_url)
     app.state.verifier = verifier

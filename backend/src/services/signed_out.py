@@ -1,6 +1,6 @@
 """What someone who is NOT signed in may still get from the assistant: the emergency answer.
 
-The assistant needs a Google sign-in because it costs money to run. But in a flood, nobody should be refused 911 and the
+The assistant needs a Facebook sign-in because it costs money to run. But in a flood, nobody should be refused 911 and the
 local hotlines because they are not logged in. So a message that the emergency rules recognise is answered with the same
 fixed text the chat graph uses, plus the hotlines of the person's city when the place is known. This uses NO model, NO
 database and no photo, so it costs nothing and cannot be run up by someone who is not signed in.

@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 
 /**
- * The Supabase client, used only for Google sign-in. The address and the public (publishable) key are meant for the
+ * The Supabase client, used only for Facebook sign-in. The address and the public (publishable) key are meant for the
  * browser; the secret key must never be put here.
  *
  * When the two NEXT_PUBLIC_SUPABASE_* variables are not set (local work without sign-in), there is no client and the
@@ -24,7 +24,7 @@ export function getSupabase(): SupabaseClient | null {
   if (!authConfigured) return null
   if (!client) {
     client = createClient(SUPABASE_URL as string, SUPABASE_KEY as string, {
-      // PKCE: Google sends the browser back with a short code that is exchanged for the session, which keeps the
+      // PKCE: Facebook sends the browser back with a short code that is exchanged for the session, which keeps the
       // tokens out of the address bar. The session is kept in the browser and refreshed by the library.
       auth: { flowType: "pkce", persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
     })

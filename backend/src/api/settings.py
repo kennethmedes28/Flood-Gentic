@@ -24,7 +24,7 @@ Variables, all optional:
     EVERYONE_REQUESTS_PER_DAY, EVERYONE_UPLOADS_PER_DAY
                          per-user and whole-app spending caps (defaults 20, 3, 8, 150000, 500, 100; see
                          ``src/services/usage.py``). Only signed-in users are counted
-    REQUIRE_AUTH         ``true`` (default) means the assistant chat, photo check and voice need a Google sign-in
+    REQUIRE_AUTH         ``true`` (default) means the assistant chat, photo check and voice need a Facebook sign-in
                          (a Supabase access token). Set ``false`` for local work without Supabase auth. Emergency
                          messages are answered without sign-in either way
     SUPABASE_URL         the project address, for example ``https://abcd.supabase.co`` (default: built from

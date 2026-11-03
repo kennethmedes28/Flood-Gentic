@@ -75,7 +75,7 @@ The `/assistant` page sends photos to the chat, which hands them to this agent:
 
 ## 8. Not built yet
 
-- Per-person limits: the photo limit is per client address and shared by everyone behind it (per-user limits come with Google sign-in).
+- Per-person limits: the photo limit is per client address and shared by everyone behind it (per-user limits come with Facebook sign-in).
 - Saving a result as a community report (`reports` table) with the picture's evidence.
 - Using the water coverage as an input to the flood risk agent or to the flooded areas that routes avoid.
 - Tuning the thresholds and measuring accuracy on a labelled set of Philippine flood photos (`docs/evaluation_rubric.md`).

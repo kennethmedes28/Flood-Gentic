@@ -110,7 +110,7 @@ export function ChatWindow() {
 
     // A photo check costs paid requests, so it needs sign-in; say so before uploading anything.
     if (item && auth.status === "signedOut") {
-      addMessage({ role: "assistant", kind: "error", text: "Please sign in with Google to check a photo. If you are in danger, call 911." })
+      addMessage({ role: "assistant", kind: "error", text: "Please sign in with Facebook to check a photo. If you are in danger, call 911." })
       return
     }
 
