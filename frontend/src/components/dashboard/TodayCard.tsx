@@ -6,6 +6,7 @@ import { useDashboardData } from "@/context/DashboardDataContext"
 import { useLanguage } from "@/context/LanguageContext"
 import { describeFlow, riskLook } from "@/lib/risk"
 import { useLiveWeather } from "@/context/LiveWeatherContext"
+import { missingText, reasonText } from "@/lib/dashboard-api"
 import { describeRain, recordedDayLabel } from "@/lib/rain-words"
 import { describeWeatherCode } from "@/lib/weather-codes"
 
@@ -97,8 +98,8 @@ export function TodayCard() {
           {live.risk ? t("risk.floodRisk", { level: t(risk.label) }) : t("risk.unavailable")}
         </p>
         <p className="text-sm opacity-90">{t("risk.riverFlow", { flow: describeFlow(live.riverFlowM3s, t) })}</p>
-        {live.riskReasons.length > 0 && <p className="mt-1 text-xs opacity-90">{live.riskReasons[0]}</p>}
-        {live.missing.length > 0 && <p className="mt-1 text-xs font-semibold">{t("risk.missing", { items: live.missing.join(", ") })}</p>}
+        {live.riskReasonCodes.length > 0 && <p className="mt-1 text-xs opacity-90">{reasonText(live.riskReasonCodes[0], live.riskReasons[0], t)}</p>}
+        {live.missing.length > 0 && <p className="mt-1 text-xs font-semibold">{t("risk.missing", { items: live.missing.map((item) => missingText(item, t)).join(", ") })}</p>}
       </div>
     </section>
   )

@@ -1,4 +1,5 @@
 import { KeyedError } from "@/i18n/keyed-error"
+import { MESSAGES, type MessageKey } from "@/i18n/messages"
 import { API_URL } from "@/lib/chat-api"
 import type { FloodLevel } from "@/lib/flood-levels"
 
@@ -29,6 +30,8 @@ export type LiveCity = {
   riverHighFlowM3s: number | null
   risk: FloodLevel | null
   riskReasons: string[]
+  /** The same reasons as codes with a number, which the page writes in the chosen language (see `reasonKey`). */
+  riskReasonCodes: { code: string; value: number | null }[]
   /** What could not be found in the data for this city. */
   missing: string[]
   /** The last days, oldest first. */
@@ -55,6 +58,7 @@ type ApiCity = {
   river_high_flow_m3s: number | null
   risk_level: FloodLevel | null
   risk_reasons: string[]
+  risk_reason_codes?: { code: string; value: number | null }[] // missing from an older cached answer
   missing: string[]
   recent: { date: string; rain_mm: number | null; high_c: number | null; low_c: number | null; river_flow_m3s: number | null }[]
 }
@@ -90,6 +94,7 @@ export async function fetchDashboard(cityKeys: string[], signal?: AbortSignal): 
       riverHighFlowM3s: city.river_high_flow_m3s,
       risk: city.risk_level,
       riskReasons: city.risk_reasons,
+      riskReasonCodes: city.risk_reason_codes ?? [],
       missing: city.missing,
       recent: city.recent.map((day) => ({
         date: day.date,
@@ -100,4 +105,28 @@ export async function fetchDashboard(cityKeys: string[], signal?: AbortSignal): 
       })),
     })),
   }
+}
+
+/** The interface text of a reason code from the backend, or null for a code this version does not know (show the English text then). */
+export function reasonKey(code: string): MessageKey | null {
+  const key = `reason.${code}`
+  return key in MESSAGES.en ? (key as MessageKey) : null
+}
+
+/** What the backend lists as not found in the data, as an interface text; any other text is shown as it came. */
+export function missingText(item: string, t: (key: MessageKey) => string): string {
+  return item === "recorded weather for this city" ? t("missing.cityWeather") : item
+}
+
+/** One reason as text in the chosen language: the translated sentence with its number, or the backend's English sentence. */
+export function reasonText(
+  reason: { code: string; value: number | null },
+  english: string | undefined,
+  t: (key: MessageKey, params?: Record<string, string | number>) => string
+): string {
+  const key = reasonKey(reason.code)
+  if (!key) return english ?? ""
+  if (reason.value === null) return reason.code === "calm" ? t(key) : (english ?? "") // every other reason needs its number
+  const digits = reason.code === "peak_rain" || reason.code === "high_river" ? 1 : 0
+  return t(key, { value: reason.value.toFixed(digits) })
 }

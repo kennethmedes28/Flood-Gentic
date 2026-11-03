@@ -14,6 +14,7 @@ import { useDashboardData } from "@/context/DashboardDataContext"
 import { useLanguage } from "@/context/LanguageContext"
 import { useLiveWeather } from "@/context/LiveWeatherContext"
 import { CITIES } from "@/data/dashboard-cities"
+import { reasonText } from "@/lib/dashboard-api"
 import { LEVEL_STYLE, describeFlowChange, forecastRainLevel } from "@/lib/flood-levels"
 import { shortDate, weekday } from "@/lib/rain-words"
 import { riskLook } from "@/lib/risk"
@@ -246,10 +247,10 @@ export function FloodLevelView() {
                 {level && <LevelChip level={level} className="!px-2 !py-0.5 !text-xs" />}
               </h2>
               <p className="mt-2 text-base leading-relaxed">{level ? t(LEVEL_STYLE[level].advice) : t("flood.noLevel")}</p>
-              {live.riskReasons.length > 0 && (
+              {live.riskReasonCodes.length > 0 && (
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-sm" style={MUTED}>
-                  {live.riskReasons.map((reason) => (
-                    <li key={reason}>{reason}</li>
+                  {live.riskReasonCodes.map((reason, index) => (
+                    <li key={reason.code}>{reasonText(reason, live.riskReasons[index], t)}</li>
                   ))}
                 </ul>
               )}
