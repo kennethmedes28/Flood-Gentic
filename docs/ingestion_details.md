@@ -300,7 +300,7 @@ flowchart LR
 - Already in `backend/pyproject.toml`: `langchain`, `langchain-community`, `langgraph`.
 - Added so far: `sentence-transformers`, `pypdf`, `pymupdf`, `faiss-cpu`, `psycopg[binary]`,
   `colpali-engine` (benchmark only), `torch`. The Tesseract program must be installed for scans.
-- Still to add: `bm25s`. (`pgvector` is not needed: embeddings are sent as text and cast with `::vector`.)
+- Also used: `bm25s`. (`pgvector` is not needed in Python: embeddings are sent as text and cast with `::vector`.)
 
 ## 7. Phased rollout
 

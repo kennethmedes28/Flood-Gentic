@@ -149,14 +149,12 @@ and 45 s the second time; that is a one-off cost, not per question.
 5. Add an Open-Meteo timeout shorter than 10 s with one retry, or serve the last good forecast; a single
    stalled request dominates the data agents' worst case.
 
-## 7. Limits and next steps
+## 7. Limits
 
 - These runs were made on 2026-10-28, before two changes: the weather agent's data module was renamed
   `fetch_supabase_open_meteo_datasets.py` and now also reads the last 7 days of rain and river data from Supabase (cached for 30 minutes),
   and the voice WebSocket was added. Neither is timed here, so the weather timings exclude one extra database read.
 
 - Small samples (5 runs, 3 for the effort comparison), one machine, different times of day.
-- Re-run with a real Supabase connection and an `ORS_API_KEY` to time the evacuation, report and route agents fully.
-- Add BM25 to the benchmark retriever so the documents agent matches production.
-- Save run results to CSV so the two models can be compared in a notebook instead of by reading outputs.
-- Grade a sample of answers from both models using the golden set in `docs/evaluation_rubric.md`.
+- The evacuation, report and route agents were timed with a stubbed database and without a routing key, so their real times are not measured here.
+- The documents agent in the benchmark had no keyword (BM25) search, so it differs from production.

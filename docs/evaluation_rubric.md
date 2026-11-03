@@ -125,9 +125,3 @@ flowchart TD
 - Run the automatic metrics on every change that touches retrieval or prompts; run the full review before each release.
 - Record results per version in a short table (date, change, metrics, safety gate status) so regressions are visible.
 - Before any real-world launch: a tabletop drill using a past typhoon scenario with real users.
-
-## 9. Open questions
-
-- Who are the domain reviewers (local government staff, volunteers)?
-- Which LLM judge, if any, and how its scores are calibrated against human scores.
-- Are these latency and quality targets realistic on Railway CPU hardware? Revisit after the Phase 1 baseline.

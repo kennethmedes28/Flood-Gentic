@@ -5,7 +5,7 @@ Status: **partly built**. Built: the flood agents, the LangGraph chat graph with
 (chunking, embeddings, FAISS and pgvector stores, retrieval), the FastAPI app and its routers (`src/api/`), the realtime voice WebSocket,
 the staff endpoints for reviewing reports and requests, the dataset update scripts, a streamed chat with progress lines and photo upload
 (`/chat/stream`), the dashboard and the Tomorrow.io forecast (`/dashboard`, `/weather/*`), and the Next.js frontend
-(`docs/frontend_architecture.md`). Not built yet: a source list on `/chat`, streaming the words of a reply, per-person staff accounts, and a scheduled ingestion worker. Retrieval details live in `docs/ingestion_details.md`, voice in `docs/voice_chat.md`, the weather
+(`docs/frontend_architecture.md`). Retrieval details live in `docs/ingestion_details.md`, voice in `docs/voice_chat.md`, the weather
 datasets in `docs/dataset_updates.md`; this document covers everything around them.
 
 ## 1. Goals and constraints
@@ -358,9 +358,8 @@ Actions workflow (`docs/dataset_updates.md`), and the Tomorrow.io forecast by a 
   Each chat message is one run named `flood-gentic-chat`, tagged `flood-gentic` and carrying the `thread_id`, with the graph nodes, the agents
   (`utils/tracing.py`, `@traced_agent`) and the model calls nested inside. Every run is cleaned before it is sent: phone-number-like digits
   are replaced, secrets are hidden and coordinates are rounded to about 1 km. Details in `docs/deployment_workflow_guide.md`.
-  Still to add: structured JSON logs and request ids on every response.
 - **Resilience**: timeouts and retries on LLM and Open-Meteo calls; if the LLM is down, `/chat` returns the hotline fallback and top retrieved advisories rather than an error.
-- **Testing**: `backend/tests/` holds 39 tests (flood agents, the graph with a fake model, the voice WebSocket with a fake transcriber). Still to add: chunkers, RRF and rules, and the evaluation set in `docs/evaluation_rubric.md` for retrieval and answer quality.
+- **Testing**: `backend/tests/` holds 355 tests (the agents, the chat graph with a fake model, the API, sign-in, the fair-use limits, the cache, the voice WebSocket with a fake transcriber), and CI runs them on every push.
 
 ## 9. Deployment
 
@@ -377,11 +376,3 @@ flowchart LR
 The Railway and Vercel services are planned; the GitHub Actions dataset workflow is the only automation written so far.
 
 Environment variables are set per service in Railway / Vercel. Details belong in `docs/deployment_workflow_guide.md`.
-
-## 10. Open questions
-
-- Which Muse Spark model and reasoning effort to use per agent (see `docs/agent_benchmarks.md`), and a model for query rewrite.
-- Text-to-speech for spoken replies: Meta's voice docs reviewed so far only cover speech-to-text, and a Filipino voice is unchecked.
-- Whether the BM25 index lives in the API process or the worker (affects replica count).
-- Account model: anonymous chat only for the prototype.
-- Which government advisories have usable machine-readable feeds versus scraping.

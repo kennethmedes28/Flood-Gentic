@@ -73,13 +73,6 @@ The `/assistant` page sends photos to the chat, which hands them to this agent:
 - Every reply says it is an automatic check, that the picture may be old, that depth cannot be told from it, and to call 911 if someone is in danger.
 - A place given by the user is repeated as "not confirmed from the picture". The picture does not set the user's location.
 
-## 8. Not built yet
-
-- Per-person limits: the photo limit is per client address and shared by everyone behind it (per-user limits come with sign-in).
-- Saving a result as a community report (`reports` table) with the picture's evidence.
-- Using the water coverage as an input to the flood risk agent or to the flooded areas that routes avoid.
-- Tuning the thresholds and measuring accuracy on a labelled set of Philippine flood photos (`docs/evaluation_rubric.md`).
-
 ## 9. Augmented SAM (no training)
 
 SAM 3.1 is Meta's hosted model, so its weights cannot be fine-tuned from here. Instead the water check asks it more than once and

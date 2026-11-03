@@ -1,18 +1,18 @@
 # Deployment and Workflow Guide
 
-How Flood-Gentic is configured, run and kept up to date. The target architecture (Railway, Vercel, Supabase) is in
-`docs/backend_architecture.md` section 9 and `docs/frontend_architecture.md` section 8; this guide covers what exists today.
+How Flood-Gentic is configured, deployed and kept up to date: the website on Vercel, the API on Railway (CPU only, from a Docker image), the data and
+sign-in on Supabase, and a Redis cache on Railway. The system design is in `docs/backend_architecture.md` and `docs/frontend_architecture.md`.
 
 ## 1. What is automated today
 
 | What | How | Where |
 |---|---|---|
-| Daily weather datasets (Supabase tables) | GitHub Actions, every day at 20:00 Philippine time | `.github/workflows/update-datasets.yml`, details in `docs/dataset_updates.md` |
+| Weather datasets (Supabase tables) | GitHub Actions, four times a day (00:30, 06:00, 12:00 and 18:00 Philippine time) | `.github/workflows/update-datasets.yml`, details in `docs/dataset_updates.md` |
 | Daily weather forecast (Tomorrow.io, table `tomorrow_forecast`) | GitHub Actions, every day at 00:10 Philippine time, with a retry at 06:10 | `.github/workflows/fetch-tomorrow-forecast.yml`, runs `scripts/fetch_tomorrow_forecast.py` |
+| Tests and builds | GitHub Actions on every push and pull request | `.github/workflows/ci.yml`, section 11 |
+| Deploys | Railway and Vercel build from GitHub when the branch changes; Railway waits for CI | sections 7, 10 and 11 |
 | Running the app locally | `make run`, or `hooks/run_all.sh` (Linux and macOS), `hooks\run_all.bat` (Windows) | `scripts/run_dev.py` starts the API and the frontend and stops both together |
 | Everything else (corpus ingestion, FAISS runs, location chunks) | Run by hand from `scripts/` | section 4 below |
-
-The API (`backend/main.py`) and the Next.js frontend run locally with `make run`. The Railway API service, the ingestion worker and the Vercel frontend are planned but not set up.
 
 ## 2. Configuration
 
@@ -21,23 +21,25 @@ Secrets live in `backend/.env` (gitignored; never commit it). Variable names onl
 | Variable | Used for |
 |---|---|
 | `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD`, `SUPABASE_POOLER_HOST` | Postgres connection through the Supabase transaction pooler (port 6543). `SUPABASE_DB_URL` can be set instead as one connection string |
-| `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_ACCESS_TOKEN` | Supabase REST and management access; not used by the current code. The secret key bypasses row-level security, so keep it out of the browser |
+| `REQUIRE_AUTH`, `SUPABASE_URL` | Google and Facebook sign-in for the chat, photo check and voice (section 8). `SUPABASE_URL` is built from `SUPABASE_PROJECT_REF` when left out |
+| `USER_REQUESTS_PER_DAY` and the other fair-use limits | Per-account and whole-app limits (section 9) |
+| `REDIS_URL`, `CORS_ORIGINS`, `TRUST_PROXY_HEADERS` | The Redis cache and shared limits; the website addresses allowed to call the API; trust the proxy's client address (set on Railway) |
+| `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_ACCESS_TOKEN` | Not used by the backend. The publishable key is the public one the website uses; the secret and access keys must never be put on a server or in the browser, because they bypass row-level security or manage the whole project |
 | `MUSE_API` | Muse Spark chat models, the Muse speech-to-text and the SAM photo check (`api.meta.ai`) |
 | `TOMMORROW_IO_API` | The Tomorrow.io forecast key (also a repository secret for the forecast workflow). The spelling is the one the code reads |
 | `MEDIA_PER_HOUR`, `WEATHER_PER_MINUTE`, `MEDIA_UPLOAD_DIR` | Optional: photo check limit, forecast limit, and where uploads are kept briefly |
 | `ORS_API_KEY` | OpenRouteService routing for the route agent |
 | `HF_TOKEN`, `EMBEDDING_MODEL` | Downloading and choosing the embedding model |
 | `LANGSMITH_KEY`, `LANGSMITH_TRACE`, `LANGSMITH_PROJECT` | LangSmith tracing, see section 6 |
-| `GROQ_API_KEY`, `LLAMAINDEX_API_KEY` | Other model providers |
 
-`backend/.env.example` lists the Supabase names, but the `.env.*` rule in `.gitignore` also ignores it, so it is not in the repository.
-Remove that rule's effect for the example file (for example with `!.env.example`) if you want it shared.
+`backend/.env.example` and `frontend/.env.local.example` list the variable names without values.
 
 ## 3. Daily workflows
 
-**Datasets.** `update-datasets.yml` runs `cron: "0 12 * * *"` (12:00 UTC = 20:00 Philippine time, no daylight saving) and can be started by hand with **Run workflow**.
-GitHub may start it a few minutes late. It runs `scripts/update_supabase_from_open_meteo.py`, which reads the last day of every location from Supabase, fetches only the missing finished days
-from Open-Meteo and writes them in one transaction. It commits nothing to the repository. Details, retries and failure handling: `docs/dataset_updates.md` section 6.
+**Datasets.** `update-datasets.yml` runs four times a day (00:30, 06:00, 12:00 and 18:00 Philippine time) and can be started by hand with **Run workflow**.
+The 00:30 run stores the day that just ended; the other three store today so far, so the dashboard's latest recorded day is today (it is replaced by the next run and made final at 00:30).
+GitHub may start a run a few minutes late. It runs `scripts/update_supabase_from_open_meteo.py`, which reads the last day of every location from Supabase, fetches the missing days and
+re-fetches the last 7 from Open-Meteo and writes them in one transaction. It commits nothing to the repository. Details, retries and failure handling: `docs/dataset_updates.md` section 6.
 
 **Forecast.** `fetch-tomorrow-forecast.yml` runs at 16:10 UTC (00:10 Philippine time, just after the new Manila day starts) and again at 22:10 UTC as a retry. It runs
 `scripts/fetch_tomorrow_forecast.py`, which fetches only the cities that have no forecast stored for today, so the second run normally makes no request. The run is marked failed if a city
@@ -259,12 +261,3 @@ A newer push to the same branch cancels the run that is still going. Lint is not
 
 After the first Vercel deploy, set `CORS_ORIGINS` on Railway to the Vercel address (`python3 scripts/set_railway_variables.py --cors-origins https://<name>.vercel.app`),
 and add that address to the Supabase redirect URLs (section 8).
-
-## 12. Planned
-
-
-
-
-
-- Vercel frontend with `NEXT_PUBLIC_API_URL`, and the backend CORS list allowing its domains. The voice socket must be served over `wss`.
-- A scheduled job that runs the full ingestion instead of by hand.

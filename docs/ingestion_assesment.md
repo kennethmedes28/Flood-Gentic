@@ -92,15 +92,14 @@ Spot checks on the saved index:
 | Sino ang puwedeng mag-lift ng state of imminent disaster? | NDRRMC IRR sections (the OCR'd scan) |
 | What should go in an emergency go-bag? | Manual supply list ranked 2nd; a health-station checklist table ranked 1st |
 
-## 6. Known issues and next steps
+## 6. Known issues
 
 1. **Supabase write done.** The `chunks` table (pgvector) holds all 359 chunks. Connection settings are
    `SUPABASE_DB_URL`, or `SUPABASE_PROJECT_REF` + `SUPABASE_PASSWORD` + `SUPABASE_POOLER_HOST` in `backend/.env`.
 2. **Table-like pages in the manual** (checklists, blank forms) become low-value chunks that can
-   outrank real content. Try dropping chunks with very little prose, or rely on the reranker.
+   outrank real content.
 3. **`ncr_locations.csv`** is numbers (elevation, coordinates). Embeddings handle these poorly and
-   only 7 distinct coordinates exist. A structured lookup by city is the better use; the chunks are
-   kept for now so questions about a city's elevation can surface.
+   only 7 distinct coordinates existed then. The chunks are kept so questions about a city's elevation can surface.
 4. **No golden set yet.** All quality numbers above are from a starter question set.
 5. **BM25 index not built yet** (`bm25.py` exists but is not part of the saved run).
 6. **No Tagalog OCR or text.** The manual and reports are English; Filipino only appears in queries.

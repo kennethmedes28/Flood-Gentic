@@ -6,17 +6,19 @@
   <img src="frontend/public/flood-gentic-title.svg" alt="Flood-Gentic" style="font-size: 80px; height: auto; width: 85%;" />
 </h1>
 
+> Built for the Meta Global AI Hackathon 2026 with Muse Spark, SAM 3.1, Muse Voice Transcribe, and Muse Image on the Meta Model API. Build for your world.
+
 A flood assistant for Metro Manila (NCR). Residents ask questions in English or Filipino and get answers
 grounded in official sources: the nearest safe evacuation center, the flood risk for their area, a route that
 avoids flooded streets, hotlines, and weather from PAGASA and Open-Meteo.
 
 When the data is missing or unreliable, it says so and gives a fixed safety answer. It does not guess.
 
-> **Status: working prototype.** The agents, chat graph, retrieval, voice, flood photo checks, the HTTP API and the
-> Next.js frontend are built and tested. The frontend has a dashboard, a flood level page, evacuation centers, emergency
-> contacts, a PAGASA satellite page and the AI Agent Flood Assistant (text, voice and photo).
-> Before saving reports and forecasts, run the table scripts once (see [Create the missing tables](#create-the-missing-tables)).
-> See [docs/backend_architecture.md](docs/backend_architecture.md) and [docs/frontend_architecture.md](docs/frontend_architecture.md).
+> **Status: deployed prototype.** The website runs on Vercel, the API on Railway (CPU only) and the data and sign-in on Supabase.
+> It has a dashboard, a flood level page, evacuation centers, emergency contacts, a PAGASA satellite page, a weather analytics page and the
+> AI Agent Flood Assistant (text, voice and photo). The chat, photo check and voice need a Google or Facebook sign-in, with
+> fair-use limits; everything else, and any emergency message, works without one. See [Architecture](#architecture), [Sign-in and fair use](#sign-in-and-fair-use) and
+> [Deployment](#deployment). Details: [docs/backend_architecture.md](docs/backend_architecture.md) and [docs/frontend_architecture.md](docs/frontend_architecture.md).
 
 ## Why this matters
 
@@ -55,10 +57,9 @@ A person, such as a barangay or DRRMO, makes the real decisions.
 |---|---|---|
 | A resident in a flooded area | Nearest safe evacuation center, hotlines, safety steps, and a route that avoids floodwater | Built |
 | A family preparing before a storm | Flood risk for their area, the weather now and the forecast, river flow, and checklists from the preparedness manuals | Built |
-| A neighbour who sees a flooded street | Report it, so routes avoid it | Built; needs the `reports` table to be created |
+| A neighbour who sees a flooded street | Report it, so routes avoid it | Built |
 | Someone with a photo of flooding | Attach it in the assistant: it checks the picture for flood water, and can count people and vehicles | Built |
-| Barangay and DRRMO staff | A live list of reports and supply requests, with verify, reject and assign | API built (`/staff`, shared key); no staff screen yet |
-| Relief volunteers | Matching needs with available supplies and centers | Planned |
+| Barangay and DRRMO staff | A live list of reports and supply requests, with verify, reject and assign | API built (`/staff`, shared key) |
 
 ## What you can ask
 
@@ -94,7 +95,7 @@ is built for it. These are real prompts the agents answer today.
 Attach a photo of a street in the assistant (hover the round button beside the message box and choose **Photo**).
 Ask anything about it in the same message ("How many cars are stuck?", "Hanggang saan ang baha?"): the answer comes from a model that looks at the
 picture, followed by the automatic measurements: how much of it is covered by flood water and, if you tick the option, how many people and vehicles
-are in the water. It is automatic and unverified, and it never says a road is safe.
+are in the water. It needs a sign-in, it is automatic and unverified, and it never says a road is safe.
 
 ### Report and share
 
@@ -130,15 +131,44 @@ Most answers use fixed rules and no model, so they are fast, free per question, 
 Only weather and preparedness questions use a chat model; photo checks use the SAM vision model. While the assistant works,
 the page shows what it is doing ("Checking rain, river flow and PAGASA for flood risk").
 
+## Architecture
+
+```mermaid
+flowchart LR
+    U[Browser] -->|pages| V["Vercel<br/>Next.js frontend"]
+    U -->|"sign in (Google or Facebook)"| SB
+    V -->|"API calls with the sign-in token"| R
+    subgraph R["Railway (CPU only)"]
+      API["FastAPI + LangGraph<br/>agents, rules, search"]
+      RC[("Redis<br/>cache, rate limits")]
+    end
+    API --> RC
+    API --> SB[("Supabase<br/>Postgres + pgvector + Auth")]
+    API -->|"chat, photo check, voice"| M["Meta Model API<br/>Muse + SAM 3.1"]
+    API --> W["Open-Meteo, Tomorrow.io,<br/>PAGASA, OpenRouteService"]
+    GH["GitHub Actions"] -->|"weather data, 4 runs a day;<br/>forecast, daily"| SB
+```
+
+- **Frontend (Vercel):** Next.js 16 and React 19. It never talks to the AI services directly: every call goes through the API, which keeps the keys.
+- **Backend (Railway, Docker):** the FastAPI app, the chat graph, the agents and the document search. The embedding model is the only model that runs on
+  the server, and it runs on the CPU, because **Railway has no GPU**. Chat, speech-to-text and photo analysis are Muse API calls, and the reranker is off in production. The model files live on a
+  persistent volume, so a new deploy reuses them.
+- **Data and sign-in (Supabase):** Postgres with pgvector for the documents, the weather history, centers, contacts, conversations and usage counters, and Supabase Auth for Google and Facebook sign-in.
+- **Cache (Railway Redis):** small cached answers (dashboard, analytics, forecast, photo measurements) and the shared rate limits. Optional: without it everything still works.
+- **Automation (GitHub Actions):** CI on every push, the weather data update four times a day and the Tomorrow.io forecast once a day.
+
 ## How an answer is chosen
 
 Messages are routed by keywords (no model call), and an emergency always wins. A message with several requests
 ("report the flood, where is the nearest center, and how long will it last?") is cut into one question per topic, and
-each topic is answered under its own heading.
+each topic is answered under its own heading. Before routing, the API checks the sign-in and the fair-use limits; an emergency skips both.
 
 ```mermaid
 flowchart LR
-    M[Message] --> R{Route by keywords}
+    M[Message] --> S{Signed in and<br/>under the limits?}
+    S -->|"no, but an emergency"| F[Fixed 911 reply + city hotlines]
+    S -->|"no, anything else"| X["Sign-in prompt, or the limit and when it resets"]
+    S -->|yes| R{Route by keywords}
     R -->|emergency| E[Fixed reply + hotlines, then the rest of the message]
     R -->|place outside Metro Manila| O[Not covered + national hotlines]
     R -->|evacuation, route, report, contacts, flood risk, how long| A[Rule-based agents]
@@ -159,29 +189,54 @@ If only the city is known, the answer says distances are from the city centre. A
 (from the evacuation-center list) is saved as a barangay. A place outside Metro Manila (Cavite, Rizal, Bulacan, and so on)
 gets the "not covered" reply.
 
+## Sign-in and fair use
+
+The assistant, the photo check and voice cost money to run, so they need a **Google or Facebook sign-in** (through Supabase). The dashboard, flood level,
+evacuation centers, contacts and analytics pages are public, and **an emergency message is always answered without signing in**: the fixed 911 text and
+the hotlines of your city, with no model call, so nobody in a flood is turned away. A message that hits a limit still gets the emergency answer if it is one.
+
+Each signed-in account has fair-use limits (the Manila day and month). They are environment variables, so they can be changed without code:
+
+| Limit | Default |
+|---|---|
+| Assistant messages per account per day | 20 |
+| Photo checks per account per day | 3 |
+| Voice sessions per account per day | 8 |
+| Chat-model tokens per account per month | 150,000 |
+| Messages for everyone together, per day (a circuit breaker) | 500 |
+| Photo checks for everyone together, per day | 100 |
+
+A used-up limit says what was used and when it starts again, and the page shows "Today: 3 of 20 messages". The counters live in Supabase and are updated atomically.
+
+**Need access?** While the Google and Facebook sign-in apps are limited to approved accounts, or if you need access to the project's Supabase data, write to
+**[kennethmedes28@gmail.com](mailto:kennethmedes28@gmail.com?subject=Flood-Gentic%20access%20request)** with the provider and the email on your account.
+What is collected and how to have it deleted: the site's `/privacy` and `/data-deletion` pages (`frontend/src/app/privacy`, `frontend/src/app/data-deletion`).
+
 ## Repository layout
 
 ```
-backend/                 Python app (uv project)
+backend/                 Python app (uv project); Dockerfile builds the Railway image
   agents/                one module per agent: evacuation, flood risk, route, report, weather, location, flood media ...
+                         (reference_data.py: the built-in hotlines and barangay names, generated from the CSVs)
   langgraph_orchestrator/ chat graph, keyword routing, progress events for the stream
-  src/api/               the HTTP API: app, routers (chat, dashboard, weather, reports ...), request models, rate limits
-  src/services/          dashboard data from the datasets, the daily Tomorrow.io forecast, photo uploads
+  src/api/               the HTTP API: app, routers (chat, dashboard, weather, places, account, reports ...), request models, rate limits
+  src/services/          dashboard data, the Tomorrow.io forecast, usage limits and metering, photo uploads
+  src/auth.py            checks the Google / Facebook sign-in tokens; src/cache.py is the optional Redis cache
   src/rag/               document ingestion and retrieval (vector + keyword search, reranking)
   voice/  video/         speech-to-text WebSocket; flood photo check with SAM
-  sql/                   table scripts to run once in Supabase
+  sql/                   table scripts for Supabase
   tests/                 unit tests (no network, browser or model needed)
-frontend/                Next.js app (React 19, Tailwind 4): dashboard, flood level, evacuation, contacts, satellite, assistant
+frontend/                Next.js app (React 19, Tailwind 4): dashboard, flood level, evacuation, contacts, satellite, analytics, assistant, privacy
   src/app/               one folder per page
   src/components/        ui, shell (frame, menu, cursor), and one folder per page
-  src/context  hooks  lib  data/    state, reusable logic, plain functions and API clients, static data
+  src/context  hooks  lib  data/    state (including sign-in), reusable logic, plain functions and API clients, static data
 corpus/                  source documents and CSVs (evacuation centers, hotlines, locations)
-datasets/                daily NCR weather and flood-feature CSVs (the backend does not read them; the nightly workflow updates Supabase, not these files, so they can be days behind)
-scripts/                 data loading, the daily dataset update, the Tomorrow.io fetch, run_dev.py
+datasets/                daily NCR weather CSVs, kept for reference (the backend does not read them; Supabase is the live copy)
+scripts/                 data loading and updates, the Tomorrow.io fetch, the Railway variables helper, run_dev.py
 hooks/                   run_all.sh and run_all.bat: start the backend and the frontend together
 Makefile                 shortcuts: make run, make test, make check
-docs/                    architecture, evaluation and deployment notes
-.github/workflows/       scheduled dataset update and daily forecast fetch
+docs/                    architecture, evaluation, dataset and deployment notes
+.github/workflows/       ci.yml (tests and builds), update-datasets.yml (weather, 4 runs a day), fetch-tomorrow-forecast.yml (daily)
 ```
 
 ## Getting started
@@ -197,14 +252,16 @@ Create `backend/.env` (it is gitignored; never commit it) with these variables:
 | Variable | Used for |
 |---|---|
 | `MUSE_API` | The chat model, speech-to-text and the flood photo check |
-| `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD`, `SUPABASE_POOLER_HOST` | Database connection |
+| `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD`, `SUPABASE_POOLER_HOST` | Database connection (and the address used to check sign-in tokens) |
 | `TOMMORROW_IO_API` | The Tomorrow.io weather forecast, fetched once a day and stored in Supabase (the spelling is the one the code reads) |
-| `LANGSMITH_KEY`, `LANGSMITH_TRACE`, `LANGSMITH_PROJECT` | Optional tracing |
+| `REQUIRE_AUTH` | `true` (default) needs a Google or Facebook sign-in for the chat, photo check and voice. Use `false` for local work without sign-in |
+| `REDIS_URL`, `CORS_ORIGINS` | Optional: the Redis cache and shared limits; the website address(es) allowed to call the API |
+| `LANGSMITH_KEY`, `LANGSMITH_TRACE`, `LANGSMITH_PROJECT` | Optional tracing (off in production, so messages are not sent to a third party) |
 | `HF_TOKEN` | Embedding model download in `scripts/ingest_corpus.py` |
 
-Other keys that appear in the docs ([deployment guide](docs/deployment_workflow_guide.md)) are only needed for features
-that are not wired up yet: `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_ACCESS_TOKEN`,
-`GROQ_API_KEY` and `LLAMAINDEX_API_KEY`.
+For the website, copy `frontend/.env.local.example` to `frontend/.env.local` and set `NEXT_PUBLIC_API_URL` (the API address) and the two `NEXT_PUBLIC_SUPABASE_*`
+values (the project address and the **publishable** key; never the secret key). Without them the website runs signed-out, so start the backend with `REQUIRE_AUTH=false`.
+The Supabase secret and access keys are not used by the app and should not be put on any server.
 
 ### Run the app
 
@@ -230,9 +287,9 @@ make check               # backend tests, then the frontend type check and lint
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/chat` | One message in, one reply out. Send back the returned `thread_id` to continue the conversation. `blocked` is true when the message was stopped by the input guard |
+| POST | `/chat` | One message in, one reply out (needs a sign-in, except an emergency message). Send back the returned `thread_id` to continue the conversation. `blocked` is true when the message was stopped by the input guard |
 | POST | `/chat/stream` | The same, as one JSON line per step: what the assistant is doing, then the reply. Also takes a photo as base64 (`image`) |
-| GET | `/dashboard` | Weather, rain, river flow and a flood risk level for each of the 17 cities, from the last recorded day |
+| GET | `/dashboard` | Weather, rain, river flow and a flood risk level for each of the 17 cities, from the latest recorded day (today so far; refreshed four times a day) |
 | GET | `/analytics/weather` | Long-run rain, temperature, river flow and wind since 2020 for Metro Manila or one city, grouped by year, month or day (`city`, `year`, `month`, `day` filters) |
 | GET | `/weather/forecast`, `/weather/stream` | The Tomorrow.io forecast, stored once a day; the stream sends it live as server-sent events |
 | POST, GET | `/reports` | Submit or list community flood reports (unverified) |
@@ -241,6 +298,7 @@ make check               # backend tests, then the frontend type check and lint
 | GET | `/evacuation-centers` | Search the centers by city and barangay |
 | GET | `/places/evacuation-centers`, `/places/contacts` | The full lists behind the Evacuation and Contacts pages, from Supabase (the pages keep a built-in copy as a fallback) |
 | GET | `/advisories/latest` | Current PAGASA bulletins |
+| GET | `/me/usage` | The signed-in user's usage against the fair-use limits |
 | GET | `/health`, `/health/ready` | What works right now |
 | WS | `/ws/voice` | Live speech-to-text |
 
@@ -250,7 +308,7 @@ curl -s localhost:8000/chat -H 'Content-Type: application/json' \
 ```
 
 Optional settings (environment variables): `CORS_ORIGINS`, `CHECKPOINTER` (`postgres` or `memory`), `ENABLE_RAG`,
-`TRUST_PROXY_HEADERS`, `CHAT_PER_MINUTE`, `REPORTS_PER_HOUR`, `REQUESTS_PER_HOUR`, `MEDIA_PER_HOUR` (photo checks, which cost SAM credit),
+`TRUST_PROXY_HEADERS`, `USER_REQUESTS_PER_DAY` and the other fair-use limits (see [Sign-in and fair use](#sign-in-and-fair-use)), `CHAT_PER_MINUTE`, `REPORTS_PER_HOUR`, `REQUESTS_PER_HOUR`, `MEDIA_PER_HOUR` (photo checks, which cost SAM credit),
 `WEATHER_PER_MINUTE`, `ORS_API_KEY`, `STAFF_API_KEY`, `STAFF_PER_MINUTE`, `MEDIA_UPLOAD_DIR`.
 
 ### Monitor reports and requests (staff)
@@ -270,31 +328,90 @@ See [docs/backend_architecture.md](docs/backend_architecture.md) section 4.
 
 ### Create the missing tables
 
-`reports`, `requests` and `tomorrow_forecast` do not exist in Supabase until you create them. Run these once, in order, in the Supabase SQL editor:
-`backend/sql/000_reports.sql`, `backend/sql/001_reports_geo.sql`, `backend/sql/002_requests.sql`, `backend/sql/003_tomorrow_forecast.sql`
-(the forecast script also creates its own table if it is missing).
+Run these once, in order, in the Supabase SQL editor: `backend/sql/000_reports.sql`, `001_reports_geo.sql`, `002_requests.sql`, `003_tomorrow_forecast.sql`
+and `004_emergency_contacts.sql`. The `usage_counters` table (`005`) is created by the API itself at start-up, and the forecast and contacts scripts also
+create their own tables if they are missing. Fill the evacuation centers and contacts with `scripts/sync_datasets_to_supabase.py`.
 
 ## Data
 
-The weather and flood-feature tables in Supabase are updated every day at 20:00 Philippine time by
-[`update-datasets.yml`](.github/workflows/update-datasets.yml). It reads the last day of each location from Supabase,
-fetches only the missing finished days from Open-Meteo, and writes them in one transaction. No CSV files or local
-checkout are involved. It also fetches the last 7 days again every night and replaces them with Open-Meteo's revised values, and it never deletes anything.
-The workflow needs the repository secrets `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD` and `SUPABASE_POOLER_HOST`.
-Details: [docs/dataset_updates.md](docs/dataset_updates.md).
+**Weather and river history.** The weather and flood-feature tables in Supabase are updated four times a day (00:30, 06:00, 12:00 and 18:00 Philippine time) by
+[`update-datasets.yml`](.github/workflows/update-datasets.yml), straight from Open-Meteo, with no CSV files involved. The 00:30 run stores the day that just
+ended; the other three store today so far. Every run fetches the last 7 days again and replaces them with Open-Meteo's revised values, so the latest day on the dashboard is today and
+becomes final after midnight. It never deletes anything. The workflow needs the repository secrets `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD` and
+`SUPABASE_POOLER_HOST`. Details: [docs/dataset_updates.md](docs/dataset_updates.md).
 
 **Weather forecast.** [`fetch-tomorrow-forecast.yml`](.github/workflows/fetch-tomorrow-forecast.yml) fetches the Tomorrow.io forecast for the
 17 cities once a day, just after midnight Philippine time, and stores it in Supabase. A city that already has today's forecast is skipped and a
 stored forecast is never replaced, so the API and the workflow never fetch the same day twice (17 of the 500 free requests a day). It needs the
-repository secret `TOMMORROW_IO_API` as well as the three Supabase ones. Run it yourself with `python scripts/fetch_tomorrow_forecast.py [--dry-run]`.
+repository secret `TOMMORROW_IO_API` as well as the three Supabase ones. Run it yourself with `python3 scripts/fetch_tomorrow_forecast.py [--dry-run]`.
 
-**What the pages show.** The dashboard and flood level pages read the weather and river flow from the Supabase tables (the last recorded day,
-which can be days behind; the API answers 503 if the database cannot be read) and the weather now and the forecast from the stored Tomorrow.io rows. The flood risk level is a rule-based estimate from the
-recorded day and does not use the forecast.
+**What the pages show.** The dashboard and flood level pages read rain, river flow and the risk level from the Supabase tables (the latest recorded day,
+labelled "Today so far" while the day is in progress; the API answers 503 if the database cannot be read) and the weather now and the forecast from the stored
+Tomorrow.io rows. The flood risk level is a rule-based estimate from the recorded day and does not use the forecast.
 
 To run the dataset update yourself: `uv run python ../scripts/update_supabase_from_open_meteo.py` from `backend/`
-(add `--dry-run` to only see the plan, or `--refresh-days 7` to re-fetch the last 7 days). The CSV files in `datasets/` are no longer updated by the workflow; refresh them
-with `scripts/update_open_meteo_datasets.py` before using `scripts/load_to_supabase.py`.
+(add `--dry-run` to only see the plan, or `--refresh-days 7` to re-fetch the last 7 days).
+
+## Evaluation
+
+These are measured results from the project's own tests and experiments. The sets are small, so read them as indications, not guarantees.
+How answers are judged before release (safety criteria are gates) is in [docs/evaluation_rubric.md](docs/evaluation_rubric.md).
+
+**Document search: choosing the embedding model.** 214 chunks from the preparedness manual, the MMFMP report and a Marikina sheet, 9 scored questions in English and Filipino:
+
+| Model | Dimensions | recall@5 | MRR | MRR English | MRR Filipino |
+|---|---|---|---|---|---|
+| bge-m3 | 1024 | 0.78 | 0.66 | 0.75 | 0.55 |
+| **multilingual-e5-large (used)** | 1024 | **1.00** | **0.79** | 0.85 | 0.71 |
+| multilingual-e5-base | 768 | 0.89 | 0.75 | 0.84 | 0.64 |
+
+**Flood photos: how much SAM finds.** Overlap (IoU) with hand-drawn water on 30 held-out photos from a public flood-segmentation set. Adding phrases and a mirrored copy of the photo,
+with no training, raises it; more than 4 requests stopped paying off:
+
+| Setting | SAM requests per photo | IoU | Precision | Recall |
+|---|---|---|---|---|
+| "flood water" only | 1 | 0.723 | 0.972 | 0.737 |
+| + "muddy water" | 2 | 0.752 | 0.967 | 0.769 |
+| **+ mirrored photo (used)** | 4 | **0.764** | 0.964 | 0.783 |
+| four phrases, mirrored | 8 | 0.765 | 0.963 | 0.786 |
+
+SAM is precise (about 97% of what it marks is water) but misses about a quarter of the water. Most photos in that set are aerial, not street-level, so the ranking
+should carry over but the absolute numbers may not.
+
+**Speed.** Median cold time per agent over 5 runs (benchmarked with Muse Spark 1.3 on a laptop on 2026-10-28; the model the app uses is set by `MUSE_CHAT_MODEL`). Agents that do not call the model answer in milliseconds to a few seconds,
+and the model agents take about 7 seconds at the default reasoning setting:
+
+| Agent | Time | Uses the chat model? |
+|---|---|---|
+| emergency, contacts, location | 1 to 2 ms | no |
+| report | 91 ms | no |
+| evacuation | 2.18 s | no |
+| route (fallback path) | 2.32 s | no |
+| flood risk | 3.95 s | no |
+| weather | 7.13 s | yes |
+| documents | 7.99 s | yes |
+
+Setting the model's reasoning effort to `minimal` cut output tokens about 4 to 5 times and the answer time to about 2 to 4 seconds in a small comparison. The cross-encoder reranker
+added about 18 seconds per question on that laptop, so it is **off in production** (`RERANKER_MODEL=none`). Quality was not compared across models or settings. Full method and limits:
+[docs/agent_benchmarks.md](docs/agent_benchmarks.md).
+
+**Tests.** 355 backend tests (agents, the chat graph with a fake model, the API, sign-in, fair-use limits, the cache) run with no network, database or model, and
+GitHub Actions runs them on every push together with the frontend type check and build and a Docker image build.
+
+## Deployment
+
+| Part | Where | Notes |
+|---|---|---|
+| Website | Vercel | Next.js, built from the `frontend` folder |
+| API | Railway | Docker image from `backend/Dockerfile`, CPU only |
+| Database and sign-in | Supabase | Postgres with pgvector, Auth (Google and Facebook) |
+| Cache and shared limits | Railway Redis | Optional |
+| Model files | Railway persistent volume | The embedding model is downloaded once and reused by every deploy |
+
+**Railway has no GPU,** so nothing here needs one: the backend image installs CPU-only `torch` and `faiss-cpu`, the only local model is the document-search embedder (about 1.7 GiB of memory
+once loaded), and chat, speech-to-text and photo analysis are Muse API calls. A push to the deployment branch runs the CI checks first; Railway then builds the image and
+Vercel builds the website. The environment variables, the Google and Facebook setup, the spending limits and the CI/CD flow are in
+[docs/deployment_workflow_guide.md](docs/deployment_workflow_guide.md).
 
 ## Safety
 
@@ -310,7 +427,7 @@ do not walk or drive through floodwater. Official sources: [pagasa.dost.gov.ph](
 - [Dataset updates](docs/dataset_updates.md)
 - [Voice chat](docs/voice_chat.md)
 - [Flood photo check](docs/flood_media.md)
-- [Deployment workflow](docs/deployment_workflow_guide.md)
+- [Deployment workflow](docs/deployment_workflow_guide.md): Docker, Railway, Vercel, sign-in, fair-use limits and CI/CD
 - [Evaluation rubric](docs/evaluation_rubric.md) and [agent benchmarks](docs/agent_benchmarks.md)
 
 ## Good to know
@@ -322,16 +439,6 @@ do not walk or drive through floodwater. Official sources: [pagasa.dost.gov.ph](
 - Emergencies are recognised from a list of phrases. If you are in danger, call **911** whatever the assistant says.
 - Messages work best with one clear request and a named place.
 - **Secrets and prompt injection are blocked before anything runs.** A message that contains a password, API key, token or database address, or that tries to change the assistant's rules or asks for its keys, gets a fixed reply. It never reaches the chat model, the database or the saved conversation, so it costs no API credit, and its text is never logged. This is a pattern filter, so unusual disguises can slip through; the real protection is that keys are never placed in a prompt. See `backend/utils/input_guard.py`.
-
-## Roadmap
-
-- Show the sources of an answer as a separate field, and stream the words of a reply as they are written (today the page streams what the assistant is doing).
-- Make the flood risk level use the forecast.
-- Add real water-height readings and official alarm levels, so the flood level page can show a height and not only river flow.
-- Add a staff screen with a personal login per staff member, so every review is attributed.
-- Add CI (tests, lint, secret scanning) and an alert when the nightly dataset update fails.
-- Extend data beyond Metro Manila, starting with Cavite, Rizal and Bulacan.
-- Improve the risk rules with flood event labels, river and dam levels, terrain and satellite rainfall, and tune them against past floods.
 
 ## License
 

@@ -139,15 +139,6 @@ sequenceDiagram
 - `NEXT_PUBLIC_API_URL` points at the Railway backend; the backend CORS list must include the Vercel domains.
 - Only `NEXT_PUBLIC_*` variables are exposed to the browser.
 
-## 9. Open questions
-
-- Map provider (OpenStreetMap-based tiles vs. a commercial SDK) and its offline story.
-- Styling approach (Tailwind CSS is assumed; `components/ui` is currently empty).
-- Whether SMS-only users need a web fallback link in outbound messages.
-- Push notifications for new advisories: needed for the prototype or later?
-- Spoken replies: browser text-to-speech or a hosted voice, and whether Filipino quality is good enough.
-- Hands-free (`endpointing`) or push-to-talk as the default voice mode.
-
 ## AI Agent Flood Assistant: input modes
 
 The `/assistant` page (nav label "AI Agent Flood Assistant") has one round input button beside the message box.
@@ -174,7 +165,7 @@ corner does the same on touch screens.
 The dashboard (`/`) reads `GET /dashboard?cities=...` (all 17 cities) from the backend
 (`backend/src/api/routers/dashboard.py`, `backend/src/services/dashboard_data.py`), through `lib/dashboard-api.ts` and
 `context/DashboardDataContext.tsx`. The backend reads the Supabase tables `ncr_weather_daily`, `ncr_flood_features_daily` and `ncr_locations`
-(kept current by the nightly workflow) and keeps them in memory for 5 minutes. If the database cannot be read the API answers 503.
+(kept current by the dataset workflow, four times a day) and keeps them in memory for 5 minutes. If the database cannot be read the API answers 503.
 No weather service is called. "Today" is the **last recorded day**, which can be days behind; the page shows its date.
 
 | Dashboard part | From |

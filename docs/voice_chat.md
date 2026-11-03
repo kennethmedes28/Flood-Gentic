@@ -88,9 +88,3 @@ Wrong flood guidance can cause harm, and speech recognition makes mistakes, so:
 - If a place name is uncertain, ask which city before answering.
 - Emergency words ("saklolo", "trapped", "rescue") still route straight to the fixed emergency reply with hotlines.
 - Everything available by voice must also work by typing.
-
-## 6. Not built yet
-
-- Spoken replies. Meta's docs reviewed so far only describe speech-to-text; a Filipino voice is unchecked, and the browser's built-in voice is the fallback.
-- An origin check and per-IP rate limit on the socket (planned for `/chat` too).
-- Accuracy tests on recorded English, Tagalog and mixed questions (`docs/evaluation_rubric.md`).
