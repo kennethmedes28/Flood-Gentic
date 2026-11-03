@@ -64,8 +64,8 @@ def get_db(request: Request) -> Callable:
 
 
 SIGN_IN_REQUIRED = (
-    "Please sign in with Facebook to use the assistant. If you are in danger, call 911.\n"
-    "Mag-sign in gamit ang Facebook para magamit ang assistant. Kung nasa panganib, tumawag sa 911."
+    "Please sign in with Google or Facebook to use the assistant. If you are in danger, call 911.\n"
+    "Mag-sign in gamit ang Google o Facebook para magamit ang assistant. Kung nasa panganib, tumawag sa 911."
 )
 
 

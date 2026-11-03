@@ -7,12 +7,12 @@ import { useAuth } from "@/context/AuthContext"
 import { fetchUsage, type Usage } from "@/lib/usage-api"
 
 /**
- * Who is signed in, and the Facebook sign-in button when nobody is. The assistant costs money to run, so chat, photo checks
- * and voice need a Facebook account; an emergency message is still answered without signing in, and this says so.
+ * Who is signed in, and the Google and Facebook sign-in buttons when nobody is. The assistant costs money to run, so chat, photo checks
+ * and voice need a Google or Facebook account; an emergency message is still answered without signing in, and this says so.
  * Shows nothing while the saved session is being checked, or when sign-in is not set up in this build.
  */
 export function AuthBar({ refreshKey }: { refreshKey: number }) {
-  const { status, displayName, signInWithFacebook, signOut, error } = useAuth()
+  const { status, displayName, signIn, signOut, error } = useAuth()
   const [usage, setUsage] = useState<Usage | null>(null)
 
   // Read what has been used when the person signs in, and again after every message (refreshKey changes then).
@@ -32,7 +32,7 @@ export function AuthBar({ refreshKey }: { refreshKey: number }) {
       <GlassPanel className="flex flex-wrap items-center justify-between gap-3 px-5 py-2 text-sm">
         <div className="min-w-0 text-sm" style={{ color: "var(--glass-text-muted)" }}>
           <p className="truncate">
-            Signed in as <span className="font-medium">{displayName ?? "your Facebook account"}</span>
+            Signed in as <span className="font-medium">{displayName ?? "your account"}</span>
           </p>
           {usage && (
             <p className="text-xs">
@@ -50,7 +50,7 @@ export function AuthBar({ refreshKey }: { refreshKey: number }) {
   return (
     <GlassPanel className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
       <div className="min-w-0 flex-1 text-sm">
-        <p className="font-medium">Sign in with Facebook to chat, check photos or use voice.</p>
+        <p className="font-medium">Sign in to chat, check photos or use voice.</p>
         <p className="text-xs" style={{ color: "var(--glass-text-muted)" }}>
           In an emergency you can still type it here without signing in, and you can always call 911.
         </p>
@@ -60,13 +60,22 @@ export function AuthBar({ refreshKey }: { refreshKey: number }) {
           </p>
         )}
       </div>
-      <button
-        type="button"
-        onClick={() => void signInWithFacebook()}
-        className="min-h-11 rounded-full bg-[var(--glass-accent)] px-5 text-sm font-semibold text-white [text-shadow:none]"
-      >
-        Sign in with Facebook
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => void signIn("google")}
+          className="min-h-11 rounded-full bg-[var(--glass-accent)] px-5 text-sm font-semibold text-white [text-shadow:none]"
+        >
+          Sign in with Google
+        </button>
+        <button
+          type="button"
+          onClick={() => void signIn("facebook")}
+          className="min-h-11 rounded-full bg-[var(--glass-accent)] px-5 text-sm font-semibold text-white [text-shadow:none]"
+        >
+          Sign in with Facebook
+        </button>
+      </div>
     </GlassPanel>
   )
 }

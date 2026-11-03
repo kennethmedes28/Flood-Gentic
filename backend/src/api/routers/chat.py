@@ -60,7 +60,7 @@ async def record_usage(request: Request, user: User, scope: UsageScope) -> None:
 async def chat(request: Request, body: ChatRequest, graph=Depends(get_graph), user: User | None = Depends(optional_user)) -> ChatResponse:
     """Answer one message.
 
-    Needs a Facebook sign-in (``Authorization: Bearer <access token>``), except that an emergency message is answered
+    Needs a Google or Facebook sign-in (``Authorization: Bearer <access token>``), except that an emergency message is answered
     with the fixed 911 and hotline text without one (see ``src/services/signed_out.py``).
 
     The first call needs no ``thread_id``; the reply carries one. Send it back with every

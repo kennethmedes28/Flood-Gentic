@@ -1,6 +1,6 @@
 """Sign-in checks: verify the Supabase access token that the browser sends with a request.
 
-The browser signs in with Facebook through Supabase and gets an access token (a JWT). It sends the token as
+The browser signs in with Google or Facebook through Supabase and gets an access token (a JWT). It sends the token as
 ``Authorization: Bearer <token>``. This module checks it WITHOUT calling Supabase on every request: the token is signed
 with a key that Supabase publishes at ``<project url>/auth/v1/.well-known/jwks.json``, so the backend downloads those
 public keys once (and keeps them for an hour) and checks the signature, the expiry, the issuer and the audience itself.

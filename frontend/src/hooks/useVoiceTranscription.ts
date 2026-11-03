@@ -29,7 +29,7 @@ const MESSAGES = {
   micBusy: "The microphone is being used by another app. Close it and try again.",
   micFailed: "The microphone couldn't start. Please try again, or type your question.",
   server: "I can't reach the voice service right now. You can still type your question.",
-  signIn: "Please sign in with Facebook to use voice. You can still type your question.",
+  signIn: "Please sign in with Google or Facebook to use voice. You can still type your question.",
   silence: "I didn't hear anything. Try again, a little closer to the microphone.",
 }
 

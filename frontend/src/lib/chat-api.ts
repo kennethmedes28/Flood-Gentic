@@ -28,7 +28,7 @@ export class ChatError extends Error {
   needsSignIn = false
 }
 
-const SIGN_IN_MESSAGE = "Please sign in with Facebook to use the assistant. If you are in danger, call 911."
+const SIGN_IN_MESSAGE = "Please sign in with Google or Facebook to use the assistant. If you are in danger, call 911."
 
 /** Turn FastAPI's validation error (a string or a list of problems) into one sentence. */
 function readDetail(detail: unknown): string | null {

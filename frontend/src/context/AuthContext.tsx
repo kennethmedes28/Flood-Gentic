@@ -4,6 +4,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 import { authConfigured, getSupabase } from "@/lib/supabase"
 
+/** The ways to sign in. Each one has to be switched on in Supabase (Authentication, Providers). */
+export type SignInProvider = "google" | "facebook"
+
 type AuthValue = {
   /**
    * loading: still checking for a saved session; signedIn / signedOut; unconfigured: sign-in is not set up in this
@@ -11,12 +14,12 @@ type AuthValue = {
    */
   status: "loading" | "signedIn" | "signedOut" | "unconfigured"
   /**
-   * Who is signed in, for showing it: their Facebook name, or their email. A Facebook account can have no email (it can be
-   * made with a phone number), so this can be null even when signed in.
+   * Who is signed in, for showing it: their name, or their email. A Facebook account can have no email (it can be made with a
+   * phone number), so this can be null even when signed in.
    */
   displayName: string | null
-  /** Opens Facebook's sign-in page and comes back to this page afterwards. */
-  signInWithFacebook: () => Promise<void>
+  /** Opens the provider's sign-in page (Google or Facebook) and comes back to this page afterwards. */
+  signIn: (provider: SignInProvider) => Promise<void>
   signOut: () => Promise<void>
   /** A plain sentence when sign-in failed, or "". */
   error: string
@@ -25,7 +28,7 @@ type AuthValue = {
 const EMPTY: AuthValue = {
   status: "unconfigured",
   displayName: null,
-  signInWithFacebook: async () => {},
+  signIn: async () => {},
   signOut: async () => {},
   error: "",
 }
@@ -33,8 +36,8 @@ const EMPTY: AuthValue = {
 const AuthContext = createContext<AuthValue>(EMPTY)
 
 /**
- * Keeps track of who is signed in (Facebook, through Supabase) and shares it with the page. The library keeps the session in
- * the browser, refreshes it before it expires, and finishes the sign-in when Facebook sends the person back.
+ * Keeps track of who is signed in (Google or Facebook, through Supabase) and shares it with the page. The library keeps the session in
+ * the browser, refreshes it before it expires, and finishes the sign-in when the provider sends the person back.
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthValue["status"]>(authConfigured ? "loading" : "unconfigured")
@@ -56,12 +59,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => data.subscription.unsubscribe()
   }, [])
 
-  const signInWithFacebook = useCallback(async () => {
+  const signIn = useCallback(async (provider: SignInProvider) => {
     const supabase = getSupabase()
     if (!supabase) return
     setError("")
     const { error: failure } = await supabase.auth.signInWithOAuth({
-      provider: "facebook",
+      provider,
       options: { redirectTo: `${window.location.origin}/assistant` },
     })
     if (failure) setError("Sign-in could not start. Please try again in a moment.")
@@ -71,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await getSupabase()?.auth.signOut()
   }, [])
 
-  const value = useMemo<AuthValue>(() => ({ status, displayName, signInWithFacebook, signOut, error }), [status, displayName, signInWithFacebook, signOut, error])
+  const value = useMemo<AuthValue>(() => ({ status, displayName, signIn, signOut, error }), [status, displayName, signIn, signOut, error])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

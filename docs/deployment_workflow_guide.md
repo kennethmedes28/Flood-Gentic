@@ -102,30 +102,36 @@ settings from section 2 are still to be added before the first deploy.
 Adding or changing a volume makes Railway start a deployment of the service. Until the Dockerfile is in place and the
 service's root directory and variables are set, that build fails; that is expected.
 
-## 8. Facebook sign-in
+## 8. Sign-in (Google and Facebook)
 
-The assistant chat, the photo check and voice need a Facebook sign-in, because they spend Muse credits. Everything else
-(dashboard, flood level, evacuation centers, contacts, analytics) is public. An emergency message typed into the assistant is
+The assistant chat, the photo check and voice need a sign-in with a Google or a Facebook account, because they spend Muse credits.
+Everything else (dashboard, flood level, evacuation centers, contacts, analytics) is public. An emergency message typed into the assistant is
 answered without signing in (the fixed 911 text and the city's hotlines, no model call), so nobody in a flood is turned away.
 
-**How it works.** The browser signs in with Facebook through Supabase and gets an access token. It sends the token as
+**How it works.** The browser signs in through Supabase and gets an access token. It sends the token as
 `Authorization: Bearer <token>` (for voice, as `?token=` in the socket address, because a browser cannot set headers on a
 WebSocket). The backend checks the token itself against the public keys Supabase publishes at
 `<project>/auth/v1/.well-known/jwks.json` (`src/auth.py`), so no secret is shared and Supabase is not called per request. The check does
-not depend on the provider, so the same code works for any Supabase sign-in method.
-Any Facebook account may sign in; the per-user limits (section 9) protect the credits. A Facebook account made with a phone number has no email,
-so the page shows the person's name instead, and usage is counted by the Supabase user id, never by email.
+not depend on the provider: the page shows one button for each provider that is switched on in Supabase, and the backend treats both alike.
+Any Google or Facebook account may sign in; the per-user limits (section 9) protect the credits. A Facebook account made with a phone number has no email,
+so the page shows the person's name instead. Usage is counted by the Supabase user id, never by email. Someone who signs in with Google and with Facebook gets two
+separate accounts, each with its own limits, unless Supabase is set to link accounts that share an email.
 
-**One-time setup (two dashboards; the Facebook app secret lives only in Supabase and never goes in the repository or on Railway or Vercel):**
+**One-time setup (the app secrets live only in Supabase and never go in the repository, on Railway or on Vercel).** Both providers are enabled in this project's Supabase.
 
-1. Meta for Developers, your app, *Facebook Login*: under *Valid OAuth Redirect URIs* add `https://<project-ref>.supabase.co/auth/v1/callback`.
-2. Meta for Developers, your app: switch the app from *Development* to **Live**. While it is in Development, only people with a role on the app
-   (admins, developers, testers) can sign in, so judges would be refused. Meta asks for a privacy policy URL and a data deletion
-   method before it allows Live mode.
+*Google* (Google Cloud Console):
+1. APIs and Services, Credentials: an *OAuth client ID* of type *Web application*, with the redirect URI `https://<project-ref>.supabase.co/auth/v1/callback`.
+2. OAuth consent screen: set the publishing status to **In production**. While it is in *Testing*, only the test users you list can sign in.
+
+*Facebook* (Meta for Developers):
+1. Your app, *Facebook Login*: add `https://<project-ref>.supabase.co/auth/v1/callback` under *Valid OAuth Redirect URIs*.
+2. Switch the app from *Development* to **Live**. In Development only people with a role on the app can sign in, so judges would be refused. Meta asks for
+   a privacy policy URL and a data deletion method before it allows Live mode.
 3. The app needs the `email` and `public_profile` permissions (both are available without review).
-4. Supabase dashboard, Authentication, Providers, Facebook: enabled, with the app ID and the app secret (done for this project).
-5. Supabase dashboard, Authentication, URL Configuration: set *Site URL* to the Vercel address, and add these *Redirect URLs*:
-   `http://localhost:3000/**` and `https://<your-vercel-domain>/**`.
+
+*Supabase* (Authentication):
+1. Providers, Google and Facebook: enabled with the client ID or app ID and the secret.
+2. URL Configuration: set *Site URL* to the Vercel address, and add these *Redirect URLs*: `http://localhost:3000/**` and `https://<your-vercel-domain>/**`.
 
 **Variables:**
 

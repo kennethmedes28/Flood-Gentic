@@ -1,4 +1,4 @@
-"""Tests for the Facebook sign-in checks: the token verifier, the protected endpoints and the signed-out emergency answer.
+"""Tests for the sign-in checks: the token verifier, the protected endpoints and the signed-out emergency answer.
 
 A fake verifier stands in for Supabase, so no network is used. Run from the backend folder:  python -m unittest tests.test_auth -v
 """
