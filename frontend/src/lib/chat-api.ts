@@ -6,6 +6,8 @@
  * suggested evacuation center.
  */
 
+import { authHeaders } from "@/lib/supabase"
+
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 export type Coordinates = { lat: number; lng: number }
@@ -21,7 +23,12 @@ export type ChatReply = {
 }
 
 /** An error whose message is already safe and friendly to show to the user. */
-export class ChatError extends Error {}
+export class ChatError extends Error {
+  /** True when the backend refused because nobody is signed in, so the page can point to the sign-in button. */
+  needsSignIn = false
+}
+
+const SIGN_IN_MESSAGE = "Please sign in with Google to use the assistant. If you are in danger, call 911."
 
 /** Turn FastAPI's validation error (a string or a list of problems) into one sentence. */
 function readDetail(detail: unknown): string | null {
@@ -57,6 +64,11 @@ const NETWORK_MESSAGE = "I can't reach the assistant right now. Please check you
 /** Turn a failed answer into a friendly ChatError. Does nothing when the answer is fine. */
 async function throwIfFailed(response: Response): Promise<void> {
   if (response.ok) return
+  if (response.status === 401) {
+    const error = new ChatError(SIGN_IN_MESSAGE)
+    error.needsSignIn = true
+    throw error
+  }
   if (response.status === 429) {
     throw new ChatError("You're sending messages too fast. Please wait a moment and try again.")
   }
@@ -76,7 +88,7 @@ async function postMessage(path: string, options: SendOptions, signal?: AbortSig
   try {
     response = await fetch(`${API_URL}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
       body: JSON.stringify({
         message: options.message,
         thread_id: options.threadId,

@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react"
 
 import { GlassPanel } from "@/components/ui/GlassPanel"
+import { useAuth } from "@/context/AuthContext"
 import { useVoiceTranscription } from "@/hooks/useVoiceTranscription"
 import { ChatError, sendChatMessageStream, type Coordinates } from "@/lib/chat-api"
 import { useMediaAttachment } from "@/hooks/useMediaAttachment"
 import { MediaCheckError, preparePhotoForChat } from "@/lib/media-check-api"
 
+import { AuthBar } from "./AuthBar"
 import { InputModeButton, type InputMode } from "./InputModeButton"
 import { MessageBubble, TypingIndicator, type ChatMessage } from "./MessageBubble"
 import { QuickPrompts } from "./QuickPrompts"
@@ -48,6 +50,7 @@ function withSpeech(typedBefore: string, spoken: string): string {
  * comes back as a friendly error message.
  */
 export function ChatWindow() {
+  const auth = useAuth()
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME])
   const [threadId, setThreadId] = useState<string | null>(null)
   const [location, setLocation] = useState<Coordinates | null>(null)
@@ -104,6 +107,12 @@ export function ChatWindow() {
     if (pending || voiceActive) return
     const item = attachment
     if (!message && !item) return
+
+    // A photo check costs paid requests, so it needs sign-in; say so before uploading anything.
+    if (item && auth.status === "signedOut") {
+      addMessage({ role: "assistant", kind: "error", text: "Please sign in with Google to check a photo. If you are in danger, call 911." })
+      return
+    }
 
     addMessage({
       role: "user",
@@ -262,6 +271,8 @@ export function ChatWindow() {
           </p>
         )}
       </GlassPanel>
+
+      <AuthBar />
 
       {/* Messages */}
       <GlassPanel className="min-h-0 flex-1 overflow-y-auto p-4">

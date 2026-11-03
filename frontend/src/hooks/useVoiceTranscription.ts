@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { API_URL } from "@/lib/chat-api"
+import { authConfigured, getAccessToken } from "@/lib/supabase"
 
 /** What the voice input is doing. */
 export type VoiceStatus = "idle" | "connecting" | "listening" | "processing"
@@ -28,6 +29,7 @@ const MESSAGES = {
   micBusy: "The microphone is being used by another app. Close it and try again.",
   micFailed: "The microphone couldn't start. Please try again, or type your question.",
   server: "I can't reach the voice service right now. You can still type your question.",
+  signIn: "Please sign in with Google to use voice. You can still type your question.",
   silence: "I didn't hear anything. Try again, a little closer to the microphone.",
 }
 
@@ -184,7 +186,14 @@ export function useVoiceTranscription({ onPartial, onFinal }: Options) {
     silence.gain.value = 0
     source.connect(recorder).connect(silence).connect(context.destination)
 
-    const socket = new WebSocket(`${API_URL.replace(/^http/, "ws")}/ws/voice?mode=push_to_talk&rate=${context.sampleRate}`)
+    const token = await getAccessToken() // a browser cannot set headers on a WebSocket, so the token goes in the address
+    if (session.current !== current) return // cancelled while the token was fetched
+    if (authConfigured && !token) {
+      fail(MESSAGES.signIn)
+      return
+    }
+    const tokenPart = token ? `&token=${encodeURIComponent(token)}` : ""
+    const socket = new WebSocket(`${API_URL.replace(/^http/, "ws")}/ws/voice?mode=push_to_talk&rate=${context.sampleRate}${tokenPart}`)
     socket.binaryType = "arraybuffer"
     current.socket = socket
     current.timers.push(

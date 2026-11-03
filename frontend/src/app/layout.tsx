@@ -2,6 +2,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 
 import "./globals.css"
 import "./glass.css"
+import { AuthProvider } from "@/context/AuthContext"
 import { HandCursor } from "@/components/shell/HandCursor"
 import { CurrentCityProvider } from "@/context/CurrentCityContext"
 import { LookProvider } from "@/context/LookContext"
@@ -35,7 +36,9 @@ export default function RootLayout({
             <LookProvider>
               <HandProvider>
                 <CurrentCityProvider>
-                  <TextSizeProvider>{children}</TextSizeProvider>
+                  <AuthProvider>
+                    <TextSizeProvider>{children}</TextSizeProvider>
+                  </AuthProvider>
                   <HandCursor />
                 </CurrentCityProvider>
               </HandProvider>

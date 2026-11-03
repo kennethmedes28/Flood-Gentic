@@ -102,7 +102,42 @@ settings from section 2 are still to be added before the first deploy.
 Adding or changing a volume makes Railway start a deployment of the service. Until the Dockerfile is in place and the
 service's root directory and variables are set, that build fails; that is expected.
 
-## 8. Planned
+## 8. Google sign-in
+
+The assistant chat, the photo check and voice need a Google sign-in, because they spend Muse credits. Everything else
+(dashboard, flood level, evacuation centers, contacts, analytics) is public. An emergency message typed into the assistant is
+answered without signing in (the fixed 911 text and the city's hotlines, no model call), so nobody in a flood is turned away.
+
+**How it works.** The browser signs in with Google through Supabase and gets an access token. It sends the token as
+`Authorization: Bearer <token>` (for voice, as `?token=` in the socket address, because a browser cannot set headers on a
+WebSocket). The backend checks the token itself against the public keys Supabase publishes at
+`<project>/auth/v1/.well-known/jwks.json` (`src/auth.py`), so no secret is shared and Supabase is not called per request.
+Any Google account may sign in; the per-user limits (step 5) protect the credits.
+
+**One-time setup (you do this in two dashboards; the Google client secret never goes in the repo):**
+
+1. Google Cloud Console, APIs and Services, Credentials: create an *OAuth client ID* of type *Web application*.
+   Authorized redirect URI: `https://<project-ref>.supabase.co/auth/v1/callback`. Copy the client ID and secret.
+2. Google Cloud Console, OAuth consent screen: set the publishing status to **In production**. While it is in *Testing*,
+   only the test users you list can sign in, so judges would be refused.
+3. Supabase dashboard, Authentication, Providers, Google: turn it on and paste the client ID and secret.
+4. Supabase dashboard, Authentication, URL Configuration: set *Site URL* to the Vercel address, and add these *Redirect URLs*:
+   `http://localhost:3000/**` and `https://<your-vercel-domain>/**`.
+
+**Variables:**
+
+| Where | Variable | Value |
+|---|---|---|
+| Vercel / `frontend/.env.local` | `NEXT_PUBLIC_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
+| Vercel / `frontend/.env.local` | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the publishable key (`sb_publishable_...`) |
+| Railway / `backend/.env` | `REQUIRE_AUTH` | `true` (the default). `false` only for local work without sign-in |
+| Railway / `backend/.env` | `SUPABASE_PROJECT_REF` (or `SUPABASE_URL`) | your project; the backend builds the key address from it |
+| Railway / `backend/.env` | `CORS_ORIGINS` | must include the Vercel address, so the browser may send the `Authorization` header |
+
+With `REQUIRE_AUTH=true` and no Supabase address the backend refuses to start, with a message that says what to set.
+
+## 9. Planned
+
 
 - Vercel frontend with `NEXT_PUBLIC_API_URL`, and the backend CORS list allowing its domains. The voice socket must be served over `wss`.
 - A scheduled job that runs the full ingestion instead of by hand.
