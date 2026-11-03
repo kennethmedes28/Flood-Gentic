@@ -176,7 +176,7 @@ frontend/                Next.js app (React 19, Tailwind 4): dashboard, flood le
   src/components/        ui, shell (frame, menu, cursor), and one folder per page
   src/context  hooks  lib  data/    state, reusable logic, plain functions and API clients, static data
 corpus/                  source documents and CSVs (evacuation centers, hotlines, locations)
-datasets/                daily NCR weather and flood-feature CSVs (the dashboard reads them for now)
+datasets/                daily NCR weather and flood-feature CSVs (a fallback for the dashboard only if Supabase cannot be read; the nightly workflow updates Supabase, not these files, so they can be days behind)
 scripts/                 data loading, the daily dataset update, the Tomorrow.io fetch, run_dev.py
 hooks/                   run_all.sh and run_all.bat: start the backend and the frontend together
 Makefile                 shortcuts: make run, make test, make check
@@ -240,6 +240,7 @@ make check               # backend tests, then the frontend type check and lint
 | POST | `/requests` | Submit a supply or assistance request (write only) |
 | GET, PATCH | `/staff/...` | Staff only: summary counts, the full lists, and verifying, rejecting or assigning items. Needs `STAFF_API_KEY` |
 | GET | `/evacuation-centers` | Search the centers by city and barangay |
+| GET | `/places/evacuation-centers`, `/places/contacts` | The full lists behind the Evacuation and Contacts pages, from Supabase (the pages keep a built-in copy as a fallback) |
 | GET | `/advisories/latest` | Current PAGASA bulletins |
 | GET | `/health`, `/health/ready` | What works right now |
 | WS | `/ws/voice`, `/ws/camera` | Live speech-to-text and the webcam flood check |
@@ -288,8 +289,8 @@ Details: [docs/dataset_updates.md](docs/dataset_updates.md).
 stored forecast is never replaced, so the API and the workflow never fetch the same day twice (17 of the 500 free requests a day). It needs the
 repository secret `TOMMORROW_IO_API` as well as the three Supabase ones. Run it yourself with `python scripts/fetch_tomorrow_forecast.py [--dry-run]`.
 
-**What the pages show.** The dashboard and flood level pages read the weather and river flow from the datasets in `datasets/` (the last recorded day,
-which can be days behind) and the weather now and the forecast from the stored Tomorrow.io rows. The flood risk level is a rule-based estimate from the
+**What the pages show.** The dashboard and flood level pages read the weather and river flow from the Supabase tables (the last recorded day,
+which can be days behind; the older files in `datasets/` are used only if the database cannot be read) and the weather now and the forecast from the stored Tomorrow.io rows. The flood risk level is a rule-based estimate from the
 recorded day and does not use the forecast.
 
 To run the dataset update yourself: `uv run python ../scripts/update_supabase_from_open_meteo.py` from `backend/`
@@ -326,7 +327,7 @@ do not walk or drive through floodwater. Official sources: [pagasa.dost.gov.ph](
 ## Roadmap
 
 - Show the sources of an answer as a separate field, and stream the words of a reply as they are written (today the page streams what the assistant is doing).
-- Make the flood risk level use the forecast, and read the dashboard from the Supabase tables instead of the CSV files.
+- Make the flood risk level use the forecast.
 - Add real water-height readings and official alarm levels, so the flood level page can show a height and not only river flow.
 - Add a staff screen with a personal login per staff member, so every review is attributed.
 - Add CI (tests, lint, secret scanning) and an alert when the nightly dataset update fails.

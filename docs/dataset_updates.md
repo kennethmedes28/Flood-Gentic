@@ -10,8 +10,8 @@ the corpus (PDFs and chunks) is covered in `docs/ingestion_details.md`.
 flowchart LR
     OM[Open-Meteo<br/>archive + flood APIs] --> U[update_open_meteo_datasets.py]
     U --> CSV[datasets/*.csv]
-    CSV --> S[sync_datasets_to_supabase.py]
-    S --> DB[(Supabase Postgres)]
+    CSV --> L[load_to_supabase.py<br/>one-time full load]
+    L --> DB[(Supabase Postgres)]
     OM --> D[update_supabase_from_open_meteo.py]
     DB --> D
     D --> DB
@@ -23,8 +23,8 @@ There are two ways to keep Supabase current:
 * **Direct (used by the scheduled workflow):** `update_supabase_from_open_meteo.py` reads the last day of each location
   from Supabase, fetches only the missing days from Open-Meteo, and writes them. No CSV files and no local copy of the
   repository are involved. It also replaces the last 2 days (`--refresh-days`, 7 in the workflow) with Open-Meteo's revised values.
-* **Through the CSV files (by hand):** `update_open_meteo_datasets.py` writes the CSVs, then `sync_datasets_to_supabase.py`
-  adds the rows Supabase does not have yet. This path only **adds** data and never changes an existing row.
+* **Through the CSV files (by hand, only to rebuild):** `update_open_meteo_datasets.py` writes the CSVs, then
+  `load_to_supabase.py` reloads Supabase from them. To catch up by hand, run `update_supabase_from_open_meteo.py` instead.
 
 The CSV files in `datasets/` are no longer updated by the workflow, so they fall behind Supabase. Update them with
 `update_open_meteo_datasets.py` before running `load_to_supabase.py`, which reloads Supabase from them.
@@ -33,7 +33,7 @@ The CSV files in `datasets/` are no longer updated by the workflow, so they fall
 |---|---|---|
 | `scripts/update_supabase_from_open_meteo.py` | Fetches the missing days from Open-Meteo straight into Supabase (the nightly job) | Supabase tables |
 | `scripts/update_open_meteo_datasets.py` | Fetches the missing days from Open-Meteo | the two daily CSV files |
-| `scripts/sync_datasets_to_supabase.py` | Adds the rows Supabase does not have yet | Supabase tables |
+| `scripts/sync_datasets_to_supabase.py` | Adds the evacuation centers and emergency contacts Supabase does not have yet (not the weather tables) | Supabase `evacuation_centers`, `emergency_contacts` |
 | `scripts/load_to_supabase.py` | One-time full load: empties and reloads the dataset tables, upserts the FAISS chunks | Supabase tables |
 | `scripts/refresh_location_chunks.py` | Re-embeds only the `ncr-locations-*` chunks after `corpus/ncr_locations.csv` changed; writes a new FAISS run | Supabase `chunks`, `faiss_vectors/` |
 
@@ -111,14 +111,14 @@ The script stays well inside that:
 
 ## 5. Appending to Supabase
 
-`sync_datasets_to_supabase.py` copies each CSV into a temporary staging table, then runs
-`INSERT ... ON CONFLICT DO NOTHING` on the real table. Existing rows are never updated or deleted.
-It creates the three tables first if they are missing. Output looks like:
+`sync_datasets_to_supabase.py` is for the two lists that have no nightly feed: it copies the evacuation centers CSV into a
+temporary staging table and runs `INSERT ... ON CONFLICT DO NOTHING` on the real table, and does the same for the
+emergency contacts. Existing rows are never updated or deleted. It does not touch the weather tables: the nightly workflow
+keeps those current and the CSVs are older than Supabase. Output looks like:
 
 ```
-ncr_locations: 0 new rows added
-ncr_weather_daily: 51 new rows added
-ncr_flood_features_daily: 51 new rows added
+evacuation_centers: 0 new rows added
+emergency_contacts: 0 new rows added
 ```
 
 The connection comes from `SUPABASE_DB_URL`, or from `SUPABASE_PROJECT_REF` + `SUPABASE_PASSWORD` + `SUPABASE_POOLER_HOST`

@@ -97,7 +97,7 @@ Keep each module small and single-purpose; routers contain no business logic. Re
 | POST | `/chat` | Ask a question; returns the reply, a `thread_id` and the `safe_answer` flag | **Built** (JSON; no source list yet) |
 | POST | `/chat/stream` | The same, as one JSON line per step (`status` lines that say what the assistant is doing, then `reply` or `error`). Optional `image` (JPEG, PNG or WebP as base64, up to 2 MB) is checked for flood water and `detailed` adds people, vehicles and a rough depth | **Built** (the words of the reply are not streamed: the agents return the whole answer) |
 | POST | `/chat/stream/video` | The video is the request body (MP4, MOV or WebM, up to 200 MB); `message`, `thread_id`, `lat`, `lng` and `detailed` go in the query string. The whole video is analysed (shrunk first, see `docs/flood_media.md`), and the answer is the same lines as `/chat/stream` | **Built** |
-| GET | `/dashboard` | Weather, rain, river flow and a rule-based flood risk level for each city (default: all 17), from the last recorded day in `datasets/`; also where the river flow ranks among all recorded days | **Built** (reads CSV files, no network) |
+| GET | `/dashboard` | Weather, rain, river flow and a rule-based flood risk level for each city (default: all 17), from the last recorded day in the Supabase weather tables (kept current by the nightly workflow; the older `datasets/` files are used only if the database cannot be read); also where the river flow ranks among all recorded days | **Built** |
 | GET | `/analytics/weather` | Statistics for the Macro Weather Analytics page from the same recorded dataset: one point per year, month or day, headline extremes, the rainiest days and a ranking of the 17 cities. All of Metro Manila combines the cities (mean rain, temperature and river flow; highest wind and gust) | **Built** (reads CSV files, no network) |
 | GET | `/weather/forecast` | The stored Tomorrow.io forecast (120 hours, 6 days) with the entry for the current hour | **Built** (needs the `tomorrow_forecast` table and `TOMMORROW_IO_API`) |
 | GET | `/weather/stream` | The same as server-sent events: a `snapshot`, then a `tick` every minute with the current hour; the browser reconnects after 10 minutes | **Built** |
@@ -105,6 +105,7 @@ Keep each module small and single-purpose; routers contain no business logic. Re
 | GET | `/reports` | List recent reports (filter by city, hazard); rejected ones and phone-like digits are hidden | **Built** (needs the `reports` table) |
 | POST | `/requests` | Submit a supply / assistance request. Write only: it can hold a phone number | **Built** (needs the `requests` table) |
 | GET | `/evacuation-centers` | Search centers by city / barangay | **Built** |
+| GET | `/places/evacuation-centers`, `/places/contacts` | Every evacuation center / emergency contact, as the frontend pages list them | **Built** |
 | GET | `/advisories/latest` | Current PAGASA bulletins; says plainly when they cannot be read | **Built** (national pages; `city` only marks which mention it) |
 | GET | `/staff/summary` | Counts of reports and requests by status and city, and how long the oldest unreviewed one has waited | **Built** (staff key) |
 | GET | `/staff/reports`, `/staff/requests` | The newest items in full (unredacted text, exact position, contact phone); filter by status, city, hazard or kind | **Built** (staff key) |
@@ -318,8 +319,9 @@ separate `id` column and no `capacity` column.
 | Table | State |
 |---|---|
 | `chunks` | Created and filled (461 rows, 1024-dimension vectors, HNSW index). One table keyed by `(doc_id, chunk_idx)`; there is no separate `documents` table, so source, type, trust tier, hazard, city and validity live in the `metadata` column |
-| `ncr_locations`, `ncr_weather_daily`, `ncr_flood_features_daily` | Created and filled by `scripts/load_to_supabase.py` and kept current by the daily workflow (`docs/dataset_updates.md`) |
+| `ncr_locations`, `ncr_weather_daily`, `ncr_flood_features_daily` | Created and filled by `scripts/load_to_supabase.py` and kept current by the daily workflow (not by `sync_datasets_to_supabase.py`) (`docs/dataset_updates.md`) |
 | `evacuation_centers` | Created and filled (102 rows, 17 cities); joins to `ncr_locations` on `location_id`; read by the evacuation and route agents and by `GET /evacuation-centers` |
+| `emergency_contacts` | Created by `sql/004_emergency_contacts.sql` and filled by `scripts/sync_datasets_to_supabase.py` from `corpus/ph_emergency_contacts.csv` (numbers exactly as written); read by `GET /places/contacts` |
 | `tomorrow_forecast` | Created by `sql/003_tomorrow_forecast.sql` (or by `scripts/fetch_tomorrow_forecast.py`). One row per city per Manila day (`(city, fetched_on)` is the primary key) with the hourly and daily forecast as JSON. Written at most once per city per day, never replaced; read by `/weather/*` |
 | `reports` | **Does not exist yet.** Queried by the report agent, the route agent and `/reports`. Create it with `sql/000_reports.sql`, then `sql/001_reports_geo.sql` |
 | `requests` | **Does not exist yet.** Written by `POST /requests`. Create it with `sql/002_requests.sql` |

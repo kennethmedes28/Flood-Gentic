@@ -165,6 +165,32 @@ class EvacuationCenterOut(BaseModel):
     notes: str | None = None
 
 
+class PlaceCenterOut(BaseModel):
+    """One evacuation center as the Evacuation page lists it (GET /places/evacuation-centers)."""
+
+    id: str
+    city: str
+    barangay: str
+    name: str
+    type: str
+    status: str
+    source: str
+    lat: float
+    lng: float
+    notes: str
+
+
+class ContactOut(BaseModel):
+    """One emergency contact number (GET /places/contacts). The number is exactly as written in the list."""
+
+    agency: str
+    category: str
+    type: str
+    number: str
+    notes: str
+    cities: list[str]
+
+
 class AdvisoryOut(BaseModel):
     """One official page (a PAGASA bulletin or advisory), shortened."""
 

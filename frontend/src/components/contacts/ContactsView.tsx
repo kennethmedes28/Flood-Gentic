@@ -6,6 +6,8 @@ import { GlassPanel } from "@/components/ui/GlassPanel"
 import { useCurrentCity } from "@/context/CurrentCityContext"
 import { EMERGENCY_CONTACTS, type Contact } from "@/data/emergency-contacts"
 import { NCR_CITIES } from "@/data/evacuation-centers"
+import { useSupabaseList } from "@/hooks/useSupabaseList"
+import { fetchContacts } from "@/lib/places-api"
 import { matchCity } from "@/lib/ncr-city-match"
 import { telHref } from "@/lib/phone"
 
@@ -83,7 +85,8 @@ function AgencyCard({ group, showCategory = true }: { group: AgencyGroup; showCa
 
 /**
  * Emergency contacts: 911 first, then the hotlines for one city, then national agencies and hospitals.
- * The numbers are copied from corpus/ph_emergency_contacts.csv (see scripts/export_frontend_data.py).
+ * The numbers come from Supabase (GET /places/contacts), copied from corpus/ph_emergency_contacts.csv. If the backend
+ * cannot be reached, the built-in copy of that list is shown (see scripts/export_frontend_data.py).
  * They are shown exactly as written; only a plain number is made tap-to-call.
  */
 export function ContactsView() {
@@ -92,13 +95,15 @@ export function ContactsView() {
   const [chosenCity, setChosenCity] = useState<string | null>(null)
   const city = chosenCity ?? matchCity(dashboardCity.name) ?? NCR_CITIES[0]
 
-  const emergency = EMERGENCY_CONTACTS.find((contact) => contact.agency === NATIONAL_EMERGENCY)
+  const contacts = useSupabaseList(EMERGENCY_CONTACTS, fetchContacts) // from Supabase, the built-in list until it arrives
+
+  const emergency = contacts.find((contact) => contact.agency === NATIONAL_EMERGENCY)
   const emergencyHref = emergency ? telHref(emergency.number) : null
 
-  const localHere = EMERGENCY_CONTACTS.filter((contact) => contact.cities.includes(city))
-  const hospitals = groupByAgency(EMERGENCY_CONTACTS.filter((contact) => contact.category === "Local - Hospital"))
+  const localHere = contacts.filter((contact) => contact.cities.includes(city))
+  const hospitals = groupByAgency(contacts.filter((contact) => contact.category === "Local - Hospital"))
   const national = groupByAgency(
-    EMERGENCY_CONTACTS.filter(
+    contacts.filter(
       (contact) => contact.cities.length === 0 && contact.category !== "Local - Hospital" && contact.agency !== NATIONAL_EMERGENCY
     )
   ).sort((a, b) => {

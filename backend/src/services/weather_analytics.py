@@ -1,6 +1,7 @@
 """Long-run weather statistics for the "Macro Weather Analytics" page, from the recorded daily dataset.
 
-The data is ``datasets/ncr_weather_daily_2020-2026.csv`` (one row per city per day). This module groups it by
+The data is the ``ncr_weather_daily`` table in Supabase, or, only when the
+database cannot be read, ``datasets/ncr_weather_daily_2020-2026.csv``, which can be days behind (one row per city per day). This module groups it by
 year, month or day so the page can drill down: all years, then the months of one year, then the days of one month.
 
 Filters (all optional):
@@ -21,13 +22,12 @@ Example:
 """
 
 import calendar
-import os
 from datetime import date
 from pathlib import Path
 
 from agents.fetch_supabase_open_meteo_datasets import NCR_LOCATIONS
 from agents.flood_risk_agent import DAILY_RAIN_WATCH_MM
-from src.services.dashboard_data import DEFAULT_DATASETS, FEATURES_FILE, LOCATIONS_FILE, WEATHER_FILE, load_records
+from src.services.dashboard_data import get_records
 
 RAIN_DAY_MM = 1.0  # a day with at least this much rain counts as a "rain day"
 HOT_DAY_C = 35.0  # a day with a high of at least this counts as a "hot day"
@@ -74,11 +74,9 @@ def total(values: list) -> float | None:
 # --- loading and combining the days -------------------------------------------------------------
 
 
-def load_all_records(datasets_dir: str | Path | None = None) -> dict[str, dict]:
-    """Per city key, the recorded days (see ``dashboard_data.load_records``), cached until the files change."""
-    folder = Path(datasets_dir or os.getenv("DATASETS_DIR") or DEFAULT_DATASETS)
-    version = tuple((folder / name).stat().st_mtime_ns for name in (WEATHER_FILE, FEATURES_FILE, LOCATIONS_FILE))
-    return load_records(str(folder), version)
+def load_all_records(datasets_dir: str | Path | None = None, get_connection=None) -> dict[str, dict]:
+    """Per city key, the recorded days (see ``dashboard_data.get_records``): Supabase first, then the CSV files."""
+    return get_records(get_connection, datasets_dir)
 
 
 def combine_cities(records: dict[str, dict]) -> list[dict]:
@@ -221,10 +219,11 @@ def build_analytics(
     month: int | None = None,
     day: int | None = None,
     datasets_dir: str | Path | None = None,
+    get_connection=None,
 ) -> dict:
     """Everything the analytics page needs for one choice of filters (see the module docstring)."""
     check_filters(city, year, month, day)
-    records = load_all_records(datasets_dir)
+    records = load_all_records(datasets_dir, get_connection)
     all_days = days_for(records, city)
 
     in_range = keep_prefix(all_days, year, month)

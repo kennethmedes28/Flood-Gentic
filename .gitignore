@@ -20,3 +20,5 @@ build/
 # Labelled photos and saved SAM answers for scripts/evaluate_flood_media.py (large, and not ours to share)
 evaluation/flood_media/source/
 evaluation/flood_media/cache/
+
+*notebooks/

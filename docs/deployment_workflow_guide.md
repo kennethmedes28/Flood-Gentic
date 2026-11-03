@@ -55,7 +55,7 @@ Check a run under the repository's Actions tab; the log shows how many rows were
 | A PDF or the emergency contacts changed | `uv run python ../scripts/ingest_corpus.py --supabase` | Re-embeds the whole corpus (slow, loads the embedding model) and saves a new FAISS run |
 | `corpus/ncr_locations.csv` changed | `uv run python ../scripts/refresh_location_chunks.py` | Re-embeds only the 17 location chunks, updates Supabase and saves a new FAISS run |
 | `datasets/ncr_locations.csv` changed | `uv run python ../scripts/update_open_meteo_datasets.py --rebuild`, then `load_to_supabase.py` | `location_id` is the key in both daily files and Supabase, so the history must be rebuilt (about 600 API calls, 20 to 30 minutes; rerun the same command to resume after an error) |
-| Catch up the datasets by hand | `uv run python ../scripts/update_open_meteo_datasets.py`, then `sync_datasets_to_supabase.py` | Same as the workflow; `--dry-run` shows the plan |
+| Catch up the datasets by hand | `uv run python ../scripts/update_supabase_from_open_meteo.py --refresh-days 7` | Same as the workflow |
 
 Both `locations` files (`corpus/` and `datasets/`) currently hold the same 17 city points. Change them together.
 

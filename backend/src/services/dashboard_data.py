@@ -1,6 +1,9 @@
 """Numbers for the dashboard, read from the project's recorded daily datasets.
 
-For now the dashboard does not call any weather service. It reads two files in ``datasets/``:
+The numbers come from Supabase (tables ``ncr_locations``, ``ncr_weather_daily`` and ``ncr_flood_features_daily``,
+kept current every night by the "Update datasets" GitHub workflow, which replaces the last 7 days with Open-Meteo's
+revised values). If the database cannot be read, the files in ``datasets/`` are used instead so the dashboard keeps
+working. The files are NOT updated by the workflow, so they can be days behind Supabase and differ on recent days:
 
     * ``ncr_weather_daily_2020-2026.csv``  - temperature, rain, wind and river flow per day
     * ``ncr_flood_features_daily.csv``     - rain over 1 hour / 3 days and how high the river is for its history
@@ -20,7 +23,9 @@ Example:
 """
 
 import csv
+import logging
 import os
+import time
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -45,6 +50,18 @@ DEFAULT_DATASETS = Path(__file__).resolve().parents[3] / "datasets"
 WEATHER_FILE = "ncr_weather_daily_2020-2026.csv"
 FEATURES_FILE = "ncr_flood_features_daily.csv"
 LOCATIONS_FILE = "ncr_locations.csv"
+logger = logging.getLogger(__name__)
+
+DB_CACHE_SECONDS = 5 * 60  # the tables change at most once a day, so reading them again every 5 minutes is plenty
+RECORDS_SQL = """
+    SELECT l.city, w.date::text AS date,
+           w.precipitation_sum_mm, w.temperature_2m_max_c, w.temperature_2m_min_c,
+           w.wind_speed_10m_max_kmh, w.wind_gusts_10m_max_kmh, w.river_discharge_m3s,
+           f.rain_max_1h_mm, f.rain_3d_mm, f.discharge_pctile
+    FROM ncr_weather_daily w
+    JOIN ncr_locations l ON l.location_id = w.location_id
+    LEFT JOIN ncr_flood_features_daily f ON f.location_id = w.location_id AND f.date = w.date
+"""
 RECENT_DAYS = 14  # days of history sent for the charts
 MAX_CITIES = 20
 
@@ -66,9 +83,44 @@ def read_rows(path: Path) -> list[dict]:
         return list(csv.DictReader(file))
 
 
+def day_from_row(row: dict) -> dict:
+    """One recorded day, in the shape the rest of this module uses, from a row of the weather + features join.
+
+    The same column names are used by the database query (``RECORDS_SQL``) and by the merged CSV rows.
+    """
+    return {
+        "date": str(row["date"]),
+        "rain_mm": number(row["precipitation_sum_mm"]),
+        "high_c": number(row["temperature_2m_max_c"]),
+        "low_c": number(row["temperature_2m_min_c"]),
+        "wind_kmh": number(row["wind_speed_10m_max_kmh"]),
+        "gust_kmh": number(row["wind_gusts_10m_max_kmh"]),
+        "river_flow_m3s": number(row["river_discharge_m3s"]),
+        "rain_max_1h_mm": number(row["rain_max_1h_mm"]),
+        "rain_3d_mm": number(row["rain_3d_mm"]),
+        "discharge_percentile": number(row["discharge_pctile"]),
+    }
+
+
+def group_by_city(rows: list[tuple[str, dict]]) -> dict[str, dict]:
+    """Per city key: ``{"days": [...oldest first...], "rain_3d_sorted": [...], "flow_sorted": [...]}``.
+
+    ``rows`` is a list of (city key, day) pairs.
+    """
+    records: dict[str, dict] = {}
+    for key, day in rows:
+        records.setdefault(key, {"days": [], "rain_3d_sorted": [], "flow_sorted": []})["days"].append(day)
+
+    for record in records.values():
+        record["days"].sort(key=lambda day: day["date"])
+        record["rain_3d_sorted"] = sorted(day["rain_3d_mm"] for day in record["days"] if day["rain_3d_mm"] is not None)
+        record["flow_sorted"] = sorted(day["river_flow_m3s"] for day in record["days"] if day["river_flow_m3s"] is not None)
+    return records
+
+
 @lru_cache(maxsize=4)
 def load_records(folder: str, version: tuple) -> dict[str, dict]:
-    """Per city key: ``{"days": [...oldest first...], "rain_3d_sorted": [...]}``.
+    """Per city key, the recorded days read from the CSV files (see ``group_by_city`` for the shape).
 
     ``version`` is the files' modification times: when a file is replaced by the data loader, the next call
     reads it again instead of serving old numbers.
@@ -76,33 +128,51 @@ def load_records(folder: str, version: tuple) -> dict[str, dict]:
     base = Path(folder)
     keys = {row["location_id"]: city_key(row["city"]) for row in read_rows(base / LOCATIONS_FILE)}
     features = {(row["location_id"], row["date"]): row for row in read_rows(base / FEATURES_FILE)}
+    empty_features = {"rain_max_1h_mm": None, "rain_3d_mm": None, "discharge_pctile": None}
 
-    records: dict[str, dict] = {}
+    rows: list[tuple[str, dict]] = []
     for row in read_rows(base / WEATHER_FILE):
         key = keys.get(row["location_id"])
         if key is None:
             continue
-        extra = features.get((row["location_id"], row["date"]), {})
-        records.setdefault(key, {"days": [], "rain_3d_sorted": [], "flow_sorted": []})["days"].append(
-            {
-                "date": row["date"],
-                "rain_mm": number(row["precipitation_sum_mm"]),
-                "high_c": number(row["temperature_2m_max_c"]),
-                "low_c": number(row["temperature_2m_min_c"]),
-                "wind_kmh": number(row["wind_speed_10m_max_kmh"]),
-                "gust_kmh": number(row["wind_gusts_10m_max_kmh"]),
-                "river_flow_m3s": number(row["river_discharge_m3s"]),
-                "rain_max_1h_mm": number(extra.get("rain_max_1h_mm")),
-                "rain_3d_mm": number(extra.get("rain_3d_mm")),
-                "discharge_percentile": number(extra.get("discharge_pctile")),
-            }
-        )
+        extra = features.get((row["location_id"], row["date"]), empty_features)
+        rows.append((key, day_from_row({**row, **{name: extra.get(name) for name in empty_features}})))
+    return group_by_city(rows)
 
-    for record in records.values():
-        record["days"].sort(key=lambda day: day["date"])
-        record["rain_3d_sorted"] = sorted(day["rain_3d_mm"] for day in record["days"] if day["rain_3d_mm"] is not None)
-        record["flow_sorted"] = sorted(day["river_flow_m3s"] for day in record["days"] if day["river_flow_m3s"] is not None)
+
+_db_cache: dict = {"at": 0.0, "records": None}
+
+
+def load_records_from_db(get_connection) -> dict[str, dict]:
+    """Per city key, the recorded days read from Supabase, kept for ``DB_CACHE_SECONDS``. Raises when the read fails."""
+    cached = _db_cache["records"]
+    if cached is not None and time.monotonic() - _db_cache["at"] < DB_CACHE_SECONDS:
+        return cached
+
+    result = get_connection().execute(RECORDS_SQL).fetchall()
+    rows = [(city_key(row["city"]), day_from_row(row)) for row in result]
+    if not rows:
+        raise RuntimeError("The weather tables in Supabase are empty.")
+    records = group_by_city(rows)
+    _db_cache.update(at=time.monotonic(), records=records)
     return records
+
+
+def load_records_from_files(datasets_dir: str | Path | None = None) -> dict[str, dict]:
+    """The recorded days from the CSV files (the fallback; they can lag behind Supabase). The folder defaults to ``datasets/`` or ``DATASETS_DIR``."""
+    folder = Path(datasets_dir or os.getenv("DATASETS_DIR") or DEFAULT_DATASETS)
+    version = tuple((folder / name).stat().st_mtime_ns for name in (WEATHER_FILE, FEATURES_FILE, LOCATIONS_FILE))
+    return load_records(str(folder), version)
+
+
+def get_records(get_connection=None, datasets_dir: str | Path | None = None) -> dict[str, dict]:
+    """The recorded days: from Supabase when a connection is given and works, otherwise from the CSV files."""
+    if get_connection is not None:
+        try:
+            return load_records_from_db(get_connection)
+        except Exception as error:
+            logger.warning("Recorded weather could not be read from Supabase (%s); using the dataset files, which can be older.", type(error).__name__)
+    return load_records_from_files(datasets_dir)
 
 
 def risk_from_day(day: dict, rain_3d_sorted: list[float]) -> tuple[str, list[str]]:
@@ -164,14 +234,13 @@ def build_city(key: str, record: dict | None) -> dict:
     return entry
 
 
-def build_dashboard(cities: list[str], datasets_dir: str | Path | None = None) -> dict:
-    """The dashboard data for the given city keys (keys of ``NCR_LOCATIONS``), from the recorded datasets.
+def build_dashboard(cities: list[str], datasets_dir: str | Path | None = None, get_connection=None) -> dict:
+    """The dashboard data for the given city keys (keys of ``NCR_LOCATIONS``), from the recorded days.
 
-    The folder defaults to ``datasets/`` in the repository, or the ``DATASETS_DIR`` environment variable.
+    With ``get_connection`` the days are read from Supabase and, if that fails, from the CSV files in ``datasets/``
+    (or the ``DATASETS_DIR`` folder, or ``datasets_dir``).
     """
-    folder = Path(datasets_dir or os.getenv("DATASETS_DIR") or DEFAULT_DATASETS)
-    version = tuple((folder / name).stat().st_mtime_ns for name in (WEATHER_FILE, FEATURES_FILE, LOCATIONS_FILE))
-    records = load_records(str(folder), version)
+    records = get_records(get_connection, datasets_dir)
 
     entries = [build_city(key, records.get(key)) for key in cities]
     dates = [entry["data_date"] for entry in entries if entry["data_date"]]
