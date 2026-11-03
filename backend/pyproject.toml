@@ -5,33 +5,52 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    # What the running API needs. The image is built from these only (uv sync --no-dev).
+    "beautifulsoup4>=4.12",
     "bm25s>=0.3.15",
-    "colpali-engine>=0.3.12",
     "faiss-cpu>=1.12.0",
     "fastapi>=0.115.0",
-    "ipykernel>=7.4.0",
-    "jupyterlab>=4.6.4",
-    "langchain>=1.4.7",
+    "httpx>=0.27",
     "langchain-community>=0.4.2",
     "langchain-core>=1.7.0",
     "langchain-openai>=1.7.3",
     "langgraph>=1.2.18",
     "langgraph-checkpoint-postgres>=2.0.0",
     "langsmith>=0.14.13",
-    "llama-index>=0.14.25",
-    "matplotlib>=3.11.2",
     "meta-sam-parser>=0.1.0",
+    "numpy>=1.26",
+    "pillow>=10.0.0",
     "psycopg[binary]>=3.3.6",
     "psycopg-pool>=3.2.0",
-    "pymupdf>=2.0",
-    "pypdf>=6.21.3",
-    "ragas>=0.4.3",
+    "pyjwt[crypto]>=2.8",
+    "python-dotenv>=1.0",
+    "redis>=5.0",
     "sentence-transformers>=6.2.0",
     "torch>=2.13.0",
-    "transformers>=5.0.0",
-    "pillow>=10.0.0",
     "uvicorn>=0.30.0",
     "websockets>=15.0",
-    "redis>=5.0",
-    "pyjwt[crypto]>=2.8",
 ]
+
+[dependency-groups]
+# Tools for working on the project (notebooks, ingestion, evaluation, tests). Not installed in the Docker image.
+dev = [
+    "colpali-engine>=0.3.12",
+    "ipykernel>=7.4.0",
+    "jupyterlab>=4.6.4",
+    "langchain>=1.4.7",
+    "llama-index>=0.14.25",
+    "matplotlib>=3.11.2",
+    "pymupdf>=2.0",
+    "pypdf>=6.21.3",
+    "pytest>=8.0",
+    "ragas>=0.4.3",
+]
+
+# Railway has no GPU, so torch comes from PyTorch's CPU-only wheels on Linux (far smaller than the CUDA build).
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]

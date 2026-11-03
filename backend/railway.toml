@@ -1,0 +1,10 @@
+# Railway settings for the backend service (root directory: backend). Config as code, so a deploy never depends on dashboard clicks.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

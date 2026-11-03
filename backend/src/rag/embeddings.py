@@ -52,6 +52,15 @@ def get_model():
     return _model
 
 
+def warm_up() -> None:
+    """Load the model now and run one tiny embedding, so the first real question does not wait for it.
+
+    The first start downloads the model (about 2 GB) into the Hugging Face cache (``HF_HOME``); on Railway that is the
+    persistent volume, so later starts only read it from disk.
+    """
+    embed_texts(["warm up"], is_query=True)
+
+
 def embed_texts(texts: list[str], model=None, is_query: bool = False) -> list[list[float]]:
     """Embed many texts at once (document chunks unless ``is_query``).
 

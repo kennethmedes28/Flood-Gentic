@@ -168,7 +168,49 @@ The assistant page shows "Today: 3 of 20 messages, 1 of 3 photo checks" for the 
 reached, is answered with the fixed 911 text and the city's hotlines. Any other message is refused (`429`, or `503` when the counters
 are down), so a broken database cannot be used to skip the limits. Only signed-in users are counted: with `REQUIRE_AUTH=false` (local work) nothing is.
 
-## 10. Planned
+## 10. Docker image (backend)
+
+`backend/Dockerfile` builds the image Railway runs. `backend/railway.toml` tells Railway to use it, to check `/health`, and to restart a
+crashed service up to 5 times. Set the Railway service's **root directory** to `backend`.
+
+```
+docker build -t flood-gentic-backend backend/
+docker run --rm -p 8000:8000 --env-file backend/.env -e REQUIRE_AUTH=false flood-gentic-backend
+```
+
+- **Only what the API needs is installed** (`uv sync --no-dev`). Notebook, ingestion, evaluation and test tools are in the `dev`
+  dependency group of `backend/pyproject.toml` and are not in the image; `uv sync` on your machine still installs them.
+- **CPU only.** `torch` comes from PyTorch's CPU wheels (`[tool.uv.sources]` in `pyproject.toml`), which are far smaller than the CUDA build, and
+  `faiss-cpu` replaces `faiss-gpu`. Railway has no GPU, and this project uses none.
+- **Models are not in the image.** The embedding model (`intfloat/multilingual-e5-large`, about 2 GB) downloads on the first start into
+  `HF_HOME=/data/huggingface`, the persistent volume, and later deploys reuse it. A background thread loads it at start-up, so the service is
+  healthy at once; until it is loaded (a few minutes on the very first start) a document question waits for it. The reranker is off
+  (`RERANKER_MODEL=none`, set in the image).
+- **Behind Railway's proxy** set `TRUST_PROXY_HEADERS=true`, so rate limits count each visitor and not Railway's proxy.
+- **`uv.lock` is gitignored** in this repository, so Railway resolves the dependencies fresh on each build (within the `>=` versions in
+  `pyproject.toml`). To make builds exactly repeatable, remove `uv.lock` from `.gitignore` and commit `backend/uv.lock`; the Dockerfile
+  would then need `uv sync --frozen --no-dev`.
+
+**Measured locally** (the image run the way Railway will, with a fresh volume): image 900 MB; the container uses about 1.7 GiB of memory
+with the embedding model loaded; loading the model from the volume cache takes about 16 s and one query embedding 0.46 s; the first
+`/dashboard` call takes about 6 s (it loads the recorded days) and later ones are served from memory. Railway bills memory by use, so the
+loaded embedding model is the main cost of running this service.
+
+**Variables on the Railway service** (secrets are set from `backend/.env` by `python scripts/set_railway_variables.py`, which you run yourself; only what the running API needs is copied):
+
+| Variable | Value |
+|---|---|
+| `MUSE_API`, `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD`, `SUPABASE_POOLER_HOST`, `TOMMORROW_IO_API` | from `backend/.env` |
+| `REQUIRE_AUTH` | `true` |
+| `TRUST_PROXY_HEADERS` | `true` |
+| `CORS_ORIGINS` | the Vercel address, set once the frontend is deployed (default is `http://localhost:3000` only) |
+| `HF_HOME`, `REDIS_URL` | already set (volume path and the Redis reference) |
+
+Not copied on purpose: `SUPABASE_SECRET_KEY` and `SUPABASE_ACCESS_TOKEN` (full-power keys the API does not use), `HF_TOKEN`,
+`GROQ_API_KEY`, `LLAMAINDEX_API_KEY`. LangSmith tracing is left off in production, so signed-in users' messages are not sent to a third party; turn it on by adding the three `LANGSMITH_*` variables.
+
+## 11. Planned
+
 
 
 
