@@ -20,6 +20,11 @@ Variables, all optional:
     STAFF_API_KEY        secret for the /staff endpoints (list and review reports and requests).
                          At least 24 characters, e.g. from `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
                          Without it the /staff endpoints do not exist at all
+    REQUIRE_AUTH         ``true`` (default) means the assistant chat, photo check and voice need a Google sign-in
+                         (a Supabase access token). Set ``false`` for local work without Supabase auth. Emergency
+                         messages are answered without sign-in either way
+    SUPABASE_URL         the project address, for example ``https://abcd.supabase.co`` (default: built from
+                         ``SUPABASE_PROJECT_REF``). Needed when ``REQUIRE_AUTH`` is true
     REDIS_URL            Redis address (for example ``redis://default:password@host:6379``). Turns on the cache and the
                          shared rate limits. Without it nothing is cached and the limits are counted in memory
     STAFF_PER_MINUTE     calls to /staff allowed per client per minute (default 60); this also slows key guessing
@@ -51,6 +56,8 @@ class Settings:
     weather_per_minute: int = 30
     media_per_hour: int = 20  # photo checks, which use paid SAM requests
     redis_url: str | None = None  # turns on the Redis cache and shared rate limits
+    require_auth: bool = False  # direct construction (tests) is open; load_settings() turns it on unless REQUIRE_AUTH=false
+    supabase_url: str | None = None
 
 
 def read_bool(name: str, default: bool) -> bool:
@@ -73,6 +80,13 @@ def load_settings() -> Settings:
     if staff_api_key and len(staff_api_key) < MIN_STAFF_KEY_CHARS:
         raise RuntimeError(f"STAFF_API_KEY must be at least {MIN_STAFF_KEY_CHARS} characters long.")
 
+    require_auth = read_bool("REQUIRE_AUTH", True)
+    supabase_url = os.getenv("SUPABASE_URL") or None
+    if supabase_url is None and os.getenv("SUPABASE_PROJECT_REF"):
+        supabase_url = f"https://{os.environ['SUPABASE_PROJECT_REF'].strip()}.supabase.co"
+    if require_auth and supabase_url is None:
+        raise RuntimeError("REQUIRE_AUTH is on, so set SUPABASE_URL (or SUPABASE_PROJECT_REF), or set REQUIRE_AUTH=false for local work.")
+
     origins = os.getenv("CORS_ORIGINS", "http://localhost:3000")
     return Settings(
         cors_origins=tuple(origin.strip() for origin in origins.split(",") if origin.strip()),
@@ -88,4 +102,6 @@ def load_settings() -> Settings:
         weather_per_minute=int(os.getenv("WEATHER_PER_MINUTE", "30")),
         media_per_hour=int(os.getenv("MEDIA_PER_HOUR", "20")),
         redis_url=os.getenv("REDIS_URL") or None,
+        require_auth=require_auth,
+        supabase_url=supabase_url,
     )

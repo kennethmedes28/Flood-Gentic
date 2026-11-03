@@ -12,6 +12,7 @@ from fastapi import HTTPException, Request
 
 from agents.location_agent import find_city, nearest_city
 from src.api.schemas import Coordinates
+from src.auth import User, bearer_token
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,29 @@ def get_db(request: Request) -> Callable:
     if get_connection is None:
         raise HTTPException(status_code=503, detail=DATABASE_UNAVAILABLE)
     return get_connection
+
+
+SIGN_IN_REQUIRED = (
+    "Please sign in with Google to use the assistant. If you are in danger, call 911.\n"
+    "Mag-sign in gamit ang Google para magamit ang assistant. Kung nasa panganib, tumawag sa 911."
+)
+
+
+def optional_user(request: Request) -> User | None:
+    """The signed-in user from the request's bearer token, or None (no token, a bad token, or sign-in is switched off).
+
+    Sync on purpose: FastAPI runs it in a worker thread, so downloading the signing keys does not block the server.
+    """
+    verifier = getattr(request.app.state, "verifier", None)
+    if verifier is None:
+        return None
+    token = bearer_token(request.headers.get("authorization", ""))
+    return verifier.verify(token) if token else None
+
+
+def sign_in_required() -> HTTPException:
+    """The 401 for a signed-out caller on an endpoint that needs sign-in."""
+    return HTTPException(status_code=401, detail=SIGN_IN_REQUIRED, headers={"WWW-Authenticate": "Bearer"})
 
 
 def database_unavailable(error: Exception) -> HTTPException:

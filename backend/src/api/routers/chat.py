@@ -10,17 +10,22 @@ from fastapi.responses import StreamingResponse
 
 from langgraph_orchestrator.graph import ask_reply
 from langgraph_orchestrator.stream import ask_stream
-from src.api.deps import DATABASE_UNAVAILABLE, get_graph, limit_requests
+from src.api.deps import DATABASE_UNAVAILABLE, get_graph, limit_requests, optional_user, sign_in_required
 from src.api.schemas import ChatRequest, ChatResponse, ChatStreamRequest
+from src.auth import User
 from src.services.media_upload import BadImage, delete_quietly, save_base64_image
+from src.services.signed_out import signed_out_emergency_text
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
 
 @router.post("/chat", response_model=ChatResponse, dependencies=[Depends(limit_requests("chat"))])
-async def chat(body: ChatRequest, graph=Depends(get_graph)) -> ChatResponse:
+async def chat(request: Request, body: ChatRequest, graph=Depends(get_graph), user: User | None = Depends(optional_user)) -> ChatResponse:
     """Answer one message.
+
+    Needs a Google sign-in (``Authorization: Bearer <access token>``), except that an emergency message is answered
+    with the fixed 911 and hotline text without one (see ``src/services/signed_out.py``).
 
     The first call needs no ``thread_id``; the reply carries one. Send it back with every
     later message so the assistant remembers the place and the last suggested center.
@@ -30,6 +35,12 @@ async def chat(body: ChatRequest, graph=Depends(get_graph)) -> ChatResponse:
     """
     thread_id = str(body.thread_id) if body.thread_id else str(uuid4())
     location = body.location.model_dump() if body.location else None
+
+    if user is None and request.app.state.settings.require_auth:
+        emergency = signed_out_emergency_text(body.message, location)
+        if emergency is None:
+            raise sign_in_required()
+        return ChatResponse(thread_id=thread_id, reply=emergency, safe_answer=False, blocked=False)
 
     try:
         reply = await ask_reply(graph, body.message, thread_id=thread_id, location=location)
@@ -42,7 +53,9 @@ async def chat(body: ChatRequest, graph=Depends(get_graph)) -> ChatResponse:
 
 
 @router.post("/chat/stream", dependencies=[Depends(limit_requests("chat"))])
-async def chat_stream(request: Request, body: ChatStreamRequest, graph=Depends(get_graph)) -> StreamingResponse:
+async def chat_stream(
+    request: Request, body: ChatStreamRequest, graph=Depends(get_graph), user: User | None = Depends(optional_user)
+) -> StreamingResponse:
     """The same as POST /chat, but the answer arrives as progress first, and a photo can be attached.
 
     The body is one JSON object per line (``application/x-ndjson``): "status" events that say what the assistant
@@ -55,6 +68,14 @@ async def chat_stream(request: Request, body: ChatStreamRequest, graph=Depends(g
     """
     thread_id = str(body.thread_id) if body.thread_id else str(uuid4())
     location = body.location.model_dump() if body.location else None
+
+    if user is None and request.app.state.settings.require_auth:
+        # Signed out: only the fixed emergency answer, and never with a photo (a photo check costs paid SAM requests).
+        emergency = None if body.image else signed_out_emergency_text(body.message, location)
+        if emergency is None:
+            raise sign_in_required()
+        event = {"type": "reply", "thread_id": thread_id, "reply": emergency, "safe_answer": False, "blocked": False}
+        return StreamingResponse(iter([json.dumps(event) + "\n"]), media_type="application/x-ndjson")
 
     picture: Path | None = None
     media = None

@@ -25,9 +25,11 @@ Interactive documentation is served at /docs.
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from src.api.rate_limit import RateLimiter, SharedRateLimiter
+from src.auth import TokenVerifier
 from src.cache import configure_cache
 from src.api.routers import advisories, analytics, chat, dashboard, evacuation, health, help_requests, places, reports, staff, weather
 from src.api.settings import Settings, load_settings
@@ -37,6 +39,21 @@ from voice.websocket_router import create_voice_router
 
 
 MAX_REQUEST_BYTES = MAX_IMAGE_BASE64_CHARS + 100_000  # a photo as base64 text, plus room for the rest of the message
+
+
+async def authenticate_socket(websocket) -> bool:
+    """Whether a WebSocket may be used: always when sign-in is off, otherwise the ``token`` in its query must be valid.
+
+    A browser cannot set headers on a WebSocket, so the access token travels in the address (``?token=...``).
+    """
+    app = websocket.app
+    if not app.state.settings.require_auth:
+        return True
+    token = websocket.query_params.get("token", "")
+    if not token or app.state.verifier is None:
+        return False
+    user = await run_in_threadpool(app.state.verifier.verify, token)  # may download the signing keys
+    return user is not None
 
 
 async def validation_error_response(request: Request, error: RequestValidationError) -> JSONResponse:
@@ -49,8 +66,8 @@ async def validation_error_response(request: Request, error: RequestValidationEr
     return JSONResponse(status_code=422, content={"detail": problems})
 
 
-def create_app(settings: Settings | None = None, lifespan=real_services) -> FastAPI:
-    """Build the app. Tests pass their own ``settings`` and a ``lifespan`` that sets fakes on ``app.state``."""
+def create_app(settings: Settings | None = None, lifespan=real_services, verifier=None) -> FastAPI:
+    """Build the app. Tests pass their own ``settings``, a ``lifespan`` that sets fakes on ``app.state``, and a fake ``verifier``."""
     settings = settings or load_settings()
 
     app = FastAPI(
@@ -60,6 +77,10 @@ def create_app(settings: Settings | None = None, lifespan=real_services) -> Fast
         lifespan=lifespan,
     )
     app.state.settings = settings
+    # Checks the Google sign-in tokens of the browser. None means sign-in is off (local work and tests).
+    if verifier is None and settings.require_auth:
+        verifier = TokenVerifier(settings.supabase_url)
+    app.state.verifier = verifier
     app.add_exception_handler(RequestValidationError, validation_error_response)
     cache = configure_cache(settings.redis_url)
 
@@ -91,12 +112,12 @@ def create_app(settings: Settings | None = None, lifespan=real_services) -> Fast
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
         allow_methods=["GET", "POST"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Content-Type", "Authorization"],
     )
 
     for module in (health, chat, reports, help_requests, evacuation, advisories, dashboard, analytics, places, weather):
         app.include_router(module.router)
     if settings.staff_api_key:  # without a key the staff endpoints simply do not exist
         app.include_router(staff.router)
-    app.include_router(create_voice_router())
+    app.include_router(create_voice_router(authenticate=authenticate_socket))
     return app
