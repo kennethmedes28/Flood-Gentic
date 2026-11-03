@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 
+import { useLanguage } from "@/context/LanguageContext"
 import { GlassPanel } from "@/components/ui/GlassPanel"
 import { Skeleton } from "@/components/ui/Skeleton"
 
@@ -41,6 +42,7 @@ const FRAME_PERMISSIONS = "fullscreen; geolocation; clipboard-write"
  * can keep loading here while it works in a normal tab. The link opens that tab.
  */
 export function SatelliteView() {
+  const { t } = useLanguage()
   const [loaded, setLoaded] = useState(false)
 
   return (
@@ -49,7 +51,7 @@ export function SatelliteView() {
 
       <iframe
         src={PANAHON_URL}
-        title="PAGASA live weather and satellite"
+        title={t("sat.title")}
         sandbox={FRAME_SANDBOX}
         allow={FRAME_PERMISSIONS}
         allowFullScreen
@@ -59,15 +61,15 @@ export function SatelliteView() {
 
       {/* Small bar in the top corner. The rest of the screen belongs to the site. */}
       <GlassPanel className="absolute top-3 left-3 z-10 flex items-center gap-3 px-4 py-2 text-sm">
-        <span className="font-semibold">Live satellite weather · PAGASA</span>
+        <span className="font-semibold">{t("sat.bar")}</span>
         <a
           href={PANAHON_URL}
           target="_blank"
           rel="noopener noreferrer"
           className="flex min-h-11 items-center rounded-full px-2 underline"
         >
-          Open in new tab
-          <span className="sr-only">(opens in a new tab)</span>
+          {t("sat.open")}
+          <span className="sr-only">{t("sat.newTab")}</span>
         </a>
       </GlassPanel>
     </main>

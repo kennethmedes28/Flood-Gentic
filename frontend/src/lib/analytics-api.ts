@@ -1,3 +1,4 @@
+import { KeyedError } from "@/i18n/keyed-error"
 import { API_URL } from "@/lib/chat-api"
 
 /** The filters of the analytics page. `cityKey` "" means all of Metro Manila combined. */
@@ -147,16 +148,16 @@ export function analyticsQuery(filters: AnalyticsFilters): string {
   return query.toString()
 }
 
-/** Get the statistics for the filters (GET /analytics/weather). Throws an Error with a plain message on failure. */
+/** Get the statistics for the filters (GET /analytics/weather). Throws a KeyedError (an interface text key) on failure. */
 export async function fetchAnalytics(filters: AnalyticsFilters, signal?: AbortSignal): Promise<Analytics> {
   const timeout = AbortSignal.timeout(TIMEOUT_MS)
   let response: Response
   try {
     response = await fetch(`${API_URL}/analytics/weather?${analyticsQuery(filters)}`, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout })
   } catch {
-    throw new Error("Can't reach the weather data service right now.")
+    throw new KeyedError("an.error.network")
   }
-  if (!response.ok) throw new Error("The weather data service had a problem. Please try again.")
+  if (!response.ok) throw new KeyedError("an.error.problem")
 
   const body = (await response.json()) as ApiAnalytics
   return {
