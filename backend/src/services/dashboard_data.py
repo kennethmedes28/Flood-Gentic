@@ -119,35 +119,54 @@ def get_records(get_connection) -> dict[str, dict]:
     return load_records_from_db(get_connection)
 
 
-def risk_from_day(day: dict, rain_3d_sorted: list[float]) -> tuple[str, list[str]]:
-    """The risk level and the reasons for one recorded day, using the thresholds of the chat assistant's rules."""
+# The English sentence of each reason code. The code and its number are also sent to the app (``risk_reason_codes``), which
+# writes the sentence in the language the person chose; the English text stays for clients that only show text.
+REASON_TEXT = {
+    "peak_rain": "Peak rain was {value:.1f} mm in one hour.",
+    "day_rain": "{value:.0f} mm of rain fell in the day.",
+    "soaked_ground": "The ground is soaked ({value:.0f} mm in the last 3 days).",
+    "high_river": "River flow of {value:.1f} m3/s is high for this area.",
+    "calm": "No heavy rain, soaked ground or high river flow on this day.",
+}
+
+
+def reason_text(code: str, value: float | None) -> str:
+    """The English sentence for a reason code and its number."""
+    return REASON_TEXT[code].format(value=value if value is not None else 0)
+
+
+def risk_from_day(day: dict, rain_3d_sorted: list[float]) -> tuple[str, list[tuple[str, float | None]]]:
+    """The risk level and the reasons for one recorded day, using the thresholds of the chat assistant's rules.
+
+    Each reason is a ``(code, number)`` pair; ``reason_text`` turns it into the English sentence.
+    """
     level, reasons = RISK_LOW, []
 
     peak = day["rain_max_1h_mm"]
     for limit, found in ((HOURLY_RAIN_CRITICAL_MM, RISK_CRITICAL), (HOURLY_RAIN_HIGH_MM, RISK_HIGH), (HOURLY_RAIN_WATCH_MM, RISK_WATCH)):
         if peak is not None and peak >= limit:
             level = higher_of(level, found)
-            reasons.append(f"Peak rain was {peak:.1f} mm in one hour.")
+            reasons.append(("peak_rain", peak))
             break
 
     total = day["rain_mm"]
     for limit, found in ((DAILY_RAIN_CRITICAL_MM, RISK_CRITICAL), (DAILY_RAIN_HIGH_MM, RISK_HIGH), (DAILY_RAIN_WATCH_MM, RISK_WATCH)):
         if total is not None and total >= limit:
             level = higher_of(level, found)
-            reasons.append(f"{total:.0f} mm of rain fell in the day.")
+            reasons.append(("day_rain", total))
             break
 
     soaked_from = percentile_value(rain_3d_sorted, SATURATION_PERCENTILE)
     if day["rain_3d_mm"] is not None and soaked_from is not None and day["rain_3d_mm"] >= soaked_from:
-        reasons.append(f"The ground is soaked ({day['rain_3d_mm']:.0f} mm in the last 3 days).")
+        reasons.append(("soaked_ground", day["rain_3d_mm"]))
         level = raise_level(level) if level != RISK_LOW else RISK_WATCH
 
     if day["discharge_percentile"] is not None and day["discharge_percentile"] >= RIVER_PERCENTILE:
-        reasons.append(f"River flow of {day['river_flow_m3s']:.1f} m3/s is high for this area.")
+        reasons.append(("high_river", day["river_flow_m3s"]))
         level = higher_of(level, RISK_HIGH)
 
     if not reasons:
-        reasons.append("No heavy rain, soaked ground or high river flow on this day.")
+        reasons.append(("calm", None))
     return level, reasons
 
 
@@ -157,7 +176,7 @@ def build_city(key: str, record: dict | None) -> dict:
     entry = {
         "city": key, "lat": lat, "lng": lng, "data_date": None,
         "high_c": None, "low_c": None, "rain_mm": None, "wind_kmh": None, "gust_kmh": None,
-        "river_flow_m3s": None, "river_percentile": None, "river_high_flow_m3s": None, "risk_level": None, "risk_reasons": [], "missing": [], "recent": [],
+        "river_flow_m3s": None, "river_percentile": None, "river_high_flow_m3s": None, "risk_level": None, "risk_reasons": [], "risk_reason_codes": [], "missing": [], "recent": [],
     }
     if not record or not record["days"]:
         entry["missing"].append("recorded weather for this city")
@@ -170,7 +189,9 @@ def build_city(key: str, record: dict | None) -> dict:
     # How high the river is for this city: its place among all days since 2020, and the flow where "high" starts.
     entry["river_percentile"] = latest["discharge_percentile"]
     entry["river_high_flow_m3s"] = percentile_value(record["flow_sorted"], RIVER_PERCENTILE)
-    entry["risk_level"], entry["risk_reasons"] = risk_from_day(latest, record["rain_3d_sorted"])
+    entry["risk_level"], reasons = risk_from_day(latest, record["rain_3d_sorted"])
+    entry["risk_reasons"] = [reason_text(code, value) for code, value in reasons]
+    entry["risk_reason_codes"] = [{"code": code, "value": value} for code, value in reasons]
     entry["recent"] = [
         {name: day[name] for name in ("date", "rain_mm", "high_c", "low_c", "river_flow_m3s")}
         for day in record["days"][-RECENT_DAYS:]

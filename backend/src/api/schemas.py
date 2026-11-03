@@ -233,6 +233,13 @@ class DayRecordOut(BaseModel):
     river_flow_m3s: float | None = None
 
 
+class ReasonCodeOut(BaseModel):
+    """One reason for a flood risk level: a code (for example ``peak_rain``) and the number it is about, if any."""
+
+    code: str
+    value: float | None = None
+
+
 class DashboardCityOut(BaseModel):
     """What the dashboard shows for one city, from the last recorded day. A value that is not in the data is null."""
 
@@ -249,7 +256,8 @@ class DashboardCityOut(BaseModel):
     river_percentile: float | None = None  # 0 to 1: the share of days since 2020 with a lower flow in this city
     river_high_flow_m3s: float | None = None  # the flow from which the river counts as high for this city
     risk_level: str | None = None  # low, watch, high or critical
-    risk_reasons: list[str]
+    risk_reasons: list[str]  # the reasons in English
+    risk_reason_codes: list[ReasonCodeOut] = []  # the same reasons as codes with a number, for the app to write in the chosen language
     missing: list[str]
     recent: list[DayRecordOut]  # the last days, oldest first
 

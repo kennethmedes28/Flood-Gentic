@@ -104,6 +104,9 @@ class DashboardTests(unittest.TestCase):
         city = self.ask("?cities=manila", last_day_rain=80.0, last_day_peak=20.0).json()["cities"][0]
         self.assertEqual(city["risk_level"], "high")
         self.assertTrue(any("one hour" in reason for reason in city["risk_reasons"]))
+        # The same reasons as codes with a number, so the app can write them in the chosen language.
+        self.assertIn({"code": "peak_rain", "value": 20.0}, city["risk_reason_codes"])
+        self.assertEqual(len(city["risk_reason_codes"]), len(city["risk_reasons"]))
 
     def test_a_river_high_for_its_history_is_at_least_high(self):
         city = self.ask("?cities=manila", percentile=0.99).json()["cities"][0]
