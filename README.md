@@ -189,7 +189,7 @@ docs/                    architecture, evaluation and deployment notes
 Requires Python 3.11+, [uv](https://docs.astral.sh/uv/) and Node.js (for the frontend).
 
 ```bash
-make install             # backend: uv sync (heavy: includes torch and faiss-gpu); frontend: npm install
+make install             # backend: uv sync (heavy: includes torch and faiss-cpu); frontend: npm install
 ```
 
 Create `backend/.env` (it is gitignored; never commit it) with these variables:
