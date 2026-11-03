@@ -145,6 +145,13 @@ Flood-Gentic is designed as a futuristic heads-up display (HUD) for VR headsets 
 
 The help and access guide inside the app (the menu's "Help and access guide") says the same, and explains how to use these controls.
 
+### English and Filipino interface
+
+The whole app (menu, dashboard, flood level, evacuation centers, contacts, analytics, assistant, help, privacy and data-deletion pages) can be shown in English or Filipino. Pick the language in the round menu; the choice is
+remembered in the browser, and the first visit follows the browser's language (Filipino or Tagalog gives Filipino). Place names, agency names, source lines and the assistant's answers are shown as they come: the assistant
+replies in the language the person wrote in. **The Filipino text is a first translation and should be reviewed by a native speaker, and the Filipino privacy policy by whoever is responsible for it.** How it is built is in
+[docs/frontend_architecture.md](docs/frontend_architecture.md#english-and-filipino-interface).
+
 ## Architecture
 
 ```mermaid

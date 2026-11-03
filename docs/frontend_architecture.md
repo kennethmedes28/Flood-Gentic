@@ -201,6 +201,17 @@ data/           static data only: dashboard cities, evacuation centers, emergenc
 Rule of thumb: components draw, hooks and context hold state, `lib` computes and talks to the backend, `data` is just values.
 Imports use the `@/` alias (for example `@/lib/risk`).
 
+## English and Filipino interface
+
+Every text the interface shows lives in `src/i18n/messages/*.ts`, one file per area (shell, assistant, data, dashboard, flood, places, analytics, legal). Each file calls `defineMessages(en, fil)`,
+which is typed so that a key missing in either language, or a key that differs, stops the build. `index.ts` merges the files into `MESSAGES` and gives the `MessageKey` type.
+
+- `LanguageContext` holds the language (stored in `localStorage` as `floodguard:language`; the first visit follows the browser's language), sets `<html lang>`, and gives components `t(key, { params })` (placeholders are `{name}`) and a `locale` (`en-PH` or `fil-PH`) for dates and month names.
+- Library code returns keys, not sentences (`describeRain`, `describeFlowChange`, `LEVEL_STYLE`, `riskLook`), and the component translates them. Errors carry keys too (`KeyedError`, `ChatError.key`), so an error already on screen changes language with the page.
+- The backend sends reasons for a risk level as codes with a number (`risk_reason_codes`, next to the English `risk_reasons`), and the page writes the sentence. The assistant's answers are written by the chat model in the language the person used.
+- The privacy and data-deletion pages are server components; they carry both languages with `<Localized en={...} fil={...} />` and send the English version in their HTML.
+- To add a text: add the key to both languages in the right file. To add a language: add it to `LANGUAGES` in `i18n/define.ts` and a third argument to each `defineMessages`.
+
 ## Chat progress (streaming)
 
 The assistant page sends messages to `POST /chat/stream` (`lib/chat-api.ts: sendChatMessageStream`). The backend answers with one
