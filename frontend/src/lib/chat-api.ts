@@ -18,8 +18,6 @@ export type ChatReply = {
   safeAnswer: boolean
   /** True when the message was stopped before any processing. */
   blocked: boolean
-  /** Full address of an image to show with the reply (the stored detections of an example photo), when there is one. */
-  imageUrl?: string
 }
 
 /** An error whose message is already safe and friendly to show to the user. */
@@ -42,8 +40,6 @@ type SendOptions = {
   location: Coordinates | null
   /** A JPEG picture as base64 text, to be checked for flood water (see media-check-api.ts). */
   image?: string
-  /** The uploaded photo's file name, so the backend can recognise the example photos that already have detections. */
-  filename?: string
   /** With a picture: also count people and vehicles and estimate a rough depth. Slower and costs more. */
   detailed?: boolean
 }
@@ -85,7 +81,7 @@ async function postMessage(path: string, options: SendOptions, signal?: AbortSig
         message: options.message,
         thread_id: options.threadId,
         location: options.location,
-        ...(options.image ? { image: options.image, detailed: Boolean(options.detailed), filename: options.filename } : {}),
+        ...(options.image ? { image: options.image, detailed: Boolean(options.detailed) } : {}),
       }),
       signal,
     })
@@ -98,13 +94,12 @@ async function postMessage(path: string, options: SendOptions, signal?: AbortSig
 }
 
 /** The reply fields of the backend's answer (snake_case) as a ChatReply. */
-function toReply(data: { thread_id: string; reply: string; safe_answer?: boolean; blocked?: boolean; image_url?: string }): ChatReply {
+function toReply(data: { thread_id: string; reply: string; safe_answer?: boolean; blocked?: boolean}): ChatReply {
   return {
     threadId: data.thread_id,
     text: data.reply,
     safeAnswer: Boolean(data.safe_answer),
     blocked: Boolean(data.blocked),
-    imageUrl: data.image_url ? `${API_URL}${data.image_url}` : undefined,
   }
 }
 
@@ -117,7 +112,7 @@ export async function sendChatMessage(options: SendOptions): Promise<ChatReply> 
 /** One line of the stream (POST /chat/stream). */
 type StreamEvent =
   | { type: "status"; label: string; topics?: string[] }
-  | { type: "reply"; thread_id: string; reply: string; safe_answer?: boolean; blocked?: boolean; image_url?: string }
+  | { type: "reply"; thread_id: string; reply: string; safe_answer?: boolean; blocked?: boolean }
   | { type: "error"; message: string }
 
 /**

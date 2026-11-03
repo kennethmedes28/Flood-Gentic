@@ -11,8 +11,6 @@ export type ChatMessage = {
   kind: "normal" | "safe" | "blocked" | "error"
   /** A photo or video the user attached to this message (shown as a small preview). */
   media?: { url: string; isVideo: boolean }
-  /** An image that comes with the reply, such as a photo with the detected objects marked on it. */
-  resultImage?: string
 }
 
 /** Label and symbol for the special kinds, so they never rely on colour alone. */
@@ -45,10 +43,6 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
             // eslint-disable-next-line @next/next/no-img-element -- a local preview of the user's own file
             <img src={message.media.url} alt="Photo you attached" className={`max-h-48 rounded-xl ${message.text ? "mb-2" : ""}`} />
           ))}
-        {message.resultImage && (
-          // eslint-disable-next-line @next/next/no-img-element -- served by the backend, so the Next image loader is not needed
-          <img src={message.resultImage} alt="Your photo with the detected objects marked" className="mb-2 max-h-96 rounded-xl" />
-        )}
         {message.text && <p className="break-words whitespace-pre-wrap">{message.text}</p>}
       </div>
     </li>

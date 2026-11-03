@@ -126,14 +126,13 @@ export function ChatWindow() {
         reply = await sendChatVideoStream(item.file, { message, threadId, location, detailed: moreDetail }, onProgress)
       } else {
         const image = item ? await preparePhotoForChat(item.file) : undefined
-        reply = await sendChatMessageStream({ message, threadId, location, image, detailed: moreDetail, filename: item?.file.name }, onProgress)
+        reply = await sendChatMessageStream({ message, threadId, location, image, detailed: moreDetail }, onProgress)
       }
       setThreadId(reply.threadId)
       addMessage({
         role: "assistant",
         text: reply.text,
         kind: reply.blocked ? "blocked" : reply.safeAnswer ? "safe" : "normal",
-        resultImage: reply.imageUrl,
       })
     } catch (error) {
       const known = error instanceof ChatError || error instanceof MediaCheckError
