@@ -60,18 +60,20 @@ def default_transcriber(mode: str, sample_rate: int) -> RealtimeTranscriber:
 
 def create_voice_router(
     transcriber_factory: Callable[[str, int], RealtimeTranscriber] = default_transcriber,
-    authenticate: Callable[[WebSocket], Awaitable[bool]] | None = None,
+    authenticate: Callable[[WebSocket], Awaitable[str | None]] | None = None,
 ) -> APIRouter:
     """Build the router. Tests pass their own ``transcriber_factory`` to avoid real calls.
 
-    ``authenticate`` decides whether a connection may be used (the app passes the sign-in check); None allows everyone.
+    ``authenticate`` decides whether a connection may be used (the app passes the sign-in and usage check). It returns None to
+    allow the connection, or the reason to refuse it; leaving it out allows everyone.
     """
     router = APIRouter()
 
     @router.websocket("/ws/voice")
     async def voice_socket(websocket: WebSocket, mode: str = "endpointing", rate: int = 24000) -> None:
-        if authenticate is not None and not await authenticate(websocket):
-            await websocket.close(code=CLOSE_POLICY_VIOLATION, reason="Sign in to use voice")  # refused before it is accepted
+        refusal = await authenticate(websocket) if authenticate is not None else None
+        if refusal is not None:
+            await websocket.close(code=CLOSE_POLICY_VIOLATION, reason=refusal)  # refused before it is accepted
             return
         await websocket.accept()
 

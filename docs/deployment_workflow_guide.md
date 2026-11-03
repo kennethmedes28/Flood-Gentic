@@ -136,7 +136,40 @@ Any Google account may sign in; the per-user limits (step 5) protect the credits
 
 With `REQUIRE_AUTH=true` and no Supabase address the backend refuses to start, with a message that says what to set.
 
-## 9. Planned
+## 9. Spending caps
+
+Every signed-in user has limits, so a few people cannot use up the Muse credits. The counters are in the Supabase table
+`usage_counters` (`sql/005_usage_counters.sql`; the backend also creates it at start-up, with row-level security on and no
+policies). Code: `src/services/usage.py`, `src/services/usage_meter.py`.
+
+| Limit | Default | Variable |
+|---|---|---|
+| Assistant messages per user per day | 20 | `USER_REQUESTS_PER_DAY` |
+| Photo checks per user per day | 3 | `USER_UPLOADS_PER_DAY` |
+| Voice sessions per user per day | 8 | `USER_VOICE_PER_DAY` |
+| Chat-model tokens per user per month | 150,000 | `USER_TOKENS_PER_MONTH` |
+| Assistant messages, everyone, per day (circuit breaker) | 500 | `EVERYONE_REQUESTS_PER_DAY` |
+| Photo checks, everyone, per day (circuit breaker) | 100 | `EVERYONE_UPLOADS_PER_DAY` |
+
+A day is the Manila calendar day and a month is the Manila calendar month. The defaults are the "tight" setting for a small budget;
+change a variable and restart to change a limit.
+
+**How it counts.** A message (and a photo) is counted before it is answered, with one atomic statement that only succeeds while the
+counter is under its limit, so requests at the same moment cannot both slip through (checked against a real Postgres: 10 of 40 parallel
+requests got through a limit of 10). If the user's count passes but the whole-app count does not, the user's count is handed back.
+Tokens are only known afterwards: the monthly cap is checked before a message and the real tokens (read from the chat model's usage data)
+are added after it, so one message can take a user a little over. SAM requests are counted per day for information only; photo checks
+are what is capped.
+
+**What the person sees.** A used-up limit is a `429` whose text says what was used and when it starts again (also in `Retry-After`).
+The assistant page shows "Today: 3 of 20 messages, 1 of 3 photo checks" for the signed-in user (`GET /me/usage`).
+
+**Emergencies are never stopped.** An emergency message from a signed-in user who is over a limit, or when the counters cannot be
+reached, is answered with the fixed 911 text and the city's hotlines. Any other message is refused (`429`, or `503` when the counters
+are down), so a broken database cannot be used to skip the limits. Only signed-in users are counted: with `REQUIRE_AUTH=false` (local work) nothing is.
+
+## 10. Planned
+
 
 
 - Vercel frontend with `NEXT_PUBLIC_API_URL`, and the backend CORS list allowing its domains. The voice socket must be served over `wss`.

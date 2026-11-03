@@ -272,7 +272,7 @@ export function ChatWindow() {
         )}
       </GlassPanel>
 
-      <AuthBar />
+      <AuthBar refreshKey={messages.length} />
 
       {/* Messages */}
       <GlassPanel className="min-h-0 flex-1 overflow-y-auto p-4">

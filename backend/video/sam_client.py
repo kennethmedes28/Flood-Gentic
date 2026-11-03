@@ -27,6 +27,8 @@ from meta_sam_parser import (
     parse_responses_stream,
 )
 
+from src.services.usage_meter import add_sam_request
+
 BASE_URL = "https://api.meta.ai/v1"
 MODEL = "sam-3.1"
 REQUEST_TIMEOUT_SECONDS = 300.0  # a request streams for a while
@@ -93,6 +95,7 @@ class SamClient:
 
     async def segment(self, concept: str, media: ImageInput) -> ImageSegmentationResult:
         """Find every ``concept`` (a short noun phrase such as "flood water") in the photo."""
+        add_sam_request()  # counted against the signed-in user's usage (see src/services/usage_meter.py)
         media_part = {"type": "input_image", "image_url": media.image_url()}
         parser_format = image_segmentation_format()
 

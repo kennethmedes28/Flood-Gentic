@@ -30,8 +30,9 @@ from fastapi.responses import JSONResponse
 
 from src.api.rate_limit import RateLimiter, SharedRateLimiter
 from src.auth import TokenVerifier
+from src.services.usage import QuotaExceeded
 from src.cache import configure_cache
-from src.api.routers import advisories, analytics, chat, dashboard, evacuation, health, help_requests, places, reports, staff, weather
+from src.api.routers import account, advisories, analytics, chat, dashboard, evacuation, health, help_requests, places, reports, staff, weather
 from src.api.settings import Settings, load_settings
 from src.api.startup import real_services
 from src.services.media_upload import MAX_IMAGE_BASE64_CHARS
@@ -41,19 +42,31 @@ from voice.websocket_router import create_voice_router
 MAX_REQUEST_BYTES = MAX_IMAGE_BASE64_CHARS + 100_000  # a photo as base64 text, plus room for the rest of the message
 
 
-async def authenticate_socket(websocket) -> bool:
-    """Whether a WebSocket may be used: always when sign-in is off, otherwise the ``token`` in its query must be valid.
+async def authenticate_socket(websocket) -> str | None:
+    """Whether a WebSocket may be used: None when it may, otherwise the reason it is refused.
 
-    A browser cannot set headers on a WebSocket, so the access token travels in the address (``?token=...``).
+    With sign-in off, anyone may. Otherwise the ``token`` in the address must be valid (a browser cannot set headers on a
+    WebSocket), and the user must still have voice sessions left today.
     """
     app = websocket.app
     if not app.state.settings.require_auth:
-        return True
+        return None
     token = websocket.query_params.get("token", "")
     if not token or app.state.verifier is None:
-        return False
+        return "Sign in to use voice"
     user = await run_in_threadpool(app.state.verifier.verify, token)  # may download the signing keys
-    return user is not None
+    if user is None:
+        return "Sign in to use voice"
+
+    tracker = getattr(app.state, "usage", None)
+    if tracker is not None:
+        try:
+            await run_in_threadpool(tracker.count_voice_session, user.id)
+        except QuotaExceeded:
+            return "Daily voice limit reached"
+        except Exception:
+            return "Voice is unavailable right now"
+    return None
 
 
 async def validation_error_response(request: Request, error: RequestValidationError) -> JSONResponse:
@@ -115,7 +128,7 @@ def create_app(settings: Settings | None = None, lifespan=real_services, verifie
         allow_headers=["Content-Type", "Authorization"],
     )
 
-    for module in (health, chat, reports, help_requests, evacuation, advisories, dashboard, analytics, places, weather):
+    for module in (health, chat, account, reports, help_requests, evacuation, advisories, dashboard, analytics, places, weather):
         app.include_router(module.router)
     if settings.staff_api_key:  # without a key the staff endpoints simply do not exist
         app.include_router(staff.router)

@@ -13,6 +13,7 @@ from fastapi import HTTPException, Request
 from agents.location_agent import find_city, nearest_city
 from src.api.schemas import Coordinates
 from src.auth import User, bearer_token
+from src.services.usage import QuotaExceeded
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,11 @@ def optional_user(request: Request) -> User | None:
 def sign_in_required() -> HTTPException:
     """The 401 for a signed-out caller on an endpoint that needs sign-in."""
     return HTTPException(status_code=401, detail=SIGN_IN_REQUIRED, headers={"WWW-Authenticate": "Bearer"})
+
+
+def quota_exceeded(error: QuotaExceeded) -> HTTPException:
+    """The 429 for a spending cap that is used up. The text says what was used and when it starts again."""
+    return HTTPException(status_code=429, detail=error.message, headers={"Retry-After": str(error.retry_after_seconds)})
 
 
 def database_unavailable(error: Exception) -> HTTPException:

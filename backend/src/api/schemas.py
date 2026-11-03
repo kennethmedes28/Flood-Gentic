@@ -162,6 +162,20 @@ class EvacuationCenterOut(BaseModel):
     notes: str | None = None
 
 
+class UsageOut(BaseModel):
+    """A signed-in user's usage against the spending caps (GET /me/usage)."""
+
+    messages_today: int
+    messages_limit: int
+    photos_today: int
+    photos_limit: int
+    voice_today: int
+    voice_limit: int
+    tokens_this_month: int
+    tokens_limit: int
+    resets_in_seconds: int
+
+
 class PlaceCenterOut(BaseModel):
     """One evacuation center as the Evacuation page lists it (GET /places/evacuation-centers)."""
 

@@ -96,6 +96,7 @@ Keep each module small and single-purpose; routers contain no business logic. Re
 | Method | Path | Purpose | State |
 |---|---|---|---|
 | POST | `/chat` | Ask a question; returns the reply, a `thread_id` and the `safe_answer` flag | **Built** (JSON; no source list yet) |
+| GET | `/me/usage` | The signed-in user's messages, photo checks and voice sessions today and tokens this month, each with its limit (`docs/deployment_workflow_guide.md` section 9) | **Built** |
 | POST | `/chat/stream` | The same, as one JSON line per step (`status` lines that say what the assistant is doing, then `reply` or `error`). Optional `image` (JPEG, PNG or WebP as base64, up to 2 MB) is checked for flood water and `detailed` adds people and vehicles | **Built** (the words of the reply are not streamed: the agents return the whole answer) |
 | GET | `/dashboard` | Weather, rain, river flow and a rule-based flood risk level for each city (default: all 17), from the last recorded day in the Supabase weather tables (kept current by the nightly workflow; a 503 if the database cannot be read); also where the river flow ranks among all recorded days | **Built** |
 | GET | `/analytics/weather` | Statistics for the Macro Weather Analytics page from the same recorded dataset: one point per year, month or day, headline extremes, the rainiest days and a ranking of the 17 cities. All of Metro Manila combines the cities (mean rain, temperature and river flow; highest wind and gust) | **Built** (reads CSV files, no network) |
@@ -321,6 +322,7 @@ separate `id` column and no `capacity` column.
 | `ncr_locations`, `ncr_weather_daily`, `ncr_flood_features_daily` | Created and filled by `scripts/load_to_supabase.py` and kept current by the daily workflow (not by `sync_datasets_to_supabase.py`) (`docs/dataset_updates.md`) |
 | `evacuation_centers` | Created and filled (102 rows, 17 cities); joins to `ncr_locations` on `location_id`; read by the evacuation and route agents and by `GET /evacuation-centers` |
 | `emergency_contacts` | Created by `sql/004_emergency_contacts.sql` and filled by `scripts/sync_datasets_to_supabase.py` from `corpus/ph_emergency_contacts.csv` (numbers exactly as written); read by `GET /places/contacts` |
+| `usage_counters` | Created by `sql/005_usage_counters.sql` (and at start-up). One row per user (or `all`), metric and Manila day or month; the per-user and whole-app spending caps are counted here atomically; read and written by `src/services/usage.py` |
 | `tomorrow_forecast` | Created by `sql/003_tomorrow_forecast.sql` (or by `scripts/fetch_tomorrow_forecast.py`). One row per city per Manila day (`(city, fetched_on)` is the primary key) with the hourly and daily forecast as JSON. Written at most once per city per day, never replaced; read by `/weather/*` |
 | `reports` | **Does not exist yet.** Queried by the report agent, the route agent and `/reports`. Create it with `sql/000_reports.sql`, then `sql/001_reports_geo.sql` |
 | `requests` | **Does not exist yet.** Written by `POST /requests`. Create it with `sql/002_requests.sql` |

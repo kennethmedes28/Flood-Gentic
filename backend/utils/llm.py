@@ -24,6 +24,8 @@ import os
 
 from langchain_openai import ChatOpenAI
 
+from src.services.usage_meter import TokenCounter
+
 BASE_URL = "https://api.meta.ai/v1"
 DEFAULT_MODEL = "muse-wonder-1.0"
 DEFAULT_REASONING_EFFORT = "high"
@@ -42,6 +44,7 @@ def build_main_llm(api_key: str | None = None) -> ChatOpenAI:
         api_key=api_key,
         reasoning_effort=os.getenv("MUSE_REASONING_EFFORT", DEFAULT_REASONING_EFFORT),
         timeout=REQUEST_TIMEOUT_SECONDS,
+        callbacks=[TokenCounter()],  # adds each call's tokens to the signed-in user's usage (see src/services/usage_meter.py)
         # No max_tokens: the model's hidden thinking counts against it, and a low cap
         # can leave nothing for the answer (a 300-token test returned an empty reply).
     )

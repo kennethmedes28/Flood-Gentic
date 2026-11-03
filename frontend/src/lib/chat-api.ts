@@ -70,7 +70,9 @@ async function throwIfFailed(response: Response): Promise<void> {
     throw error
   }
   if (response.status === 429) {
-    throw new ChatError("You're sending messages too fast. Please wait a moment and try again.")
+    // A spending cap says what was used up and when it starts again; the speed limit just says to wait.
+    const body = await response.json().catch(() => null)
+    throw new ChatError(readDetail(body?.detail) ?? "You're sending messages too fast. Please wait a moment and try again.")
   }
   if (response.status === 413) {
     throw new ChatError("That file is too large. Please choose a smaller one.")

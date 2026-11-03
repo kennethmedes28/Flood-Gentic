@@ -20,6 +20,10 @@ Variables, all optional:
     STAFF_API_KEY        secret for the /staff endpoints (list and review reports and requests).
                          At least 24 characters, e.g. from `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
                          Without it the /staff endpoints do not exist at all
+    USER_REQUESTS_PER_DAY, USER_UPLOADS_PER_DAY, USER_VOICE_PER_DAY, USER_TOKENS_PER_MONTH,
+    EVERYONE_REQUESTS_PER_DAY, EVERYONE_UPLOADS_PER_DAY
+                         per-user and whole-app spending caps (defaults 20, 3, 8, 150000, 500, 100; see
+                         ``src/services/usage.py``). Only signed-in users are counted
     REQUIRE_AUTH         ``true`` (default) means the assistant chat, photo check and voice need a Google sign-in
                          (a Supabase access token). Set ``false`` for local work without Supabase auth. Emergency
                          messages are answered without sign-in either way
@@ -34,6 +38,8 @@ import os
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
+
+from src.services.usage import UsageLimits
 
 CHECKPOINTER_CHOICES = ("postgres", "memory")
 MIN_STAFF_KEY_CHARS = 24  # a short key can be guessed
@@ -58,6 +64,7 @@ class Settings:
     redis_url: str | None = None  # turns on the Redis cache and shared rate limits
     require_auth: bool = False  # direct construction (tests) is open; load_settings() turns it on unless REQUIRE_AUTH=false
     supabase_url: str | None = None
+    usage_limits: UsageLimits = UsageLimits()  # the spending caps of signed-in users
 
 
 def read_bool(name: str, default: bool) -> bool:
@@ -104,4 +111,12 @@ def load_settings() -> Settings:
         redis_url=os.getenv("REDIS_URL") or None,
         require_auth=require_auth,
         supabase_url=supabase_url,
+        usage_limits=UsageLimits(
+            user_requests_per_day=int(os.getenv("USER_REQUESTS_PER_DAY", "20")),
+            user_uploads_per_day=int(os.getenv("USER_UPLOADS_PER_DAY", "3")),
+            user_voice_per_day=int(os.getenv("USER_VOICE_PER_DAY", "8")),
+            user_tokens_per_month=int(os.getenv("USER_TOKENS_PER_MONTH", "150000")),
+            everyone_requests_per_day=int(os.getenv("EVERYONE_REQUESTS_PER_DAY", "500")),
+            everyone_uploads_per_day=int(os.getenv("EVERYONE_UPLOADS_PER_DAY", "100")),
+        ),
     )

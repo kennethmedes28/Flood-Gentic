@@ -19,6 +19,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from langgraph_orchestrator.graph import build_graph
 from src.services.shared_connection import SharedConnection
+from src.services.usage import PostgresCounters, UsageTracker, ensure_table
 from utils.llm import build_main_llm
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,16 @@ def build_retriever(connection: SharedConnection):
         return None
 
 
+def build_usage_tracker(connection: SharedConnection, settings) -> UsageTracker:
+    """The per-user usage counters, with their table created if it is missing. A database problem only logs a warning
+    here: each request that needs the counters fails (and says so) until the database is back."""
+    try:
+        ensure_table(connection())
+    except Exception as error:
+        logger.warning("Usage counters table could not be checked: %s", type(error).__name__)
+    return UsageTracker(PostgresCounters(connection), settings.usage_limits)
+
+
 async def open_checkpointer(stack: AsyncExitStack, choice: str):
     """Open the conversation store: Postgres (saved) or memory (lost on restart)."""
     if choice == "memory":
@@ -97,4 +108,5 @@ async def real_services(app: FastAPI):
             ors_api_key=settings.ors_api_key,
         )
         app.state.get_connection = connection
+        app.state.usage = build_usage_tracker(connection, settings)
         yield
