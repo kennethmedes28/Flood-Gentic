@@ -33,7 +33,7 @@ WORKING_LABELS = {
     chat_graph.CONTACTS_NODE: "Looking up hotlines for your city",
     chat_graph.FLOOD_RISK_NODE: "Checking rain, river flow and PAGASA for flood risk",
     chat_graph.WEATHER_NODE: "Reading PAGASA and Open-Meteo weather",
-    chat_graph.DOCUMENTS_NODE: "Searching the flood guides",
+    chat_graph.DOCUMENTS_NODE: "Preparing your answer",
     chat_graph.LOCATION_NODE: "Setting your location",
     chat_graph.FLOOD_MEDIA_NODE: "Checking your photo for flood water",
     chat_graph.MULTI_NODE: "Working on each part of your message",

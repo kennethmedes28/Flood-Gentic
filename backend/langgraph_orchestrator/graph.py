@@ -73,7 +73,6 @@ from agents.location_agent import (
     resolve_location,
 )
 from agents.report_agent import answer_report_request
-from agents.safe_answer import safe_reply
 from agents.route_agent import answer_route_question
 from agents.weather_agent import answer_weather_question
 from langgraph_orchestrator.intents import (
@@ -396,8 +395,7 @@ def build_graph(
         return state_update(reply)
 
     def answer_from_documents(question: str, context: ChatContext) -> AgentReply:
-        if retriever is None:
-            return safe_reply()  # nothing to search, so do not guess
+        # With no document search loaded (the default, see ENABLE_RAG) the model answers directly.
         return answer_document_question(question, llm, retriever)
 
     def multi_reply(

@@ -554,7 +554,7 @@ class SettingsTests(unittest.TestCase):
     def test_defaults(self):
         settings = self.load(REQUIRE_AUTH="false")
         self.assertEqual(settings.cors_origins, ("http://localhost:3000",))
-        self.assertEqual((settings.checkpointer, settings.enable_rag, settings.trust_proxy_headers), ("postgres", True, False))
+        self.assertEqual((settings.checkpointer, settings.enable_rag, settings.trust_proxy_headers), ("postgres", False, False))
 
     def test_values_are_read(self):
         settings = self.load(

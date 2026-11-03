@@ -143,7 +143,7 @@ export function FloatingNav() {
 
       {open && (
         <nav
-          className="glass-panel fixed z-50 flex flex-col overflow-y-auto overscroll-contain p-2"
+          className="glass-panel menu-scroll fixed z-50 flex flex-col overflow-y-auto overscroll-contain p-2"
           style={{
             width: menuWidth,
             maxHeight: menuMaxHeight,

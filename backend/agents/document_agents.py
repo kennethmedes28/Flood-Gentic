@@ -171,7 +171,7 @@ def format_source_list(chunks: list[Chunk], answer: str) -> str:
 def answer_document_question(
     question: str,
     llm: BaseChatModel,
-    retriever: HybridRetriever,
+    retriever: HybridRetriever | None,
     search_filter: SearchFilter | None = None,
     min_score: float | None = None,
 ) -> AgentReply:
@@ -187,11 +187,12 @@ def answer_document_question(
     if cached_answer is not MISSING:
         return AgentReply(text=cached_answer)
 
-    try:
-        sources = find_sources(question, retriever, search_filter, min_score)
-    except Exception as error:  # Database down, model not installed, and so on.
-        logger.error("Document search failed: %s", error)
-        sources = []
+    sources: list[Chunk] = []
+    if retriever is not None:  # no search loaded (ENABLE_RAG off): the model answers without sources
+        try:
+            sources = find_sources(question, retriever, search_filter, min_score)
+        except Exception as error:  # Database down, model not installed, and so on.
+            logger.error("Document search failed: %s", error)
 
     # The model answers every question. Matches that are only noise are not given to it; weak ones are, and the prompt tells it
     # to use a source only when it really fits (otherwise it answers as general guidance and flags what is not verified).

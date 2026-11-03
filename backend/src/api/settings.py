@@ -9,7 +9,7 @@ Variables, all optional:
                          (default ``http://localhost:3000``)
     CHECKPOINTER         ``postgres`` (default, conversations survive restarts) or
                          ``memory`` (for local work; conversations are lost on restart)
-    ENABLE_RAG           ``true`` (default) loads the document search at start-up
+    ENABLE_RAG           ``true`` loads the document search at start-up; off by default (the model answers directly, which is faster on a CPU-only server)
     TRUST_PROXY_HEADERS  ``true`` only behind a proxy you control (Railway, nginx). The
                          client address is then read from ``X-Forwarded-For``; anyone can
                          fake that header when there is no proxy, so the default is ``false``
@@ -51,7 +51,7 @@ class Settings:
 
     cors_origins: tuple[str, ...] = ("http://localhost:3000",)
     checkpointer: str = "postgres"
-    enable_rag: bool = True
+    enable_rag: bool = False
     trust_proxy_headers: bool = False
     chat_per_minute: int = 30
     reports_per_hour: int = 10
@@ -98,7 +98,7 @@ def load_settings() -> Settings:
     return Settings(
         cors_origins=tuple(origin.strip() for origin in origins.split(",") if origin.strip()),
         checkpointer=checkpointer,
-        enable_rag=read_bool("ENABLE_RAG", True),
+        enable_rag=read_bool("ENABLE_RAG", False),
         trust_proxy_headers=read_bool("TRUST_PROXY_HEADERS", False),
         chat_per_minute=int(os.getenv("CHAT_PER_MINUTE", "30")),
         reports_per_hour=int(os.getenv("REPORTS_PER_HOUR", "10")),

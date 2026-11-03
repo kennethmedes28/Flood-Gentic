@@ -256,6 +256,15 @@ html.hand-cursor textarea {
   display: none;
 }
 
+/* The round menu scrolls with the wheel, touch or arrow keys, but draws no scrollbar. */
+.menu-scroll {
+  scrollbar-width: none;
+}
+
+.menu-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 .help-dialog .help-muted {
   color: rgba(11, 37, 69, 0.72);
 }

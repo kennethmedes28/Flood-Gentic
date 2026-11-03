@@ -135,6 +135,7 @@ weak ones are left for the model to judge, and with none (or only noise) the mod
 The prompt still forbids answering official or time-sensitive facts (warnings, orders, phone numbers, whether a road is safe) from memory. The fixed safe answer remains
 for the weather and flood-risk agents when they have no data at all, so the model never invents the weather. On Railway (CPU only) the model runs at reasoning effort
 `low` with a 45-second timeout (`MUSE_REASONING_EFFORT`, `utils/llm.py`), and the reranker is off.
+The document search itself is off by default too (`ENABLE_RAG=false`): the embedding model is not loaded and no search runs, so the model answers straight away and the progress line reads "Preparing your answer". Set `ENABLE_RAG=true` to bring the search back (the model then cites the matching documents).
 - **Staff access:** the `/staff` endpoints exist only when `STAFF_API_KEY` is set (at least 24 characters). Every call must send
   `Authorization: Bearer <key>`; a missing or wrong key gets the same 401. They share a rate limit (`STAFF_PER_MINUTE`) that applies before the key is checked,
   which slows guessing. There is one shared key and no accounts, so a status change records what changed but not who changed it.
