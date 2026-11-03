@@ -12,7 +12,7 @@
                                     +--> flood_risk   rule-based flood risk for a city
                                     +--> weather      PAGASA + Open-Meteo
                                     +--> documents    stored flood material (RAG)
-                                    +--> flood_media  a photo or video was attached: flood water (and rough depth) in it
+                                    +--> flood_media  a photo was attached: flood water, people and vehicles in it
                                     +--> multi        one message with several topics: each topic is answered by its own
                                     |                 agent (at the same time) and the answers are joined under headings
                                     |
@@ -37,7 +37,7 @@ Example:
     reply = await ask(graph, "Saan ang pinakamalapit na evacuation center?", "user-123",
                       location={"lat": 14.65, "lng": 121.10})
     reply = await ask(graph, "Baha dito", "user-123",
-                      media={"kind": "image", "path": "/uploads/street.jpg", "estimate_depth": True})
+                      media={"kind": "image", "path": "/uploads/street.jpg"})
 """
 
 import contextvars
@@ -93,7 +93,7 @@ from langgraph_orchestrator.intents import (
 )
 from src.rag.retriever import HybridRetriever
 from utils.input_guard import blocked_reply, check_message
-from video.sam_client import ImageInput, VideoInput
+from video.sam_client import ImageInput
 
 logger = logging.getLogger(__name__)
 
@@ -165,11 +165,11 @@ ERROR_ANSWER = (
 
 
 BAD_MEDIA_ANSWER = (
-    "I could not use that file. Please send a photo or video again, or describe what you see.\n"
-    "Hindi ko magamit ang file na iyon. Magpadala ulit ng larawan o video, o ilarawan ang nakikita mo.\n"
+    "I could not use that file. Please send a photo again, or describe what you see.\n"
+    "Hindi ko magamit ang file na iyon. Magpadala ulit ng larawan, o ilarawan ang nakikita mo.\n"
     "If someone is in danger, call 911."
 )
-DEFAULT_MEDIA_QUESTIONS = {"image": "Is there flood water in this photo?", "video": "Is there flood water in this video?"}
+DEFAULT_MEDIA_QUESTIONS = {"image": "Is there flood water in this photo?"}
 
 # Files for the media check may only come from this folder (the upload endpoint saves them here).
 MEDIA_UPLOAD_DIR_VARIABLE = "MEDIA_UPLOAD_DIR"
@@ -195,17 +195,16 @@ def check_media_url(url: str) -> str:
     return url
 
 
-def media_from_dict(media: dict) -> ImageInput | VideoInput:
-    """Turn the small dictionary kept in the chat state into the object the media check uses.
+def media_from_dict(media: dict) -> ImageInput:
+    """Turn the small dictionary kept in the chat state into the photo the media check uses.
 
-    The dictionary is ``{"kind": "image" or "video", "url": ... or "path": ..., "estimate_depth": bool,
-    "include_people_and_vehicles": bool}`` (the last one is optional and true by default; false looks for water only).
-    It holds a reference, never the file itself, so the saved conversation stays small. Raises
-    ``ValueError`` for anything unusable.
+    The dictionary is ``{"kind": "image", "url": ... or "path": ..., "include_people_and_vehicles": bool}`` (the last
+    one is optional and true by default; false looks for water only). It holds a reference, never the file itself, so
+    the saved conversation stays small. Raises ``ValueError`` for anything unusable.
     """
     kind, url, path = media.get("kind"), media.get("url"), media.get("path")
-    if kind not in ("image", "video") or bool(url) == bool(path):
-        raise ValueError("Media needs a kind (image or video) and exactly one of url or path.")
+    if kind != "image" or bool(url) == bool(path):
+        raise ValueError("Media needs kind image and exactly one of url or path.")
 
     if url:
         url = check_media_url(url)
@@ -215,8 +214,6 @@ def media_from_dict(media: dict) -> ImageInput | VideoInput:
             raise ValueError("Media file not found in the upload folder.")
         path = resolved
 
-    if kind == "video":
-        return VideoInput(url=url, path=path)
     return ImageInput(url=url, path=path)
 
 
@@ -227,7 +224,7 @@ class ChatState(TypedDict, total=False):
     location: dict | None
     destination: dict | None
     pending_intent: str | None
-    media: dict | None  # photo or video attached to the newest message; cleared once it has been checked
+    media: dict | None  # photo attached to the newest message; cleared once it has been checked
     pending_parts: list | None  # topics of a multi-topic message waiting for the user's location
     safe_answer: bool  # True when the newest reply is the fixed "not confident enough" text; reset by every node
 
@@ -338,7 +335,7 @@ def build_graph(
         return update
 
     def flood_media_node(state: ChatState) -> dict:
-        """Check the attached photo or video for flood water, and answer what was asked about it.
+        """Check the attached photo for flood water, and answer what was asked about it.
 
         A picture sent without words gets the default question, which the fixed report answers with no model call;
         any other text is the person's own question and goes to the chat model with the picture. The media is cleared
@@ -351,7 +348,6 @@ def build_graph(
             reply = answer_flood_media_question(
                 media,
                 make_context(state),
-                estimate_depth=bool(state["media"].get("estimate_depth")),
                 include_people_and_vehicles=bool(state["media"].get("include_people_and_vehicles", True)),
                 question=own_question,
                 llm=llm,

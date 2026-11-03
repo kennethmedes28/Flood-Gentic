@@ -1,8 +1,8 @@
-"""Turn SAM 3.1 detections into a short flood summary of a photo or video.
+"""Turn SAM 3.1 detections into a short flood summary of a photo.
 
 Three things are looked for, one SAM request per phrase (SAM takes one phrase per request):
 
-    * water          - how much of the picture is covered, and in how many frames
+    * water          - how much of the picture is covered
     * "person"       - how many people, and how many stand in the water
     * "vehicle"      - how many vehicles, and how many sit in the water
 
@@ -18,7 +18,7 @@ The settings were chosen by measuring them against labelled flood photos (``scri
 Every phrase is one paid SAM request, and mirroring doubles them for photos; the requests run at the same time,
 so the wait hardly grows.
 
-The result is a ``FloodSceneReport``. It is only what the camera shows: it cannot tell how DEEP the
+The result is a ``FloodSceneReport``. It is only what the picture shows: it cannot tell how DEEP the
 water is or whether a road is safe, and a photo can be old or from somewhere else. Treat it as
 unverified evidence, never as an official warning.
 
@@ -31,13 +31,11 @@ import asyncio
 import re
 import threading
 from dataclasses import asdict, dataclass, field, replace
-from pathlib import Path
 
 import numpy as np
 from meta_sam_parser import decode_mask_to_raster
 
-from video.sam_client import ImageInput, SamClient, VideoInput
-from video.video_prepare import shrink_video
+from video.sam_client import ImageInput, SamClient
 
 WATER_CONCEPT = "flood water"
 # The phrases water is asked for, and whether a photo is also checked mirrored (see the top of this file).
@@ -89,7 +87,7 @@ class Detection:
 class FloodSceneReport:
     """What the camera shows, in numbers."""
 
-    media_kind: str  # "image" or "video"
+    media_kind: str  # always "image" now; kept so stored reports keep their shape
     frames_checked: int  # 1 for a photo
     water_coverage: float  # typical share of the picture under water, 0 to 1 (median over frames with water)
     peak_water_coverage: float  # the highest share in any frame
@@ -100,13 +98,6 @@ class FloodSceneReport:
     vehicles: int
     vehicles_in_water: int
     notes: list[str] = field(default_factory=list)  # things a reader should know about this result
-    # Rough water depth, only when asked for (photos only; see flood_depth.py). All None when not estimated.
-    depth_cm: float | None = None
-    depth_low_cm: float | None = None
-    depth_high_cm: float | None = None
-    depth_band: str | None = None
-    depth_confidence: str | None = None
-    depth_people_used: int = 0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -256,14 +247,12 @@ def build_report(
     ``water`` may hold the masks of several water requests (see ``WATER_CONCEPTS``); a spot counts as water when
     ``water_votes_needed`` of them found it.
     """
-    notes = ["Automatic check of the picture only: road safety cannot be judged from it, and any water depth is a rough guess."]
-    frames = sorted({d.frame for d in water + people + vehicles})
+    notes = ["Automatic check of the picture only: road safety cannot be judged from it, and water depth cannot be told from it."]
     if frame_size is None:  # SAM found nothing at all, so there is nothing to measure
         return FloodSceneReport(media_kind, 1, 0.0, 0.0, 0.0, LEVEL_NONE, 0, 0, 0, 0,
                                 notes + ["No flood water, people or vehicles were found."])
 
-    # A video where every match was too weak has no frames left; it still counts as one frame checked, with no water.
-    frames_checked = max(frames) + 1 if media_kind == "video" and frames else 1
+    frames_checked = 1  # a photo is one frame
     coverage_by_frame, grids = {}, {}
     for frame in {d.frame for d in water}:
         grid = water_grid([d for d in water if d.frame == frame], frame_size, water_votes_needed)
@@ -295,8 +284,6 @@ def build_report(
         level = LEVEL_WIDESPREAD
     elif water_coverage >= SOME_WATER_FROM:
         level = LEVEL_SOME
-    if media_kind == "video":
-        notes.append(f"{frames_checked} frames were checked; water appeared in {frames_with_water:.0%} of them.")
 
     return FloodSceneReport(media_kind, frames_checked, water_coverage, peak_coverage, frames_with_water,
                             level, people_count, people_in_water, vehicle_count, vehicles_in_water, notes)
@@ -306,57 +293,38 @@ def build_report(
 
 
 async def analyze_flood_media_async(
-    media: ImageInput | VideoInput,
+    media: ImageInput,
     api_key: str,
     include_people_and_vehicles: bool = True,
-    estimate_depth: bool = False,
     water_concepts: tuple[str, ...] | None = None,
     mirror_photo: bool | None = None,
     water_votes_needed: int | None = None,
 ) -> FloodSceneReport:
     """Ask SAM for water, people and vehicles (all at the same time) and summarise what it found.
 
-    Water is asked for with every phrase in ``water_concepts`` (default ``WATER_CONCEPTS``) and, for a photo, also on
+    Water is asked for with every phrase in ``water_concepts`` (default ``WATER_CONCEPTS``) and also on
     a mirrored copy when ``mirror_photo`` is on (default ``MIRROR_PHOTOS``); the masks are combined by a vote
     (``water_votes_needed``, default ``WATER_VOTES_NEEDED``). See the top of this file.
 
-    With ``include_people_and_vehicles=False`` only the water is looked for, which is what a repeating webcam
-    check uses to keep the cost down.
-
-    ``estimate_depth=True`` (photos only) also runs the depth model and adds a rough water depth
-    to the report. It needs people in the picture, so it always looks for them.
+    With ``include_people_and_vehicles=False`` only the water is looked for, which costs 2 requests less.
     """
     water_concepts = tuple(water_concepts or WATER_CONCEPTS)
     mirror_photo = MIRROR_PHOTOS if mirror_photo is None else mirror_photo
     water_votes_needed = WATER_VOTES_NEEDED if water_votes_needed is None else water_votes_needed
-    estimate_depth = estimate_depth and isinstance(media, ImageInput)
-    include_people_and_vehicles = include_people_and_vehicles or estimate_depth
-    media_kind = "video" if isinstance(media, VideoInput) else "image"
 
-    small_copy = None  # a shrunk copy of a video file (see video_prepare.py), removed when the answer is in
-    try:
-        async with SamClient(api_key) as sam:
-            if isinstance(media, VideoInput) and media.path and not media.file_id:
-                path = Path(media.path)
-                small = await asyncio.to_thread(shrink_video, path)  # ffmpeg is blocking, so it runs in a thread
-                small_copy = small if small != path else None
-                media = VideoInput(file_id=await sam.upload_video(small))  # upload once, reuse for each concept
+    async with SamClient(api_key) as sam:
+        # The water requests: every phrase on the photo, and on the mirrored photo when that is on.
+        water_jobs = [(concept, media, False) for concept in water_concepts]
+        if mirror_photo:
+            mirrored = await asyncio.to_thread(mirrored_photo, media)
+            if mirrored is not None:
+                water_jobs += [(concept, mirrored, True) for concept in water_concepts]
+        other_concepts = [PEOPLE_CONCEPT, VEHICLE_CONCEPT] if include_people_and_vehicles else []
 
-            # The water requests: every phrase on the media, and on the mirrored photo when that is on.
-            water_jobs = [(concept, media, False) for concept in water_concepts]
-            if mirror_photo and isinstance(media, ImageInput):
-                mirrored = await asyncio.to_thread(mirrored_photo, media)
-                if mirrored is not None:
-                    water_jobs += [(concept, mirrored, True) for concept in water_concepts]
-            other_concepts = [PEOPLE_CONCEPT, VEHICLE_CONCEPT] if include_people_and_vehicles else []
-
-            results = await asyncio.gather(
-                *(sam.segment(concept, job_media) for concept, job_media, _ in water_jobs),
-                *(sam.segment(concept, media) for concept in other_concepts),
-            )
-    finally:
-        if small_copy is not None:
-            small_copy.unlink(missing_ok=True)
+        results = await asyncio.gather(
+            *(sam.segment(concept, job_media) for concept, job_media, _ in water_jobs),
+            *(sam.segment(concept, media) for concept in other_concepts),
+        )
 
     sizes = [size for size in (frame_size_from_output(r.raw_output) for r in results) if size]
     frame_size = sizes[0] if sizes else None
@@ -370,46 +338,15 @@ async def analyze_flood_media_async(
     others = [to_detections(result) for result in results[len(water_jobs):]]
     people, vehicles = (others + [[], []])[:2]
 
-    report = build_report(media_kind, frame_size, water, people, vehicles, water_votes_needed)
-    if estimate_depth and frame_size:
-        await add_depth_estimate(report, media, water, people, frame_size)
-    return report
+    return build_report("image", frame_size, water, people, vehicles, water_votes_needed)
 
 
-async def add_depth_estimate(
-    report: FloodSceneReport, media: ImageInput, water: list[Detection], people: list[Detection], frame_size: tuple[int, int]
-) -> None:
-    """Fill in the report's depth fields. A failure only adds a note; the rest of the report stays."""
-    # Imported here: flood_depth needs this module's helpers, and the depth model is heavy to load.
-    from video.depth_model import get_depth_estimator
-    from video.flood_depth import estimate_flood_depth, exif_focal_mm_35
-
-    if report.level == LEVEL_NONE:
-        return
-    try:
-        image_bytes = await asyncio.to_thread(media.read_bytes)
-        depth_map = await asyncio.to_thread(get_depth_estimator().estimate, image_bytes)  # blocking model work
-        estimate = estimate_flood_depth(people, water, depth_map, frame_size, exif_focal_mm_35(image_bytes))
-    except Exception as error:  # download, model or memory problems must not lose the detection result
-        report.notes.append(f"Depth could not be estimated ({type(error).__name__}).")
-        return
-
-    if estimate is None:
-        report.notes.append("Depth was not estimated: no person was clear enough standing in the water.")
-        return
-    report.depth_cm, report.depth_low_cm, report.depth_high_cm = estimate.depth_cm, estimate.low_cm, estimate.high_cm
-    report.depth_band, report.depth_confidence, report.depth_people_used = estimate.band, estimate.confidence, estimate.people_used
-    report.notes.extend(estimate.notes)
-
-
-def analyze_flood_media(
-    media: ImageInput | VideoInput, api_key: str, estimate_depth: bool = False, include_people_and_vehicles: bool = True
-) -> FloodSceneReport:
+def analyze_flood_media(media: ImageInput, api_key: str, include_people_and_vehicles: bool = True) -> FloodSceneReport:
     """Blocking version of ``analyze_flood_media_async`` for the (synchronous) agents.
 
     ``include_people_and_vehicles=False`` looks for water only (2 people-and-vehicle requests fewer).
     """
-    options = {"estimate_depth": estimate_depth, "include_people_and_vehicles": include_people_and_vehicles}
+    options = {"include_people_and_vehicles": include_people_and_vehicles}
     try:
         asyncio.get_running_loop()
     except RuntimeError:

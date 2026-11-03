@@ -17,7 +17,7 @@ Endpoints (see docs/backend_architecture.md section 4):
     GET  /analytics/weather     long-run weather statistics by city, year, month and day (recorded dataset)
     GET  /health, /health/ready what works
     /staff/...                  review reports and requests (only when STAFF_API_KEY is set)
-    WS   /ws/voice, /ws/camera  live speech-to-text and the webcam flood check
+    WS   /ws/voice              live speech-to-text
 
 Interactive documentation is served at /docs.
 """
@@ -32,14 +32,11 @@ from src.cache import configure_cache
 from src.api.routers import advisories, analytics, chat, dashboard, evacuation, health, help_requests, places, reports, staff, weather
 from src.api.settings import Settings, load_settings
 from src.api.startup import real_services
-from src.services.media_upload import MAX_IMAGE_BASE64_CHARS, MAX_VIDEO_BYTES
-from video.camera_router import create_camera_router
+from src.services.media_upload import MAX_IMAGE_BASE64_CHARS
 from voice.websocket_router import create_voice_router
 
 
 MAX_REQUEST_BYTES = MAX_IMAGE_BASE64_CHARS + 100_000  # a photo as base64 text, plus room for the rest of the message
-VIDEO_PATH = "/chat/stream/video"  # the one endpoint whose body is a whole video, so it has a much larger limit
-MAX_VIDEO_REQUEST_BYTES = MAX_VIDEO_BYTES + 100_000
 
 
 async def validation_error_response(request: Request, error: RequestValidationError) -> JSONResponse:
@@ -83,10 +80,9 @@ def create_app(settings: Settings | None = None, lifespan=real_services) -> Fast
 
     @app.middleware("http")
     async def limit_body_size(request: Request, call_next):
-        """Refuse a request that says its body is larger than its endpoint needs: a chat message with a photo, or a video."""
+        """Refuse a request that says its body is larger than its endpoint needs: a chat message with a photo."""
         declared = request.headers.get("content-length", "")
-        limit = MAX_VIDEO_REQUEST_BYTES if request.url.path == VIDEO_PATH else MAX_REQUEST_BYTES
-        if declared.isdigit() and int(declared) > limit:
+        if declared.isdigit() and int(declared) > MAX_REQUEST_BYTES:
             return JSONResponse(status_code=413, content={"detail": "That request is too large."})
         return await call_next(request)
 
@@ -103,5 +99,4 @@ def create_app(settings: Settings | None = None, lifespan=real_services) -> Fast
     if settings.staff_api_key:  # without a key the staff endpoints simply do not exist
         app.include_router(staff.router)
     app.include_router(create_voice_router())
-    app.include_router(create_camera_router())
     return app

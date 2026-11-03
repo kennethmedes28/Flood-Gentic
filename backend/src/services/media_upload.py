@@ -14,7 +14,6 @@ import base64
 import binascii
 import logging
 import os
-from collections.abc import AsyncIterator
 from pathlib import Path
 from uuid import uuid4
 
@@ -75,77 +74,3 @@ def delete_quietly(path: Path | None) -> None:
         path.unlink(missing_ok=True)
     except OSError as error:
         logger.warning("Could not remove an uploaded picture: %s", error)
-
-
-# ---------------------------------------------------------------- videos
-#
-# A video is too big for base64 inside JSON, so it is sent as the request body itself (see POST /chat/stream/video) and
-# written to disk piece by piece. It is checked the same way as a photo: the first bytes must be a real video, and it is
-# saved under a random name in the one folder the chat graph may read media from.
-
-MAX_VIDEO_BYTES = 200 * 1024 * 1024  # generous on purpose: SAM can analyse a long video, and the limit only protects the disk
-
-NOT_A_VIDEO = "That file is not a video I can read. Please send an MP4, MOV or WebM video."
-VIDEO_TOO_LARGE = "That video is too large. Please send one under 200 MB."
-
-
-class BadVideo(ValueError):
-    """The video is not usable. The message is safe and friendly to show to the user."""
-
-
-class VideoTooLarge(BadVideo):
-    """The video is over ``MAX_VIDEO_BYTES``."""
-
-
-def video_extension(head: bytes) -> str | None:
-    """".mp4", ".mov" or ".webm" from the first bytes of the data, or None when it is none of them."""
-    if head[4:8] == b"ftyp":  # MP4 and QuickTime files both start with a "ftyp" box; the brand tells them apart
-        return ".mov" if head[8:12] == b"qt  " else ".mp4"
-    if head.startswith(b"\x1a\x45\xdf\xa3"):  # the EBML header of WebM (and Matroska)
-        return ".webm"
-    return None
-
-
-async def save_video_stream(chunks: AsyncIterator[bytes]) -> Path:
-    """Write the video to the upload folder piece by piece and return its path. Raises ``BadVideo``.
-
-    Nothing is kept in memory beyond one piece. The type is checked on the first bytes, so a wrong file is refused
-    before it is saved, and a file that grows past ``MAX_VIDEO_BYTES`` is cut off and removed.
-    """
-    folder = media_upload_dir()
-    folder.mkdir(parents=True, exist_ok=True)
-
-    head = b""
-    path: Path | None = None
-    file = None
-    total = 0
-    try:
-        async for chunk in chunks:
-            total += len(chunk)
-            if total > MAX_VIDEO_BYTES:
-                raise VideoTooLarge(VIDEO_TOO_LARGE)
-            if file is None:
-                head += chunk
-                if len(head) < 12:
-                    continue  # the type needs the first 12 bytes; wait for more
-                extension = video_extension(head)
-                if extension is None:
-                    raise BadVideo(NOT_A_VIDEO)
-                path = folder / f"{uuid4().hex}{extension}"
-                # Only this server's user may read it: 0o600 from the start, not changed after writing.
-                file = os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb")
-                file.write(head)
-            else:
-                file.write(chunk)
-        if file is None:
-            raise BadVideo(NOT_A_VIDEO)  # an empty body, or fewer than 12 bytes
-    except BaseException:
-        if file is not None:
-            file.close()
-            file = None
-        delete_quietly(path)
-        raise
-    finally:
-        if file is not None:
-            file.close()
-    return path

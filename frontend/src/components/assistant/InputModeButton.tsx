@@ -15,7 +15,7 @@ type InputModeButtonProps = {
   onModeChange: (mode: InputMode) => void
   voiceStatus: VoiceStatus
   onVoiceClick: () => void
-  /** Called with the file the user picked, in photo/video mode. */
+  /** Called with the file the user picked, in photo mode. */
   onFilePicked: (file: File) => void
   /** Turn the buttons off, for example while a reply is on its way. */
   disabled?: boolean
@@ -25,10 +25,10 @@ type InputModeButtonProps = {
 
 const OPTIONS: { mode: InputMode; label: string; hint: string }[] = [
   { mode: "voice", label: "Voice", hint: "Speak your question" },
-  { mode: "media", label: "Photo / video", hint: "Check a picture for flood water" },
+  { mode: "media", label: "Photo", hint: "Check a picture for flood water" },
 ]
 
-/** A camera icon for the photo/video mode. */
+/** A camera icon for the photo mode. */
 function CameraIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -46,7 +46,7 @@ function CameraIcon() {
 /**
  * The round input button with a small menu that pops up when it is hovered or focused.
  *
- * The menu switches the button between Voice (the microphone) and Photo / video (opens the file picker). It shows
+ * The menu switches the button between Voice (the microphone) and Photo (opens the file picker). It shows
  * on hover and when anything inside it has keyboard focus, so it works with a mouse and a keyboard. On a touch screen
  * there is no hover, so tapping the button just uses the current mode, and the mode can be changed by tapping the
  * small switch badge that sits on the button's corner.
@@ -76,8 +76,8 @@ export function InputModeButton({
           type="button"
           onClick={() => fileInput.current?.click()}
           disabled={disabled}
-          aria-label="Choose a photo or video to check for flood water"
-          title="Choose a photo or video to check for flood water"
+          aria-label="Choose a photo to check for flood water"
+          title="Choose a photo to check for flood water"
           className="glass-panel relative flex size-12 shrink-0 items-center justify-center !rounded-full shadow-lg disabled:opacity-40"
         >
           <CameraIcon />
@@ -89,7 +89,7 @@ export function InputModeButton({
         type="button"
         onClick={() => pickMode(mode === "voice" ? "media" : "voice")}
         disabled={disabled || locked}
-        aria-label={mode === "voice" ? "Switch to photo or video" : "Switch to voice"}
+        aria-label={mode === "voice" ? "Switch to photo" : "Switch to voice"}
         className="absolute -top-1 -right-1 flex size-6 items-center justify-center rounded-full bg-[var(--glass-accent)] text-white shadow disabled:hidden"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -125,7 +125,7 @@ export function InputModeButton({
       <input
         ref={fileInput}
         type="file"
-        accept="image/*,video/*"
+        accept="image/*"
         className="sr-only"
         tabIndex={-1}
         aria-hidden="true"

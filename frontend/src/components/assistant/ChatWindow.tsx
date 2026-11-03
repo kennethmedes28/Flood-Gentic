@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react"
 
 import { GlassPanel } from "@/components/ui/GlassPanel"
 import { useVoiceTranscription } from "@/hooks/useVoiceTranscription"
-import { ChatError, sendChatMessageStream, sendChatVideoStream, type Coordinates } from "@/lib/chat-api"
+import { ChatError, sendChatMessageStream, type Coordinates } from "@/lib/chat-api"
 import { useMediaAttachment } from "@/hooks/useMediaAttachment"
-import { checkVideoSize, isVideo, MediaCheckError, preparePhotoForChat } from "@/lib/media-check-api"
+import { MediaCheckError, preparePhotoForChat } from "@/lib/media-check-api"
 
 import { InputModeButton, type InputMode } from "./InputModeButton"
 import { MessageBubble, TypingIndicator, type ChatMessage } from "./MessageBubble"
@@ -25,7 +25,7 @@ const WELCOME: ChatMessage = {
   text:
     "Hi! I'm the AI Agent Flood Assistant. Ask me about flood risk, evacuation centers, " +
     "emergency contacts or what to prepare. You can write in English or Filipino, " +
-    "or attach (or drag and drop) a photo or video to check it for flood water.",
+    "or attach (or drag and drop) a photo to check it for flood water.",
 }
 
 let nextId = 0
@@ -96,9 +96,8 @@ export function ChatWindow() {
   }
 
   /**
-   * Send the message, with the attached photo or video if there is one. A photo is made small in the browser and goes
-   * to the backend with the message; a video is sent whole and analysed in full, which takes longer. Either way the
-   * backend checks it for flood water and answers in the same conversation. The text is then the caption: it may be empty.
+   * Send the message, with the attached photo if there is one. The photo is made small in the browser and goes to the
+   * backend with the message, which checks it for flood water and answers in the same conversation. The text is then the caption: it may be empty.
    */
   async function send(text: string) {
     const message = text.trim()
@@ -106,12 +105,11 @@ export function ChatWindow() {
     const item = attachment
     if (!message && !item) return
 
-    const video = item ? isVideo(item.file) : false
     addMessage({
       role: "user",
       kind: "normal",
-      text: message, // a photo or video sent without a caption shows just the picture, with no default sentence
-      media: item ? { url: item.url, isVideo: video } : undefined,
+      text: message, // a photo sent without a caption shows just the picture, with no default sentence
+      media: item ? { url: item.url } : undefined,
     })
     takeAttachment() // the preview now lives in the message, so its address is not revoked here
     setDraft("")
@@ -119,15 +117,8 @@ export function ChatWindow() {
 
     try {
       const onProgress = (step: { label: string }) => setProgress(step.label)
-      let reply
-      if (item && video) {
-        checkVideoSize(item.file)
-        setProgress("Uploading your video") // the upload itself has no progress lines: they start when it arrives
-        reply = await sendChatVideoStream(item.file, { message, threadId, location, detailed: moreDetail }, onProgress)
-      } else {
-        const image = item ? await preparePhotoForChat(item.file) : undefined
-        reply = await sendChatMessageStream({ message, threadId, location, image, detailed: moreDetail }, onProgress)
-      }
+      const image = item ? await preparePhotoForChat(item.file) : undefined
+      const reply = await sendChatMessageStream({ message, threadId, location, image, detailed: moreDetail }, onProgress)
       setThreadId(reply.threadId)
       addMessage({
         role: "assistant",
@@ -203,7 +194,7 @@ export function ChatWindow() {
     if (dragDepth.current === 0) setDragging(false)
   }
 
-  /** Dropping a photo or video attaches it, the same as picking it with the input button (the first file only). */
+  /** Dropping a photo attaches it, the same as picking it with the input button (the first file only). */
   function onDrop(event: React.DragEvent) {
     if (!carriesFiles(event)) return
     event.preventDefault()
@@ -234,7 +225,7 @@ export function ChatWindow() {
           className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-3xl border-2 border-dashed border-[var(--glass-accent)] bg-black/40 text-lg font-semibold text-white"
           role="status"
         >
-          Drop a photo or video to check it for flood water
+          Drop a photo to check it for flood water
         </div>
       )}
 
@@ -285,22 +276,16 @@ export function ChatWindow() {
 
       {showPrompts && <QuickPrompts onPick={send} disabled={pending} />}
 
-      {/* The photo or video waiting to be checked */}
+      {/* The photo waiting to be checked */}
       {attachment && (
         <GlassPanel className="flex flex-wrap items-center gap-3 px-4 py-2">
-          {isVideo(attachment.file) ? (
-            <video src={attachment.url} muted preload="metadata" className="size-12 rounded-lg object-cover" aria-hidden="true" />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element -- a local preview of the user's own file
-            <img src={attachment.url} alt="" className="size-12 rounded-lg object-cover" />
-          )}
+          {/* eslint-disable-next-line @next/next/no-img-element -- a local preview of the user's own file */}
+          <img src={attachment.url} alt="" className="size-12 rounded-lg object-cover" />
           <div className="min-w-0 flex-1 text-sm">
             <p className="truncate font-medium">{attachment.file.name}</p>
             <label className="flex min-h-11 items-center gap-2 text-xs">
               <input type="checkbox" checked={moreDetail} onChange={(event) => setMoreDetail(event.target.checked)} className="size-4" />
-              {isVideo(attachment.file)
-                ? "Also count people and vehicles (slower, uses twice the credit)"
-                : "Also count people and vehicles and estimate a rough depth (slower, uses more credit)"}
+              Also count people and vehicles (slower, uses more credit)
             </label>
           </div>
           <button type="button" onClick={removeAttachment} className="min-h-11 rounded-full px-4 text-sm font-medium">

@@ -1,4 +1,4 @@
-"""Tests for free-form questions about a flood photo or video: SAM measures, a chat model answers the question.
+"""Tests for free-form questions about a flood photo: SAM measures, a chat model answers the question.
 
 No SAM request or model call is made: both are fakes.
 
@@ -27,9 +27,8 @@ from agents import flood_media_agent
 from agents.flood_media_agent import ANSWER_HEADING, answer_flood_media_question
 from agents.flood_types import AgentReply, ChatContext
 from langgraph_orchestrator import graph as chat_graph
-from video import video_prepare
 from video.flood_scene import FloodSceneReport
-from video.sam_client import ImageInput, VideoInput
+from video.sam_client import ImageInput
 
 REPORT = FloodSceneReport("image", 1, 0.30, 0.30, 1.0, "widespread", 3, 2, 1, 1)
 
@@ -99,7 +98,7 @@ class AgentTests(unittest.TestCase):
         self.assertNotIn("People: 3", model.question_text())
 
     def test_a_large_photo_is_made_smaller_for_the_model(self):
-        pictures = flood_media_agent.pictures_for_model(self.photo, None)
+        pictures = flood_media_agent.pictures_for_model(self.photo)
         with Image.open(BytesIO(pictures[0])) as picture:
             self.assertEqual(max(picture.size), flood_media_agent.ANSWER_PICTURE_WIDTH)
 
@@ -125,20 +124,6 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(model.sent, [])
         self.assertIn("about 30%", text)
 
-    def test_a_video_is_shown_to_the_model_as_stills(self):
-        model = RecordingModel()
-        with mock.patch.object(flood_media_agent, "video_stills", return_value=[photo_bytes(64, 32)] * 3) as stills:
-            self.ask("Is the water rising?", model, media=VideoInput(path="/uploads/clip.mp4"))
-        stills.assert_called_once_with(Path("/uploads/clip.mp4"))
-        self.assertEqual(len(model.pictures()), 3)
-
-    def test_a_video_without_a_file_is_answered_from_the_measurements_alone(self):
-        model = RecordingModel()
-        self.ask("Is the water rising?", model, media=VideoInput(url="https://example.com/v.mp4"))
-        self.assertEqual(model.pictures(), [])
-        self.assertIn("no picture", model.question_text())
-
-
 class GraphTests(unittest.TestCase):
     """The graph hands the person's own words to the agent, but not the default question used for a bare picture."""
 
@@ -163,27 +148,6 @@ class GraphTests(unittest.TestCase):
     def test_a_picture_sent_without_words_has_no_question(self):
         seen, _ = self.run_graph("")
         self.assertIsNone(seen["question"])
-
-
-@unittest.skipIf(video_prepare.ffmpeg_path() is None, "the bundled ffmpeg is not installed")
-class VideoStillTests(unittest.TestCase):
-    def test_three_stills_are_taken_from_a_real_video(self):
-        folder = tempfile.TemporaryDirectory()
-        self.addCleanup(folder.cleanup)
-        clip = Path(folder.name) / "clip.mp4"
-        subprocess.run([video_prepare.ffmpeg_path(), "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=duration=3:size=1280x720:rate=25",
-                        "-pix_fmt", "yuv420p", str(clip)], check=True)
-        stills = video_prepare.video_stills(clip)
-        self.assertEqual(len(stills), 3)
-        with Image.open(BytesIO(stills[0])) as still:
-            self.assertEqual(still.size, (640, 360))
-
-    def test_a_file_that_is_not_a_video_gives_no_stills(self):
-        folder = tempfile.TemporaryDirectory()
-        self.addCleanup(folder.cleanup)
-        broken = Path(folder.name) / "broken.mp4"
-        broken.write_bytes(b"not a video")
-        self.assertEqual(video_prepare.video_stills(broken), [])
 
 
 if __name__ == "__main__":

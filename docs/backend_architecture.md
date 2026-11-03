@@ -3,8 +3,8 @@
 Design for the Flood-Gentic backend (FastAPI + LangGraph on Railway, data in Supabase).
 Status: **partly built**. Built: the flood agents, the LangGraph chat graph with a Postgres checkpointer, the RAG package
 (chunking, embeddings, FAISS and pgvector stores, retrieval), the FastAPI app and its routers (`src/api/`), the realtime voice WebSocket,
-the staff endpoints for reviewing reports and requests, the dataset update scripts, a streamed chat with progress lines and photo and video upload
-(`/chat/stream`, `/chat/stream/video`), the dashboard and the Tomorrow.io forecast (`/dashboard`, `/weather/*`), and the Next.js frontend
+the staff endpoints for reviewing reports and requests, the dataset update scripts, a streamed chat with progress lines and photo upload
+(`/chat/stream`), the dashboard and the Tomorrow.io forecast (`/dashboard`, `/weather/*`), and the Next.js frontend
 (`docs/frontend_architecture.md`). Not built yet: a source list on `/chat`, streaming the words of a reply, per-person staff accounts, and a scheduled ingestion worker. Retrieval details live in `docs/ingestion_details.md`, voice in `docs/voice_chat.md`, the weather
 datasets in `docs/dataset_updates.md`; this document covers everything around them.
 
@@ -52,12 +52,12 @@ backend/
     weather_agent.py        PAGASA + Open-Meteo answers
     fetch_supabase_open_meteo_datasets.py   live forecast + recent history from Supabase
     fetch_weather_using_browser.py          PAGASA pages
-    flood_media_agent.py    checks a photo or video for flood water with SAM 3.1 (docs/flood_media.md)
+    flood_media_agent.py    checks a photo for flood water with SAM 3.1 (docs/flood_media.md)
     flood_zones.py, flood_types.py          shared helpers and types
   langgraph_orchestrator/ # graph.py (the chat graph), intents.py (keyword routing), service.py (start-up)
   checkpointer/           # Postgres checkpointer (saved conversations) and database settings
   voice/                  # asr_realtime.py, websocket_router.py (docs/voice_chat.md)
-  video/                  # sam_client.py, flood_scene.py, camera_router.py, demo_app.py, depth_model.py, flood_depth.py: SAM 3.1 flood detection and rough depth (docs/flood_media.md)
+  video/                  # sam_client.py, flood_scene.py: SAM 3.1 flood detection on a photo (docs/flood_media.md)
   prompts/                # system prompts of the weather and document agents
   utils/                  # TTL cache, hourly model-call budget, distance and text helpers, LangSmith tracing (tracing.py)
   sql/                    # one-off schema changes (001_reports_geo.sql)
@@ -85,7 +85,7 @@ backend/
       ../cache.py           Redis cache (do-nothing when REDIS_URL is not set)
       routers/              chat, reports, help_requests, evacuation, advisories, health, staff
     services/             # fetch_postgre_database.py, shared_connection.py
-  tests/                  # agents, graph, voice and camera WebSockets, tracing helpers (conftest.py keeps tests out of LangSmith)
+  tests/                  # agents, graph, voice WebSocket, tracing helpers (conftest.py keeps tests out of LangSmith)
 scripts/                  # ingestion and dataset scripts (docs/dataset_updates.md)
 ```
 
@@ -96,8 +96,7 @@ Keep each module small and single-purpose; routers contain no business logic. Re
 | Method | Path | Purpose | State |
 |---|---|---|---|
 | POST | `/chat` | Ask a question; returns the reply, a `thread_id` and the `safe_answer` flag | **Built** (JSON; no source list yet) |
-| POST | `/chat/stream` | The same, as one JSON line per step (`status` lines that say what the assistant is doing, then `reply` or `error`). Optional `image` (JPEG, PNG or WebP as base64, up to 2 MB) is checked for flood water and `detailed` adds people, vehicles and a rough depth | **Built** (the words of the reply are not streamed: the agents return the whole answer) |
-| POST | `/chat/stream/video` | The video is the request body (MP4, MOV or WebM, up to 200 MB); `message`, `thread_id`, `lat`, `lng` and `detailed` go in the query string. The whole video is analysed (shrunk first, see `docs/flood_media.md`), and the answer is the same lines as `/chat/stream` | **Built** |
+| POST | `/chat/stream` | The same, as one JSON line per step (`status` lines that say what the assistant is doing, then `reply` or `error`). Optional `image` (JPEG, PNG or WebP as base64, up to 2 MB) is checked for flood water and `detailed` adds people and vehicles | **Built** (the words of the reply are not streamed: the agents return the whole answer) |
 | GET | `/dashboard` | Weather, rain, river flow and a rule-based flood risk level for each city (default: all 17), from the last recorded day in the Supabase weather tables (kept current by the nightly workflow; a 503 if the database cannot be read); also where the river flow ranks among all recorded days | **Built** |
 | GET | `/analytics/weather` | Statistics for the Macro Weather Analytics page from the same recorded dataset: one point per year, month or day, headline extremes, the rainiest days and a ranking of the 17 cities. All of Metro Manila combines the cities (mean rain, temperature and river flow; highest wind and gust) | **Built** (reads CSV files, no network) |
 | GET | `/weather/forecast` | The stored Tomorrow.io forecast (120 hours, 6 days) with the entry for the current hour | **Built** (needs the `tomorrow_forecast` table and `TOMMORROW_IO_API`) |
@@ -113,7 +112,6 @@ Keep each module small and single-purpose; routers contain no business logic. Re
 | PATCH | `/staff/reports/{id}`, `/staff/requests/{id}` | Review: reports become verified or rejected; requests become verified, assigned or closed | **Built** (staff key) |
 | GET | `/health`, `/health/ready` | Dependency check; `/health/ready` is 503 unless the database and chat graph work | **Built** |
 | WS | `/ws/voice` | Live speech-to-text for the chat box, see `docs/voice_chat.md` | **Built** |
-| WS | `/ws/camera` | Webcam flood check, one frame every few seconds, see `docs/flood_media.md` | **Built** |
 
 How the API behaves:
 
@@ -121,9 +119,9 @@ How the API behaves:
 - **Errors:** a person in a flood can see them, so each one that is not a plain validation error says what to do next (911, barangay, DRRMO).
   Validation errors list where the problem is and what it is, but never repeat the value that was sent.
 - **Limits:** `/chat`, `/reports`, `/requests` and `/weather/*` are limited per client address (`CHAT_PER_MINUTE`, `REPORTS_PER_HOUR`, `REQUESTS_PER_HOUR`, `WEATHER_PER_MINUTE`).
-  A photo or video check has its own, lower limit (`MEDIA_PER_HOUR`, default 20), because each one costs paid SAM requests. A request that declares a body over about 2.8 MB
-  is refused with 413, except `/chat/stream/video`, which takes up to 200 MB. The limiter lives in one process; use a shared limit if the API runs on several replicas.
-- **Uploads:** a photo or video is checked on its first bytes (not on what the browser claims), saved under a random name in `MEDIA_UPLOAD_DIR` with owner-only
+  A photo check has its own, lower limit (`MEDIA_PER_HOUR`, default 20), because each one costs paid SAM requests. A request that declares a body over about 2.8 MB
+  is refused with 413. The limiter counts in Redis when `REDIS_URL` is set (shared by all replicas), otherwise in the process.
+- **Uploads:** a photo is checked on its first bytes (not on what the browser claims), saved under a random name in `MEDIA_UPLOAD_DIR` with owner-only
   permissions, handed to the chat graph, and deleted as soon as the answer is done, also when the browser disconnects. `src/services/media_upload.py`.
 - **Forecast once a day:** the first request of a Manila day fetches the cities that have no stored forecast yet (17 Tomorrow.io requests, about 20 seconds), later requests only read
   Supabase, and a stored row is never replaced. A failed fetch stores nothing and is not retried for 30 minutes. `src/services/tomorrow_forecast.py`, and the daily workflow `fetch-tomorrow-forecast.yml`.
@@ -149,7 +147,7 @@ Request and response bodies are Pydantic models. The chat response is planned to
 ## 5. Chat flow (LangGraph)
 
 Each message is routed by keywords (`langgraph_orchestrator/intents.py`), so routing costs nothing and is the same every time.
-An emergency always wins; then a message with a photo or video attached goes to the media check; then the specific flood
+An emergency always wins; then a message with a photo attached goes to the media check; then the specific flood
 services; then preparedness, flood risk and weather. Anything unrecognised goes to the document agent, which answers from stored
 material or says it has no information.
 
@@ -163,7 +161,7 @@ flowchart LR
     K -->|contacts| C[contacts agent]
     K -->|place name only| L[location agent]
     K -->|flood risk| FR[flood risk agent]
-    K -->|photo or video attached| M[flood media agent<br/>SAM 3.1 + optional depth]
+    K -->|photo attached| M[flood media agent<br/>SAM 3.1]
     K -->|weather| W[weather agent<br/>PAGASA + Open-Meteo]
     K -->|preparedness / general| D[document agent<br/>hybrid retrieval + answer]
     E --> O([respond])
@@ -178,12 +176,12 @@ flowchart LR
     M --> O
 ```
 
-Only the weather and document agents call the chat model (the media agent calls SAM 3.1, and optionally a depth model, instead); the others use fixed rules or copy data exactly (a wrong
+Only the weather and document agents call the chat model (the media agent calls SAM 3.1 instead); the others use fixed rules or copy data exactly (a wrong
 phone number or route can cost a life). An hourly cap on model calls (`utils/call_budget.py`) returns a busy reply when it is used up.
 
 The graph remembers, per conversation (saved by the Postgres checkpointer under a `thread_id`): the user's `location`,
 the last suggested `destination` (for "how do I get there?"), and a `pending_intent` when an agent asked "which city are you in?". A `media`
-reference (kind plus an https `url` or a `path` inside `MEDIA_UPLOAD_DIR`, and an optional `estimate_depth`) is kept for one message only and cleared by
+reference (kind plus an https `url` or a `path` inside `MEDIA_UPLOAD_DIR`) is kept for one message only and cleared by
 every node, so a file is checked once and the saved conversation never holds the file itself.
 Emergency intent short-circuits everything else so urgent contacts are never delayed by search or model latency.
 

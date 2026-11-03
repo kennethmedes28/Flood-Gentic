@@ -22,12 +22,11 @@ Secrets live in `backend/.env` (gitignored; never commit it). Variable names onl
 |---|---|
 | `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD`, `SUPABASE_POOLER_HOST` | Postgres connection through the Supabase transaction pooler (port 6543). `SUPABASE_DB_URL` can be set instead as one connection string |
 | `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_ACCESS_TOKEN` | Supabase REST and management access; not used by the current code. The secret key bypasses row-level security, so keep it out of the browser |
-| `MUSE_API` | Muse Spark chat models, the Muse speech-to-text and the SAM photo and video check (`api.meta.ai`) |
+| `MUSE_API` | Muse Spark chat models, the Muse speech-to-text and the SAM photo check (`api.meta.ai`) |
 | `TOMMORROW_IO_API` | The Tomorrow.io forecast key (also a repository secret for the forecast workflow). The spelling is the one the code reads |
-| `MEDIA_PER_HOUR`, `WEATHER_PER_MINUTE`, `MEDIA_UPLOAD_DIR`, `DATASETS_DIR` | Optional: photo and video check limit, forecast limit, where uploads are kept briefly, and which folder the dashboard reads the datasets from |
+| `MEDIA_PER_HOUR`, `WEATHER_PER_MINUTE`, `MEDIA_UPLOAD_DIR`, `DATASETS_DIR` | Optional: photo check limit, forecast limit, and where uploads are kept briefly |
 | `ORS_API_KEY` | OpenRouteService routing for the route agent |
 | `HF_TOKEN`, `EMBEDDING_MODEL` | Downloading and choosing the embedding model |
-| `DEPTH_MODEL` | Optional: the metric depth model for the flood depth estimate (default Depth Anything V2 Metric Outdoor Small, about 100 MB, downloaded on first use) |
 | `LANGSMITH_KEY`, `LANGSMITH_TRACE`, `LANGSMITH_PROJECT` | LangSmith tracing, see section 6 |
 | `GROQ_API_KEY`, `LLAMAINDEX_API_KEY` | Other model providers |
 
@@ -79,16 +78,14 @@ Tracing records every chat message as a run in LangSmith so slow or failing agen
 - **Privacy:** one shared client cleans every run before it is sent (`sanitize` in `utils/tracing.py`): phone-number-like digits become `[number]`,
   inputs named like a secret (key, token, password) become `[hidden]`, coordinates are rounded to 2 decimals (about 1 km) and long texts are cut.
   Message text is still sent, so do not trace real users without telling them.
-- **Free plan:** one seat, 5,000 base traces a month, 14-day retention (reviewed 2026-10-29). One chat message is one trace. The SAM webcam
-  and voice sockets are not traced, so they do not use the allowance.
+- **Free plan:** one seat, 5,000 base traces a month, 14-day retention (reviewed 2026-10-29). One chat message is one trace. The voice
+  socket is not traced, so they do not use the allowance.
 - **Tests:** `backend/tests/conftest.py` switches tracing off so test runs never reach LangSmith.
 - **Check it:** run a question through the graph and look for the `flood-gentic-chat` run in the LangSmith project, or list recent runs with the `langsmith` client.
 
 ## 7. Railway (backend, CPU only)
 
-Railway has no GPU, so the backend runs on CPU. The only models that run inside the backend are the document-search embedder
-(and the depth model, until it is removed); chat, speech and SAM are Muse API calls. The reranker is turned off in production
-(`RERANKER_MODEL=none`).
+Railway has no GPU, so the backend runs on CPU. The only models that run inside the backend are the document-search embedder; chat, speech and SAM are Muse API calls. The reranker is turned off in production (`RERANKER_MODEL=none`).
 
 Project `serene-alignment`, environment `production`:
 

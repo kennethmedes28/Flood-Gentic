@@ -3,18 +3,16 @@
 import json
 import logging
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from langgraph_orchestrator.graph import ask_reply
 from langgraph_orchestrator.stream import ask_stream
 from src.api.deps import DATABASE_UNAVAILABLE, get_graph, limit_requests
-from pydantic import ValidationError
-
-from src.api.schemas import ChatRequest, ChatResponse, ChatStreamRequest, Coordinates
-from src.services.media_upload import MAX_VIDEO_BYTES, VIDEO_TOO_LARGE, BadImage, BadVideo, VideoTooLarge, delete_quietly, save_base64_image, save_video_stream
+from src.api.schemas import ChatRequest, ChatResponse, ChatStreamRequest
+from src.services.media_upload import BadImage, delete_quietly, save_base64_image
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +51,7 @@ async def chat_stream(request: Request, body: ChatStreamRequest, graph=Depends(g
 
     With ``image`` (a JPEG, PNG or WebP picture as base64 text) the picture is checked for flood water and the
     reply describes it. ``message`` is then optional. The check uses paid SAM requests: 4 for water only (two
-    phrases, on the photo and on a mirrored copy), 6 with ``detailed`` (which also counts people and vehicles and estimates
-    a rough depth), so photo checks have their own, lower rate limit. The picture is deleted as soon as the answer is done.
+    phrases, on the photo and on a mirrored copy), 6 with ``detailed`` (which also counts people and vehicles), so photo checks have their own, lower rate limit. The picture is deleted as soon as the answer is done.
     """
     thread_id = str(body.thread_id) if body.thread_id else str(uuid4())
     location = body.location.model_dump() if body.location else None
@@ -68,7 +65,7 @@ async def chat_stream(request: Request, body: ChatStreamRequest, graph=Depends(g
         except BadImage as error:
             raise HTTPException(status_code=422, detail=str(error))
 
-        media = {"kind": "image", "path": str(picture), "estimate_depth": body.detailed, "include_people_and_vehicles": body.detailed}
+        media = {"kind": "image", "path": str(picture), "include_people_and_vehicles": body.detailed}
 
     async def lines():
         try:
@@ -78,60 +75,6 @@ async def chat_stream(request: Request, body: ChatStreamRequest, graph=Depends(g
             delete_quietly(picture)  # also runs when the browser disconnects part way
 
     # no-transform and X-Accel-Buffering stop proxies from holding the lines back until the end.
-    return StreamingResponse(
-        lines(), media_type="application/x-ndjson", headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
-    )
-
-
-@router.post("/chat/stream/video", dependencies=[Depends(limit_requests("chat"))])
-async def chat_stream_video(
-    request: Request,
-    graph=Depends(get_graph),
-    message: str = Query(default="", max_length=1000, description="An optional caption or question about the video."),
-    thread_id: UUID | None = Query(default=None),
-    lat: float | None = Query(default=None),
-    lng: float | None = Query(default=None),
-    detailed: bool = Query(default=False, description="Also count people and vehicles: 4 SAM requests instead of 2."),
-) -> StreamingResponse:
-    """The same as POST /chat/stream with a video: the video itself is the request body.
-
-    Send it with its own ``Content-Type`` (``video/mp4``, ``video/quicktime`` or ``video/webm``); ``message``,
-    ``thread_id``, ``lat``, ``lng`` and ``detailed`` go in the query string. The whole video is analysed by SAM (not
-    one frame), which can take a minute or two for a long clip, and uses paid SAM requests: 2 for water only (two phrases), 4
-    with ``detailed``. Videos share the photo checks' rate limit. The video is deleted as soon as the answer is done.
-    The answer is the same lines as POST /chat/stream.
-    """
-    limit_requests("media")(request)
-
-    length = request.headers.get("content-length")
-    if length and length.isdigit() and int(length) > MAX_VIDEO_BYTES:
-        raise HTTPException(status_code=413, detail=VIDEO_TOO_LARGE)
-
-    location = None
-    if (lat is None) != (lng is None):
-        raise HTTPException(status_code=422, detail="Send both lat and lng, or neither.")
-    if lat is not None and lng is not None:
-        try:
-            location = Coordinates(lat=lat, lng=lng).model_dump()
-        except ValidationError as error:
-            raise HTTPException(status_code=422, detail=str(error.errors()[0]["msg"]).removeprefix("Value error, "))
-
-    try:
-        video = await save_video_stream(request.stream())
-    except VideoTooLarge as error:
-        raise HTTPException(status_code=413, detail=str(error))
-    except BadVideo as error:
-        raise HTTPException(status_code=422, detail=str(error))
-
-    media = {"kind": "video", "path": str(video), "estimate_depth": False, "include_people_and_vehicles": detailed}
-
-    async def lines():
-        try:
-            async for event in ask_stream(graph, message.strip(), str(thread_id or uuid4()), location=location, media=media):
-                yield json.dumps(event) + "\n"
-        finally:
-            delete_quietly(video)  # also runs when the browser disconnects part way
-
     return StreamingResponse(
         lines(), media_type="application/x-ndjson", headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
     )

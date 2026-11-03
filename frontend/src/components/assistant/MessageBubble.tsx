@@ -9,8 +9,8 @@ export type ChatMessage = {
    * error   - something went wrong while sending
    */
   kind: "normal" | "safe" | "blocked" | "error"
-  /** A photo or video the user attached to this message (shown as a small preview). */
-  media?: { url: string; isVideo: boolean }
+  /** A photo the user attached to this message (shown as a small preview). */
+  media?: { url: string }
 }
 
 /** Label and symbol for the special kinds, so they never rely on colour alone. */
@@ -36,13 +36,10 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
         {message.kind !== "normal" && (
           <p className="mb-1 text-xs font-semibold">{KIND_NOTE[message.kind]}</p>
         )}
-        {message.media &&
-          (message.media.isVideo ? (
-            <video src={message.media.url} muted controls preload="metadata" className={`max-h-48 rounded-xl ${message.text ? "mb-2" : ""}`} aria-label="Video you attached" />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element -- a local preview of the user's own file
-            <img src={message.media.url} alt="Photo you attached" className={`max-h-48 rounded-xl ${message.text ? "mb-2" : ""}`} />
-          ))}
+        {message.media && (
+          // eslint-disable-next-line @next/next/no-img-element -- a local preview of the user's own file
+          <img src={message.media.url} alt="Photo you attached" className={`max-h-48 rounded-xl ${message.text ? "mb-2" : ""}`} />
+        )}
         {message.text && <p className="break-words whitespace-pre-wrap">{message.text}</p>}
       </div>
     </li>

@@ -12,9 +12,9 @@ avoids flooded streets, hotlines, and weather from PAGASA and Open-Meteo.
 
 When the data is missing or unreliable, it says so and gives a fixed safety answer. It does not guess.
 
-> **Status: working prototype.** The agents, chat graph, retrieval, voice, flood photo and video checks, the HTTP API and the
+> **Status: working prototype.** The agents, chat graph, retrieval, voice, flood photo checks, the HTTP API and the
 > Next.js frontend are built and tested. The frontend has a dashboard, a flood level page, evacuation centers, emergency
-> contacts, a PAGASA satellite page and the AI Agent Flood Assistant (text, voice, photo and video).
+> contacts, a PAGASA satellite page and the AI Agent Flood Assistant (text, voice and photo).
 > Before saving reports and forecasts, run the table scripts once (see [Create the missing tables](#create-the-missing-tables)).
 > See [docs/backend_architecture.md](docs/backend_architecture.md) and [docs/frontend_architecture.md](docs/frontend_architecture.md).
 
@@ -56,7 +56,7 @@ A person, such as a barangay or DRRMO, makes the real decisions.
 | A resident in a flooded area | Nearest safe evacuation center, hotlines, safety steps, and a route that avoids floodwater | Built |
 | A family preparing before a storm | Flood risk for their area, the weather now and the forecast, river flow, and checklists from the preparedness manuals | Built |
 | A neighbour who sees a flooded street | Report it, so routes avoid it | Built; needs the `reports` table to be created |
-| Someone with a photo or video of flooding | Attach it in the assistant: it checks the whole picture or video for flood water, and can count people and give a rough depth for a photo | Built |
+| Someone with a photo of flooding | Attach it in the assistant: it checks the picture for flood water, and can count people and vehicles | Built |
 | Barangay and DRRMO staff | A live list of reports and supply requests, with verify, reject and assign | API built (`/staff`, shared key); no staff screen yet |
 | Relief volunteers | Matching needs with available supplies and centers | Planned |
 
@@ -89,12 +89,12 @@ is built for it. These are real prompts the agents answer today.
 | `Ano ang dapat ihanda bago bumaha?` | Steps and checklists from the preparedness manual, with the sources listed under the answer |
 | `What is the process of relief goods?` | What the documents say, which documents they came from, and what they do not cover |
 
-### Check a photo or video
+### Check a photo
 
-Attach a photo or video of a street in the assistant (hover the round button beside the message box and choose **Photo / video**).
+Attach a photo of a street in the assistant (hover the round button beside the message box and choose **Photo**).
 Ask anything about it in the same message ("How many cars are stuck?", "Hanggang saan ang baha?"): the answer comes from a model that looks at the
 picture, followed by the automatic measurements: how much of it is covered by flood water and, if you tick the option, how many people and vehicles
-are in the water and a rough depth for a photo. A whole video is analysed, not one frame. It is automatic and unverified, and it never says a road is safe.
+are in the water. It is automatic and unverified, and it never says a road is safe.
 
 ### Report and share
 
@@ -127,7 +127,7 @@ finishes the centers.
 what to do, instead of a guess.
 
 Most answers use fixed rules and no model, so they are fast, free per question, and the same every time.
-Only weather and preparedness questions use a chat model; photo and video checks use the SAM vision model. While the assistant works,
+Only weather and preparedness questions use a chat model; photo checks use the SAM vision model. While the assistant works,
 the page shows what it is doing ("Checking rain, river flow and PAGASA for flood risk").
 
 ## How an answer is chosen
@@ -143,7 +143,7 @@ flowchart LR
     R -->|place outside Metro Manila| O[Not covered + national hotlines]
     R -->|evacuation, route, report, contacts, flood risk, how long| A[Rule-based agents]
     R -->|weather, preparedness| L[Agents with a chat model]
-    R -->|photo or video| V[Flood media check]
+    R -->|photo| V[Flood media check]
     A --> D[(Supabase Postgres)]
     L --> D
 ```
@@ -166,9 +166,9 @@ backend/                 Python app (uv project)
   agents/                one module per agent: evacuation, flood risk, route, report, weather, location, flood media ...
   langgraph_orchestrator/ chat graph, keyword routing, progress events for the stream
   src/api/               the HTTP API: app, routers (chat, dashboard, weather, reports ...), request models, rate limits
-  src/services/          dashboard data from the datasets, the daily Tomorrow.io forecast, photo and video uploads
+  src/services/          dashboard data from the datasets, the daily Tomorrow.io forecast, photo uploads
   src/rag/               document ingestion and retrieval (vector + keyword search, reranking)
-  voice/  video/         speech-to-text WebSocket; flood photo and video checks (video is shrunk before SAM reads it)
+  voice/  video/         speech-to-text WebSocket; flood photo check with SAM
   sql/                   table scripts to run once in Supabase
   tests/                 unit tests (no network, browser or model needed)
 frontend/                Next.js app (React 19, Tailwind 4): dashboard, flood level, evacuation, contacts, satellite, assistant
@@ -196,7 +196,7 @@ Create `backend/.env` (it is gitignored; never commit it) with these variables:
 
 | Variable | Used for |
 |---|---|
-| `MUSE_API` | The chat model, speech-to-text and the flood photo and video check |
+| `MUSE_API` | The chat model, speech-to-text and the flood photo check |
 | `SUPABASE_PROJECT_REF`, `SUPABASE_PASSWORD`, `SUPABASE_POOLER_HOST` | Database connection |
 | `TOMMORROW_IO_API` | The Tomorrow.io weather forecast, fetched once a day and stored in Supabase (the spelling is the one the code reads) |
 | `LANGSMITH_KEY`, `LANGSMITH_TRACE`, `LANGSMITH_PROJECT` | Optional tracing |
@@ -217,7 +217,7 @@ make frontend            # only the Next.js app
 
 Then open http://localhost:3000. On Windows use `hooks\run_all.bat` (same options; see [docs/frontend_architecture.md](docs/frontend_architecture.md)).
 The script checks the tools and ports, prints the backend's `/health` so a missing database or key is obvious, and stops both programs together.
-Messages sent from the assistant are real calls: the chat model and photo or video checks use API credit.
+Messages sent from the assistant are real calls: the chat model and photo checks use API credit.
 
 ### Run the tests
 
@@ -232,7 +232,6 @@ make check               # backend tests, then the frontend type check and lint
 |---|---|---|
 | POST | `/chat` | One message in, one reply out. Send back the returned `thread_id` to continue the conversation. `blocked` is true when the message was stopped by the input guard |
 | POST | `/chat/stream` | The same, as one JSON line per step: what the assistant is doing, then the reply. Also takes a photo as base64 (`image`) |
-| POST | `/chat/stream/video` | A video as the request body (MP4, MOV or WebM, up to 200 MB); the whole video is analysed for flood water |
 | GET | `/dashboard` | Weather, rain, river flow and a flood risk level for each of the 17 cities, from the last recorded day |
 | GET | `/analytics/weather` | Long-run rain, temperature, river flow and wind since 2020 for Metro Manila or one city, grouped by year, month or day (`city`, `year`, `month`, `day` filters) |
 | GET | `/weather/forecast`, `/weather/stream` | The Tomorrow.io forecast, stored once a day; the stream sends it live as server-sent events |
@@ -243,7 +242,7 @@ make check               # backend tests, then the frontend type check and lint
 | GET | `/places/evacuation-centers`, `/places/contacts` | The full lists behind the Evacuation and Contacts pages, from Supabase (the pages keep a built-in copy as a fallback) |
 | GET | `/advisories/latest` | Current PAGASA bulletins |
 | GET | `/health`, `/health/ready` | What works right now |
-| WS | `/ws/voice`, `/ws/camera` | Live speech-to-text and the webcam flood check |
+| WS | `/ws/voice` | Live speech-to-text |
 
 ```bash
 curl -s localhost:8000/chat -H 'Content-Type: application/json' \
@@ -251,7 +250,7 @@ curl -s localhost:8000/chat -H 'Content-Type: application/json' \
 ```
 
 Optional settings (environment variables): `CORS_ORIGINS`, `CHECKPOINTER` (`postgres` or `memory`), `ENABLE_RAG`,
-`TRUST_PROXY_HEADERS`, `CHAT_PER_MINUTE`, `REPORTS_PER_HOUR`, `REQUESTS_PER_HOUR`, `MEDIA_PER_HOUR` (photo and video checks, which cost SAM credit),
+`TRUST_PROXY_HEADERS`, `CHAT_PER_MINUTE`, `REPORTS_PER_HOUR`, `REQUESTS_PER_HOUR`, `MEDIA_PER_HOUR` (photo checks, which cost SAM credit),
 `WEATHER_PER_MINUTE`, `ORS_API_KEY`, `STAFF_API_KEY`, `STAFF_PER_MINUTE`, `MEDIA_UPLOAD_DIR`, `DATASETS_DIR`.
 
 ### Monitor reports and requests (staff)
@@ -310,7 +309,7 @@ do not walk or drive through floodwater. Official sources: [pagasa.dost.gov.ph](
 - [Retrieval and ingestion](docs/ingestion_details.md)
 - [Dataset updates](docs/dataset_updates.md)
 - [Voice chat](docs/voice_chat.md)
-- [Flood photo and video check](docs/flood_media.md)
+- [Flood photo check](docs/flood_media.md)
 - [Deployment workflow](docs/deployment_workflow_guide.md)
 - [Evaluation rubric](docs/evaluation_rubric.md) and [agent benchmarks](docs/agent_benchmarks.md)
 

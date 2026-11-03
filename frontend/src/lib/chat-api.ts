@@ -40,7 +40,7 @@ type SendOptions = {
   location: Coordinates | null
   /** A JPEG picture as base64 text, to be checked for flood water (see media-check-api.ts). */
   image?: string
-  /** With a picture: also count people and vehicles and estimate a rough depth. Slower and costs more. */
+  /** With a picture: also count people and vehicles. Slower and costs more. */
   detailed?: boolean
 }
 
@@ -127,41 +127,6 @@ export async function sendChatMessageStream(
   signal?: AbortSignal
 ): Promise<ChatReply> {
   return readReplyStream(await postMessage("/chat/stream", options, signal), onProgress, signal)
-}
-
-/**
- * Send a video (POST /chat/stream/video) and report progress while it is analysed.
- *
- * The video is the request body itself, so it is streamed from the file and never held in memory as text; the
- * message, conversation and location go in the query string. The backend analyses the whole video, which can take a
- * minute or two, and answers with the same progress lines as a text message.
- */
-export async function sendChatVideoStream(
-  video: File,
-  options: Omit<SendOptions, "image">,
-  onProgress: (progress: ChatProgress) => void,
-  signal?: AbortSignal
-): Promise<ChatReply> {
-  const query = new URLSearchParams({ message: options.message, detailed: String(Boolean(options.detailed)) })
-  if (options.threadId) query.set("thread_id", options.threadId)
-  if (options.location) {
-    query.set("lat", String(options.location.lat))
-    query.set("lng", String(options.location.lng))
-  }
-
-  let response: Response
-  try {
-    response = await fetch(`${API_URL}/chat/stream/video?${query}`, {
-      method: "POST",
-      headers: { "Content-Type": video.type || "video/mp4" },
-      body: video,
-      signal,
-    })
-  } catch {
-    throw new ChatError(NETWORK_MESSAGE)
-  }
-  await throwIfFailed(response)
-  return readReplyStream(response, onProgress, signal)
 }
 
 /** Read the lines of a chat stream: progress is passed on, and the reply is returned. */

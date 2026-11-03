@@ -58,13 +58,6 @@ def test_no_detections_at_all():
     assert report.level == LEVEL_NONE and report.people == 0
 
 
-def test_video_counts_frames_with_water():
-    water = [water_detection(0, 50, 200, 100, frame=0), water_detection(0, 50, 200, 100, frame=1)]
-    people = [person(10, 10, 20, 40, frame=3)]  # a later frame with no water
-    report = build_report("video", FRAME, water, people, [])
-    assert report.frames_checked == 4 and report.frames_with_water == 0.5
-
-
 def test_share_in_water_is_zero_without_water():
     grid = np.zeros((50, 100), dtype=bool)
     assert share_in_water(grid, (10, 10, 20, 40), FRAME) == 0.0
@@ -83,7 +76,7 @@ def test_agent_without_key_or_on_failure(monkeypatch):
     monkeypatch.delenv("MUSE_API", raising=False)
     assert "cannot check pictures" in answer_flood_media_question(ImageInput(url="x"), ChatContext()).text
 
-    def broken(media, api_key, estimate_depth=False, include_people_and_vehicles=True):
+    def broken(media, api_key, include_people_and_vehicles=True):
         raise OSError("network down")
 
     monkeypatch.setattr(flood_media_agent, "analyze_flood_media", broken)
@@ -95,13 +88,13 @@ def test_water_only_is_passed_on_to_the_analysis(monkeypatch):
     """include_people_and_vehicles=False must reach the analysis, because that is what makes it one SAM request instead of three."""
     seen = {}
 
-    def fake_analysis(media, api_key, estimate_depth=False, include_people_and_vehicles=True):
-        seen["people"], seen["depth"] = include_people_and_vehicles, estimate_depth
+    def fake_analysis(media, api_key, include_people_and_vehicles=True):
+        seen["people"] = include_people_and_vehicles
         raise OSError("stop here")  # the answer does not matter, only what was asked for
 
     monkeypatch.setattr(flood_media_agent, "analyze_flood_media", fake_analysis)
     answer_flood_media_question(ImageInput(url="x"), ChatContext(), api_key="key", include_people_and_vehicles=False)
-    assert seen == {"people": False, "depth": False}
+    assert seen == {"people": False}
     answer_flood_media_question(ImageInput(url="x"), ChatContext(), api_key="key")
     assert seen["people"] is True  # the default is unchanged for other callers
 
@@ -112,7 +105,7 @@ def test_an_error_type_from_the_sam_library_still_gives_the_friendly_answer(monk
     class WrappedSamError(Exception):
         pass
 
-    def broken(media, api_key, estimate_depth=False, include_people_and_vehicles=True):
+    def broken(media, api_key, include_people_and_vehicles=True):
         raise WrappedSamError("The Responses event source failed during next.")
 
     monkeypatch.setattr(flood_media_agent, "analyze_flood_media", broken)

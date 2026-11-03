@@ -35,17 +35,14 @@ WORKING_LABELS = {
     chat_graph.WEATHER_NODE: "Reading PAGASA and Open-Meteo weather",
     chat_graph.DOCUMENTS_NODE: "Searching the flood guides",
     chat_graph.LOCATION_NODE: "Setting your location",
-    chat_graph.FLOOD_MEDIA_NODE: "Checking your photo or video for flood water",
+    chat_graph.FLOOD_MEDIA_NODE: "Checking your photo for flood water",
     chat_graph.MULTI_NODE: "Working on each part of your message",
     chat_graph.DURATION_NODE: "Estimating how long the flood may last",
     chat_graph.OUTSIDE_NODE: "Checking whether your place is covered",
 }
 GENERIC_LABEL = "Working on your question"
-# A whole video is uploaded to SAM and analysed there, which takes much longer than a photo.
-VIDEO_LABEL = "Analysing your video for flood water. This can take a minute or two"
 # With a question of their own, the picture is also read by the chat model to answer it.
 PHOTO_QUESTION_LABEL = "Looking at your photo to answer your question"
-VIDEO_QUESTION_LABEL = "Analysing your video to answer your question. This can take a minute or two"
 
 
 async def next_node(graph, question: str, config: dict, media: dict | None) -> str | None:
@@ -92,9 +89,7 @@ async def ask_stream(
     label = WORKING_LABELS.get(node, GENERIC_LABEL)
     if node == chat_graph.FLOOD_MEDIA_NODE and media:
         asked = bool(question.strip()) and question not in chat_graph.DEFAULT_MEDIA_QUESTIONS.values()
-        if media.get("kind") == "video":
-            label = VIDEO_QUESTION_LABEL if asked else VIDEO_LABEL
-        elif asked:
+        if asked:
             label = PHOTO_QUESTION_LABEL
     event = {"type": "status", "step": "working", "label": label}
     if node == chat_graph.MULTI_NODE:
