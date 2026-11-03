@@ -84,8 +84,28 @@ Tracing records every chat message as a run in LangSmith so slow or failing agen
 - **Tests:** `backend/tests/conftest.py` switches tracing off so test runs never reach LangSmith.
 - **Check it:** run a question through the graph and look for the `flood-gentic-chat` run in the LangSmith project, or list recent runs with the `langsmith` client.
 
-## 7. Planned
+## 7. Railway (backend, CPU only)
 
-- Railway services for the API and an ingestion worker, with the environment variables above set per service.
+Railway has no GPU, so the backend runs on CPU. The only models that run inside the backend are the document-search embedder
+(and the depth model, until it is removed); chat, speech and SAM are Muse API calls. The reranker is turned off in production
+(`RERANKER_MODEL=none`).
+
+Project `serene-alignment`, environment `production`:
+
+| Resource | What it is for |
+|---|---|
+| Service `Flood-Gentic` | The backend API, built from the GitHub repo (Docker build: see the Docker step) |
+| Volume `flood-gentic-volume` on `Flood-Gentic`, mounted at `/data` (5 GB) | Keeps the Hugging Face model cache, so the embedding model downloads once and not on every deploy |
+| Service `Redis` (with its own volume) | The cache and the shared rate limits (`src/cache.py`) |
+
+Variables set on `Flood-Gentic` so far: `HF_HOME=/data/huggingface` (model cache on the volume) and
+`REDIS_URL=${{Redis.REDIS_URL}}` (a reference to the Redis service, over Railway's private network). The keys and database
+settings from section 2 are still to be added before the first deploy.
+
+Adding or changing a volume makes Railway start a deployment of the service. Until the Dockerfile is in place and the
+service's root directory and variables are set, that build fails; that is expected.
+
+## 8. Planned
+
 - Vercel frontend with `NEXT_PUBLIC_API_URL`, and the backend CORS list allowing its domains. The voice socket must be served over `wss`.
 - A scheduled job that runs the full ingestion instead of by hand.
