@@ -347,9 +347,9 @@ curl -s -X PATCH localhost:8000/staff/requests/<id> -H "Authorization: Bearer $S
 `/staff/summary` shows totals by status and city and how long the oldest unreviewed item has waited, so a growing backlog is easy to spot.
 See [docs/backend_architecture.md](docs/backend_architecture.md) section 4.
 
-### Create the missing tables
+### Create the tables
 
-Run these once, in order, in the Supabase SQL editor: `backend/sql/000_reports.sql`, `001_reports_geo.sql`, `002_requests.sql`, `003_tomorrow_forecast.sql`
+The production database already has `reports` and `requests`. On a new database, run these once, in order, in the Supabase SQL editor: `backend/sql/000_reports.sql`, `001_reports_geo.sql`, `002_requests.sql`, `003_tomorrow_forecast.sql`
 and `004_emergency_contacts.sql`. The `usage_counters` table (`005`) is created by the API itself at start-up, and the forecast and contacts scripts also
 create their own tables if they are missing. Fill the evacuation centers and contacts with `scripts/sync_datasets_to_supabase.py`.
 

@@ -337,8 +337,8 @@ separate `id` column and no `capacity` column.
 | `emergency_contacts` | Created by `sql/004_emergency_contacts.sql` and filled by `scripts/sync_datasets_to_supabase.py` from `corpus/ph_emergency_contacts.csv` (numbers exactly as written); read by `GET /places/contacts` |
 | `usage_counters` | Created by `sql/005_usage_counters.sql` (and at start-up). One row per user (or `all`), metric and Manila day or month; the per-user and whole-app spending caps are counted here atomically; read and written by `src/services/usage.py` |
 | `tomorrow_forecast` | Created by `sql/003_tomorrow_forecast.sql` (or by `scripts/fetch_tomorrow_forecast.py`). One row per city per Manila day (`(city, fetched_on)` is the primary key) with the hourly and daily forecast as JSON. Written at most once per city per day, never replaced; read by `/weather/*` |
-| `reports` | **Does not exist yet.** Queried by the report agent, the route agent and `/reports`. Create it with `sql/000_reports.sql`, then `sql/001_reports_geo.sql` |
-| `requests` | **Does not exist yet.** Written by `POST /requests`. Create it with `sql/002_requests.sql` |
+| `reports` | Created by `sql/000_reports.sql` and `001_reports_geo.sql` (applied to production on 4 November 2026). Queried by the report agent, the route agent and `/reports`. Starts empty |
+| `requests` | Created by `sql/002_requests.sql` (applied to production on 4 November 2026). Written by `POST /requests`. Starts empty |
 | `conversations`, `messages` | Not created. Conversation state is saved by the LangGraph checkpointer instead |
 
 All the tables above have row-level security on with no policies: only the backend's direct Postgres connection can read or write them.
