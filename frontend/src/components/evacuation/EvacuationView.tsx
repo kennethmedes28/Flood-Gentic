@@ -7,6 +7,7 @@ import { GlassPanel } from "@/components/ui/GlassPanel"
 import { Switch } from "@/components/ui/Switch"
 import { CentersMap } from "@/components/evacuation/CentersMap"
 import { useCurrentCity } from "@/context/CurrentCityContext"
+import { useLanguage } from "@/context/LanguageContext"
 import { EVACUATION_CENTERS, NCR_CITIES, type EvacuationCenter } from "@/data/evacuation-centers"
 import { useSupabaseList } from "@/hooks/useSupabaseList"
 import { fetchEvacuationCenters } from "@/lib/places-api"
@@ -41,6 +42,7 @@ function mapLink(center: EvacuationCenter): string {
 
 /** One center in the list. Selecting it shows it on the map. */
 function CenterCard({ item, selected, onSelect }: { item: Listed; selected: boolean; onSelect: () => void }) {
+  const { t } = useLanguage()
   const { center, km } = item
   const notes = extraNotes(center)
 
@@ -69,7 +71,7 @@ function CenterCard({ item, selected, onSelect }: { item: Listed; selected: bool
         </p>
       )}
       <p className="mt-1 text-xs" style={MUTED}>
-        Source: {center.source}
+        {t("evac.source", { source: center.source })}
       </p>
       <a
         href={mapLink(center)}
@@ -77,8 +79,8 @@ function CenterCard({ item, selected, onSelect }: { item: Listed; selected: bool
         rel="noopener noreferrer"
         className="mt-2 inline-flex min-h-11 items-center rounded-full border border-current px-4 text-sm font-medium"
       >
-        Open on OpenStreetMap
-        <span className="sr-only"> (opens in a new tab)</span>
+        {t("evac.openMap")}
+        <span className="sr-only">{t("evac.newTab")}</span>
       </a>
     </li>
   )
@@ -91,6 +93,7 @@ function CenterCard({ item, selected, onSelect }: { item: Listed; selected: bool
  * backend cannot be reached, the built-in copy of that list is shown (see scripts/export_frontend_data.py).
  */
 export function EvacuationView() {
+  const { t } = useLanguage()
   const { city: dashboardCity } = useCurrentCity()
   // Starts on the city the dashboard is about (Manila City unless the user shares a location); the user can pick another.
   const [chosenCity, setChosenCity] = useState<string | null>(null)
@@ -132,21 +135,27 @@ export function EvacuationView() {
     card?.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })
   }, [selected])
 
+  /** "12 centers in Marikina City", "1 center", or "No centers found". */
+  function countHeading(count: number, city: string | null): string {
+    if (count === 0) return t("evac.none")
+    if (city === null) return count === 1 ? t("evac.countOne") : t("evac.count", { count })
+    return count === 1 ? t("evac.countOneIn", { city }) : t("evac.countIn", { count, city })
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <GlassPanel className="p-5">
-        <h1 className="text-xl font-semibold">Evacuation centers</h1>
+        <h1 className="text-xl font-semibold">{t("evac.title")}</h1>
         <p className="text-base" style={MUTED}>
-          Designated shelters in Metro Manila. Check that a center is open before you go.
+          {t("evac.subtitle")}
         </p>
         <p className="mt-3 text-sm" style={MUTED}>
-          The list comes from OCD/NDRRMC lists and later news reports, so it may be out of date, and each center shows what it is based on.
-          Map positions are approximate and distances are in a straight line. Confirm with your barangay or city DRRMO. In danger? Call 911.
+          {t("evac.note")}
         </p>
 
         <div className="mt-4 flex flex-wrap items-end gap-x-4 gap-y-3">
           <label className="flex flex-col gap-1 text-sm font-medium">
-            City
+            {t("evac.city")}
             <select
               value={cityFilter}
               onChange={(event) => {
@@ -155,7 +164,7 @@ export function EvacuationView() {
               }}
               className="min-h-11 rounded-full border border-current bg-transparent px-4 text-base [&>option]:bg-white [&>option]:text-slate-900"
             >
-              <option value={ALL_CITIES}>All cities</option>
+              <option value={ALL_CITIES}>{t("evac.allCities")}</option>
               {NCR_CITIES.map((name) => (
                 <option key={name} value={name}>
                   {name}
@@ -165,7 +174,7 @@ export function EvacuationView() {
           </label>
 
           <label className="flex min-w-48 flex-1 flex-col gap-1 text-sm font-medium">
-            Search by name, barangay or type
+            {t("evac.search")}
             <input
               type="search"
               value={search}
@@ -173,7 +182,7 @@ export function EvacuationView() {
                 setSearch(event.target.value)
                 setShowAll(false)
               }}
-              placeholder="For example: school, covered court"
+              placeholder={t("evac.searchHint")}
               className="min-h-11 rounded-full border border-current bg-transparent px-4 text-base placeholder:text-current placeholder:opacity-60"
             />
           </label>
@@ -182,15 +191,14 @@ export function EvacuationView() {
             checked={mine.status === "on"}
             busy={mine.status === "locating"}
             onChange={mine.setOn}
-            label="Nearest first"
-            busyLabel="Finding your location…"
+            label={t("evac.nearest")}
+            busyLabel={t("evac.nearestBusy")}
           />
         </div>
 
         {(mine.message || (nearestKm !== null && nearestKm > FAR_AWAY_KM)) && (
           <p className="mt-2 text-sm" role="status" style={MUTED}>
-            {mine.message ||
-              `You seem far from these centers (the nearest is ${formatDistance(nearestKm ?? 0)} away). Distances are still shown.`}
+            {mine.message ? t(mine.message) : t("evac.farAway", { distance: formatDistance(nearestKm ?? 0) })}
           </p>
         )}
       </GlassPanel>
@@ -203,18 +211,16 @@ export function EvacuationView() {
 
         <GlassPanel className="p-4 lg:order-1 lg:col-span-5">
           <h2 className="text-lg font-semibold" aria-live="polite">
-            {matches.length === 0
-              ? "No centers found"
-              : `${matches.length} center${matches.length === 1 ? "" : "s"}${cityFilter === ALL_CITIES ? "" : ` in ${cityFilter}`}`}
+            {countHeading(matches.length, cityFilter === ALL_CITIES ? null : cityFilter)}
           </h2>
 
           {matches.length === 0 ? (
             <p className="mt-2 text-base">
-              Nothing matches. Clear the search or choose &quot;All cities&quot;. You can also{" "}
+              {t("evac.nothing")}{" "}
               <Link href="/assistant" className="underline">
-                ask the AI Agent Flood Assistant
+                {t("evac.askLink")}
               </Link>{" "}
-              or call your barangay.
+              {t("evac.orCall")}
             </p>
           ) : (
             <ul className="mt-3 flex flex-col gap-3">
@@ -226,14 +232,14 @@ export function EvacuationView() {
 
           {matches.length > FIRST_SHOWN && !showAll && (
             <button type="button" onClick={() => setShowAll(true)} className="mt-3 min-h-11 rounded-full border border-current px-5 text-base font-medium">
-              Show all {matches.length}
+              {t("evac.showAll", { count: matches.length })}
             </button>
           )}
 
           <p className="mt-4 text-sm" style={MUTED}>
-            To find the nearest center that is not flooded,{" "}
+            {t("evac.findNearest")}{" "}
             <Link href="/assistant" className="underline">
-              ask the AI Agent Flood Assistant
+              {t("evac.askLink")}
             </Link>
             .
           </p>

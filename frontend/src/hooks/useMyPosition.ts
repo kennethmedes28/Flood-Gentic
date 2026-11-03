@@ -2,12 +2,15 @@
 
 import { useCallback, useState } from "react"
 
+import type { MessageKey } from "@/i18n/messages"
+
 export type Position = { lat: number; lng: number }
 
-type State = { status: "off" | "locating" | "on"; position: Position | null; message: string }
+type State = { status: "off" | "locating" | "on"; position: Position | null; message: MessageKey | "" }
 
 /**
  * The user's position, only when they switch it on. Nothing is asked of the browser before that.
+ * The message is the key of an interface text (translate it with `t`).
  * The position lives in this state and is never saved or sent anywhere; switching off forgets it.
  */
 export function useMyPosition() {
@@ -19,10 +22,10 @@ export function useMyPosition() {
       return
     }
     if (!navigator.geolocation) {
-      setState({ status: "off", position: null, message: "Your browser can't share a location." })
+      setState({ status: "off", position: null, message: "geo.unsupported" })
       return
     }
-    setState({ status: "locating", position: null, message: "Finding your location…" })
+    setState({ status: "locating", position: null, message: "geo.finding" })
     navigator.geolocation.getCurrentPosition(
       (found) => setState({ status: "on", position: { lat: found.coords.latitude, lng: found.coords.longitude }, message: "" }),
       (failure) =>
@@ -31,8 +34,8 @@ export function useMyPosition() {
           position: null,
           message:
             failure.code === failure.PERMISSION_DENIED
-              ? "Location not shared, so the list has no distances."
-              : "Couldn't find your location. Please try again.",
+              ? "geo.denied"
+              : "geo.failed",
         }),
       { timeout: 10_000, maximumAge: 60_000 }
     )

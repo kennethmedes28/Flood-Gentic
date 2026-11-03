@@ -5,6 +5,7 @@ import "leaflet/dist/leaflet.css"
 import { useEffect, useRef, useState } from "react"
 import type { CircleMarker, LayerGroup, Map as LeafletMap } from "leaflet"
 
+import { useLanguage } from "@/context/LanguageContext"
 import type { Position } from "@/hooks/useMyPosition"
 import type { EvacuationCenter } from "@/data/evacuation-centers"
 import { distanceKm } from "@/lib/geo"
@@ -37,6 +38,7 @@ function plainTooltip(text: string): HTMLElement {
  * a center in the list moves the map to it. The list is the accessible way to use the page; the map is an extra.
  */
 export function CentersMap({ centers, selectedId, onSelect, user }: CentersMapProps) {
+  const { t } = useLanguage()
   const mapElement = useRef<HTMLDivElement>(null)
   const map = useRef<LeafletMap | null>(null)
   const leaflet = useRef<typeof import("leaflet") | null>(null)
@@ -120,7 +122,7 @@ export function CentersMap({ centers, selectedId, onSelect, user }: CentersMapPr
     if (!user) return
 
     userMarker.current = L.circleMarker([user.lat, user.lng], { radius: 8, color: "#ffffff", weight: 3, fillColor: "#0b2545", fillOpacity: 1 })
-      .bindTooltip(plainTooltip("You are here"))
+      .bindTooltip(plainTooltip(t("evac.youAreHere")))
       .addTo(map.current)
 
     const nearest = [...centers].sort(
@@ -129,11 +131,11 @@ export function CentersMap({ centers, selectedId, onSelect, user }: CentersMapPr
     const points: [number, number][] = [[user.lat, user.lng]]
     if (nearest) points.push([nearest.lat, nearest.lng])
     map.current.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 16, animate: false })
-  }, [user, ready, centers])
+  }, [user, ready, centers, t])
 
   return (
     <div className="relative isolate z-0 h-full min-h-72 overflow-hidden rounded-2xl">
-      <div ref={mapElement} className="absolute inset-0" role="application" aria-label="Map of the evacuation centers in the list. The list beside it has the same centers." />
+      <div ref={mapElement} className="absolute inset-0" role="application" aria-label={t("evac.mapLabel")} />
     </div>
   )
 }
