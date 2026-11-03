@@ -55,7 +55,7 @@ function summariseForecast(hourly: { time: string; values: Record<string, number
 /**
  * The flood level page: pick a city and see its flood risk, how high its river is compared with its own history, the last days
  * of river flow and rain, and what the rain forecast says. The numbers come from the backend (the recorded datasets and the
- * Tomorrow.io forecast), so they are as recent as the last recorded day, which can be days behind.
+ * Tomorrow.io forecast), so they are as recent as the latest recorded day, refreshed four times a day.
  *
  * It opens on the current city (see CurrentCityContext), and any of the 17 cities can be picked.
  */
@@ -270,7 +270,7 @@ export function FloodLevelView() {
       <GlassPanel className="p-5 text-sm">
         <p className="font-semibold">Disclaimer</p>
         <p className="mt-1" style={MUTED}>
-          River flow, rain and the risk level are from the last recorded day in the project dataset, which can be days behind today.
+          River flow, rain and the risk level are from the latest recorded day, refreshed four times a day (today so far, until the day ends).
           The risk is a rule-based estimate, not an official flood warning. Flow is in m³/s: there is no water height in the data.
           The rain forecast is from Tomorrow.io. For official warnings, see pagasa.dost.gov.ph and ndrrmc.gov.ph.
         </p>

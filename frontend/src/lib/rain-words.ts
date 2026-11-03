@@ -23,6 +23,21 @@ export function shortDate(date: string): string {
   return new Date(`${date}T12:00:00+08:00`).toLocaleDateString("en-PH", { day: "numeric", month: "short", timeZone: "Asia/Manila" })
 }
 
+/** True when the date text (such as "2026-11-03") is today's calendar day in Manila. */
+export function isTodayInManila(date: string): boolean {
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) // "2026-11-03"
+  return date === today
+}
+
+/**
+ * How to name the day the recorded numbers are from: "Today so far" while it is still in progress (the data is refreshed
+ * every few hours and the day is only final after midnight), otherwise "Latest recorded day". The date follows.
+ */
+export function recordedDayLabel(date: string | null | undefined): string {
+  if (!date) return "Latest recorded day"
+  return `${isTodayInManila(date) ? "Today so far" : "Latest recorded day"} · ${shortDate(date)}`
+}
+
 /** "Fri" for a date text. */
 export function weekday(date: string): string {
   return new Date(`${date}T12:00:00+08:00`).toLocaleDateString("en-PH", { weekday: "short", timeZone: "Asia/Manila" })

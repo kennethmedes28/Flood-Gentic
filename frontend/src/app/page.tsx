@@ -77,7 +77,7 @@ export default function Page() {
                     <GlassPanel className="order-6 p-5 text-xs">
                       <p className="font-semibold">Disclaimer</p>
                       <p className="mt-1" style={{ color: "var(--glass-text-muted)" }}>
-                        The weather now and the forecast come from Tomorrow.io (fetched once a day). Rain, river flow and the risk level are from the last recorded day in the project dataset, which can be days behind today; the risk is a rule-based estimate from that day and does not use the forecast. PAGASA warnings are not included. Not an official flood warning: see pagasa.dost.gov.ph.
+                        The weather now and the forecast come from Tomorrow.io (fetched once a day). Rain, river flow and the risk level are from the latest recorded day, which is refreshed four times a day (today so far, until the day ends); the risk is a rule-based estimate from that day and does not use the forecast. PAGASA warnings are not included. Not an official flood warning: see pagasa.dost.gov.ph.
                       </p>
                     </GlassPanel>
                   </div>

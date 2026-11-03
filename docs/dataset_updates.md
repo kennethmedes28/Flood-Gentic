@@ -15,7 +15,7 @@ flowchart LR
     OM --> D[update_supabase_from_open_meteo.py]
     DB --> D
     D --> DB
-    GH[GitHub Actions<br/>20:00 Philippine time] -.runs.-> D
+    GH[GitHub Actions<br/>4 runs a day] -.runs.-> D
 ```
 
 There are two ways to keep Supabase current:
@@ -31,7 +31,7 @@ The CSV files in `datasets/` are no longer updated by the workflow, so they fall
 
 | Script | Does | Writes to |
 |---|---|---|
-| `scripts/update_supabase_from_open_meteo.py` | Fetches the missing days from Open-Meteo straight into Supabase (the nightly job) | Supabase tables |
+| `scripts/update_supabase_from_open_meteo.py` | Fetches the missing days from Open-Meteo straight into Supabase (the scheduled job) | Supabase tables |
 | `scripts/update_open_meteo_datasets.py` | Fetches the missing days from Open-Meteo | the two daily CSV files |
 | `scripts/sync_datasets_to_supabase.py` | Adds the evacuation centers and emergency contacts Supabase does not have yet (not the weather tables) | Supabase `evacuation_centers`, `emergency_contacts` |
 | `scripts/load_to_supabase.py` | One-time full load: empties and reloads the dataset tables, upserts the FAISS chunks | Supabase tables |
@@ -126,12 +126,22 @@ The connection comes from `SUPABASE_DB_URL`, or from `SUPABASE_PROJECT_REF` + `S
 
 ## 6. Scheduled workflow
 
-`.github/workflows/update-datasets.yml` runs every day at 20:00 Philippine time. The cron is `0 12 * * *` because
-GitHub uses UTC and the Philippines (UTC+8) has no daylight saving. GitHub can start scheduled runs a few minutes late.
-It can also be started by hand with **Run workflow** (`workflow_dispatch`).
+`.github/workflows/update-datasets.yml` runs four times a day, so the dashboard's latest recorded day is today and not two days ago.
+GitHub uses UTC and the Philippines (UTC+8) has no daylight saving:
 
-Steps: install `pandas`, `httpx`, `psycopg[binary]` and `python-dotenv`; run `update_supabase_from_open_meteo.py` with
-yesterday (Manila time) as the end date, so only finished days are stored, and `--refresh-days 7`, so the last 7 days are fetched again and replaced. A failed attempt is retried twice, two minutes
+| Cron (UTC) | Manila time | End date | What it stores |
+|---|---|---|---|
+| `30 16 * * *` | 00:30 | yesterday | The day that just ended, complete |
+| `0 22 * * *` | 06:00 | today | Today so far (a partial day) |
+| `0 4 * * *` | 12:00 | today | Today so far |
+| `0 10 * * *` | 18:00 | today | Today so far |
+
+The workflow picks the end date from the Manila hour: before 03:00 it is yesterday (a late start of the 00:30 run still finalizes the right day),
+otherwise today. Every run fetches the last 7 days again and replaces them, so a partial day is corrected by the next run and made final by the
+00:30 one. A run costs about 34 Open-Meteo calls (17 cities, weather and river), far below the free limits. GitHub can start scheduled runs a few
+minutes late. It can also be started by hand with **Run workflow** (`workflow_dispatch`).
+
+Steps: install `pandas`, `httpx`, `psycopg[binary]` and `python-dotenv`; run `update_supabase_from_open_meteo.py` with the end date above and `--refresh-days 7`. A failed attempt is retried twice, two minutes
 apart. Runs never overlap (`concurrency`) and are cut off after 30 minutes. The job only reads the repository
 (`contents: read`) and commits nothing.
 

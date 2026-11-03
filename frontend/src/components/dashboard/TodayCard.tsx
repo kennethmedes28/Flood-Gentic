@@ -5,7 +5,7 @@ import { useCurrentCity } from "@/context/CurrentCityContext"
 import { useDashboardData } from "@/context/DashboardDataContext"
 import { describeFlow, riskLook } from "@/lib/risk"
 import { useLiveWeather } from "@/context/LiveWeatherContext"
-import { describeRain, shortDate } from "@/lib/rain-words"
+import { describeRain, recordedDayLabel } from "@/lib/rain-words"
 import { describeWeatherCode } from "@/lib/weather-codes"
 
 /** The big card at the top left: the last recorded weather and the flood risk of the current city, from the backend. */
@@ -44,7 +44,7 @@ export function TodayCard() {
   const risk = riskLook(live.risk)
   const rain = describeRain(live.rainMm)
   const degrees = (value: number | null | undefined) => (value === null || value === undefined ? "–" : `${Math.round(value)}°`)
-  const day = live.dataDate ? `Latest recorded day · ${shortDate(live.dataDate)}` : "Latest recorded day"
+  const day = recordedDayLabel(live.dataDate)
 
   // Right now (Tomorrow.io, streamed): shown when it has arrived; the recorded day is the fallback.
   const sky = describeWeatherCode(now?.weatherCode)
@@ -72,7 +72,7 @@ export function TodayCard() {
               {now.humidity !== null && now.humidity !== undefined && ` · humidity ${Math.round(now.humidity)}%`}
             </p>
             <p className="mt-1 text-xs opacity-90">
-              Latest recorded day ({shortDate(live.dataDate ?? "")}): <span aria-hidden="true">{rain.icon} </span>
+              {recordedDayLabel(live.dataDate)}: <span aria-hidden="true">{rain.icon} </span>
               {rain.text}
               {live.rainMm !== null && ` ${live.rainMm.toFixed(1)} mm`}, high {degrees(live.highC)}, low {degrees(live.lowC)}
             </p>

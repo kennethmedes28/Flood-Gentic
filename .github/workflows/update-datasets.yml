@@ -1,10 +1,17 @@
 name: Update datasets
 
-# Every day at 12:00 UTC = 20:00 Philippine time (UTC+8, no daylight saving).
-# GitHub can start scheduled runs a few minutes late.
+# Four runs a day, so the dashboard's latest recorded day is TODAY and not two days ago. Philippine time is UTC+8 with no
+# daylight saving, so:
+#   16:30 UTC = 00:30 Philippine time: just after midnight. Stores the day that just ended, complete.
+#   22:00 UTC = 06:00, 04:00 UTC = 12:00 and 10:00 UTC = 18:00 Philippine time: refresh today so far (a partial day).
+# Each run re-fetches the last 7 days and replaces them, so a partial day is corrected by the next run and made final by the
+# 00:30 one. GitHub can start scheduled runs a few minutes late.
 on:
   schedule:
-    - cron: "0 12 * * *"
+    - cron: "30 16 * * *"
+    - cron: "0 22 * * *"
+    - cron: "0 4 * * *"
+    - cron: "0 10 * * *"
   workflow_dispatch:
 
 # The job only reads the repository: the data goes straight from Open-Meteo to Supabase.
@@ -32,8 +39,10 @@ jobs:
 
       # Reads the last day of every location from Supabase, fetches only the missing days from Open-Meteo,
       # and writes both tables in one transaction (nothing is written if a step fails).
-      # The end date is yesterday (Manila time): today is still in progress at 20:00, so only finished days are stored.
-      # The last 7 days are fetched again every night and replace the stored values, because Open-Meteo revises
+      # The end date depends on the time in Manila:
+      #   shortly after midnight (hours 00 to 02): yesterday, which is now finished, so the whole day is stored;
+      #   any other time: today, which is still in progress, so today's values so far are stored (and replaced by the next run).
+      # The last 7 days are fetched again on every run and replace the stored values, because Open-Meteo revises
       # recent days. A day it returns blank is skipped and filled in by a later run.
       # A failed attempt (for example an Open-Meteo limit that clears after a pause) is retried twice.
       - name: Update Supabase from Open-Meteo
@@ -42,7 +51,13 @@ jobs:
           SUPABASE_PASSWORD: ${{ secrets.SUPABASE_PASSWORD }}
           SUPABASE_POOLER_HOST: ${{ secrets.SUPABASE_POOLER_HOST }}
         run: |
-          END_DATE="$(TZ=Asia/Manila date -d yesterday +%F)"
+          HOUR="$(TZ=Asia/Manila date +%H)"
+          if [ "$((10#$HOUR))" -lt 3 ]; then
+            END_DATE="$(TZ=Asia/Manila date -d yesterday +%F)"
+          else
+            END_DATE="$(TZ=Asia/Manila date +%F)"
+          fi
+          echo "Manila hour $HOUR, end date $END_DATE"
           for attempt in 1 2 3; do
             if python scripts/update_supabase_from_open_meteo.py --end-date "$END_DATE" --refresh-days 7; then
               exit 0
