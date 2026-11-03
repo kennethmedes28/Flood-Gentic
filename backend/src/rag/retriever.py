@@ -7,12 +7,15 @@
 The candidates then go to ``reranking.py`` and ``rules.py``.
 """
 
+from dataclasses import replace
 from typing import Callable
 
 from src.rag import vector_store
 from src.rag.bm25 import BM25Index
 from src.rag.fusion import bm25_weight_for, reciprocal_rank_fusion
 from src.rag.models import Chunk, SearchFilter
+
+SIMILARITY_KEY = "vector_similarity"  # metadata key: the vector search's cosine similarity of a chunk to the question (0 to 1)
 
 DEFAULT_K_EACH = 30  # results taken from each search
 DEFAULT_K_FUSED = 40  # candidates passed on to the reranker
@@ -50,8 +53,15 @@ class HybridRetriever:
         )
         keyword_results = self.bm25_index.search(query, k_each, search_filter)
 
-        return reciprocal_rank_fusion(
+        fused = reciprocal_rank_fusion(
             [dense_results, keyword_results],
             weights=[1.0, bm25_weight_for(query)],
             top_n=k_fused,
         )
+        # The fusion score only says how the ranks agree. Keep the vector search's cosine similarity as well: it is an absolute
+        # measure of how close a chunk is to the question, which ``rerank`` needs when the reranker is off.
+        similarity = {chunk.id: chunk.score for chunk in dense_results}
+        return [
+            replace(chunk, metadata={**chunk.metadata, SIMILARITY_KEY: similarity[chunk.id]}) if chunk.id in similarity else chunk
+            for chunk in fused
+        ]

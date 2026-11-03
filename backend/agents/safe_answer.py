@@ -12,11 +12,13 @@ Example:
 from agents.flood_types import AgentReply
 
 SAFE_ANSWER = (
-    "I am not confident enough to answer that safely, so I will not guess.\n"
+    "I could not find a reliable answer to that, so I will not guess. I can help with floods, weather, evacuation centers, hotlines and "
+    "getting ready for storms in Metro Manila.\n"
     "- If you or someone is in danger, call 911 now.\n"
     "- If water is rising, move to higher ground. Do not walk or drive through floodwater.\n"
     "- Check pagasa.dost.gov.ph and ndrrmc.gov.ph, or contact your barangay or local DRRMO.\n"
-    "Hindi ako sapat na sigurado para sagutin ito nang ligtas, kaya hindi ako manghuhula.\n"
+    "Wala akong mahanap na maaasahang sagot dito, kaya hindi ako manghuhula. Matutulungan kita sa baha, panahon, evacuation center, hotline at "
+    "paghahanda sa bagyo sa Metro Manila.\n"
     "- Kung nasa panganib kayo o ang iba, tumawag sa 911 ngayon.\n"
     "- Kung tumataas ang tubig, lumipat sa mas mataas na lugar. Huwag tumawid o magmaneho sa baha.\n"
     "- Tingnan ang pagasa.dost.gov.ph at ndrrmc.gov.ph, o makipag-ugnayan sa barangay o lokal na DRRMO."
