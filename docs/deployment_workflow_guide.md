@@ -92,13 +92,14 @@ Tracing records every chat message as a run in LangSmith so slow or failing agen
 **The CPU is slower than local hosting.** Embedding a question for the document search takes longer on Railway's CPU than on a local machine with a GPU, and the
 reranker is off because it would be too slow there. Work done by the Muse API (chat, speech-to-text, SAM) is not slowed down: those models run at the provider.
 
-**Meta's models are not available from Railway (known issue, found on 4 November 2026).** From the Railway service, Meta's API answers
+**Meta's models from Railway (found on 4 November 2026; solved the same day with the Muse proxy on Render, below).** From the Railway service, Meta's API answers
 `404 model_not_found` to every chat model (`muse-wonder-1.0` and all the `muse-spark` fallbacks) and every SAM request fails, in both
 `asia-southeast1` (Singapore) and `us-west2`. The same `MUSE_API` key works from a local machine for all of them. The key and model settings on
 Railway match the local `.env`, and `api.meta.ai` resolves normally from Railway, so the requests reach Meta and are refused there. The cause is
 not confirmed (possibly datacenter IP addresses, or an IP or region restriction on the key or account) and needs to be raised with Meta.
-While it lasts, weather questions are answered from the PAGASA and Open-Meteo data without the model, and photo checks fail with a "try again"
-reply. Workarounds and other hosts: see "Meta's models are not available from Railway" in the README.
+The chat-model and SAM calls therefore go through the Muse proxy on Render (next section), which solved it: chat and photo checks work again
+in production. Without the proxy, weather questions are answered from the PAGASA and Open-Meteo data without the model, and photo checks fail
+with a "try again" reply. More: "Meta's models from Railway: solved with the Render proxy" in the README.
 
 Project `serene-alignment`, environment `production`:
 
@@ -137,9 +138,11 @@ only the path, status and time. `GET /health` shows whether its key and secret a
 `MUSE_PROXY_SECRET` when asked, wait for `/health` to answer, then set the two variables on Railway, which redeploys the backend. To go back
 to calling Meta directly, remove `MUSE_PROXY_URL` from Railway.
 
-**Free plan:** the service sleeps after about 15 minutes without calls. The first call after that waits while it wakes up, which can take
-longer than the chat model's 45-second timeout, so that one question may fail once (weather questions still get the data-only answer).
-Move it to a paid plan before real use to avoid this.
+**Free plan:** the service sleeps after about 15 minutes without calls, and waking takes up to about a minute, longer than the chat model's
+45-second timeout. The backend handles it (`backend/utils/proxy_wakeup.py`): before a question that needs the chat model or SAM it checks
+`/health`, and if the proxy is asleep the chat streams a "waking" status ("Waking up the AI service, this can take up to a minute…") and waits
+until it answers, up to about 90 seconds. After an answer it is not checked again for 5 minutes. Questions answered from data never wait.
+A paid plan keeps the proxy awake and removes the wait.
 
 ## 8. Sign-in (Google and Facebook)
 

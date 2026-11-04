@@ -219,6 +219,7 @@ JSON object per line (`application/x-ndjson`):
 
 ```
 {"type":"status","step":"checking","label":"Checking your message"}
+{"type":"status","step":"waking","label":"Waking up the AI service, this can take up to a minute… / Ginigising ang AI service, …"}
 {"type":"status","step":"working","label":"Checking rain, river flow and PAGASA for flood risk"}
 {"type":"reply","thread_id":"…","reply":"…","safe_answer":false,"blocked":false}      (or {"type":"error","message":"…"})
 ```
@@ -226,6 +227,8 @@ JSON object per line (`application/x-ndjson`):
 The label under the typing dots changes with each status line, and screen readers announce it. The "working" label names the agent
 that will really answer: it comes from the graph's own keyword routing (`backend/langgraph_orchestrator/stream.py`), so it costs
 nothing. A message with several topics also lists them. Photo checks show their own label.
+The "waking" line only appears when the question needs the chat model or SAM and the Muse proxy on Render is asleep (free plan);
+the answer then waits until the proxy is up, up to about 90 seconds (`backend/utils/proxy_wakeup.py`).
 
 Limit: the **words of the reply are not streamed** (the agents return the whole answer at once), only what the assistant is doing.
 `POST /chat` still works unchanged. The guard that blocks secrets runs first in both.

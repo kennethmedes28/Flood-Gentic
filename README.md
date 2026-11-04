@@ -15,11 +15,16 @@ avoids flooded streets, hotlines, and weather from PAGASA and Open-Meteo.
 When the data is missing or unreliable, it says so and gives a fixed safety answer. It does not guess.
 
 > **Status: deployed prototype.** The website runs on Vercel, the API on Railway (CPU only) and the data and sign-in on Supabase.
+> **The backend uses two deployment platforms:** the API runs on Railway, and its chat-model and SAM calls go through a small proxy on
+> Render (the Muse proxy), because Meta's API refuses them from Railway; voice still calls Meta directly from Railway
+> (see [Deployment](#deployment)).
 > **GPUs are not supported on Railway,** so the API runs on the CPU, and the work it does itself is slower than on a local machine with a GPU
 > (see [Deployment](#deployment)).
-> **Known issue: Meta's models are not available from Railway.** Since 4 November 2026 Meta's API answers `model_not_found` to every chat model
-> and fails every SAM photo request sent from the Railway server, while the same key works from a local machine (see
-> [Meta's models are not available from Railway](#metas-models-are-not-available-from-railway)).
+> **Solved: the Railway error with Meta's models.** On 4 November 2026 Meta's API started answering `model_not_found` to every chat model and
+> failing every SAM photo request sent from the Railway server (the same key works from Render and from a local machine). **It is solved
+> with a proxy on Render:** the chat-model and SAM calls now go Railway → Render (Muse proxy) → Meta, and the assistant's chat and photo
+> check work again in production; voice works directly from Railway. Details:
+> [Meta's models from Railway: solved with the Render proxy](#metas-models-from-railway-solved-with-the-render-proxy).
 > It has a dashboard, a flood level page, evacuation centers, emergency contacts, a PAGASA satellite page, a weather analytics page and the
 > AI Agent Flood Assistant (text, voice and photo). The chat, photo check and voice need a Google or Facebook sign-in, with
 > fair-use limits; everything else, and any emergency message, works without one. See [Architecture](#architecture), [Sign-in and fair use](#sign-in-and-fair-use) and
@@ -172,9 +177,14 @@ flowchart LR
       API["FastAPI + LangGraph<br/>agents, rules, search"]
       RC[("Redis<br/>cache, rate limits")]
     end
+    subgraph RD["Render (free plan, Singapore)"]
+      P["Muse proxy<br/>render_proxy/"]
+    end
     API --> RC
     API --> SB[("Supabase<br/>Postgres + pgvector + Auth")]
-    API -->|"chat, photo check, voice"| M["Meta Model API<br/>Muse + SAM 3.1"]
+    API -->|"chat models, photo check (SAM)<br/>shared secret"| P
+    P -->|"adds the Meta key"| M["Meta Model API<br/>Muse + SAM 3.1"]
+    API -->|"voice (speech-to-text)"| M
     API --> W["Open-Meteo, Tomorrow.io,<br/>PAGASA, OpenRouteService"]
     GH["GitHub Actions"] -->|"weather data, 4 runs a day;<br/>forecast, daily"| SB
 ```
@@ -183,6 +193,10 @@ flowchart LR
 - **Backend (Railway, Docker):** the FastAPI app, the chat graph, the agents and the document search. The embedding model is the only model that runs on
   the server, and it runs on the CPU, because **Railway has no GPU**. Chat, speech-to-text and photo analysis are Muse API calls, and the reranker is off in production. The model files live on a
   persistent volume, so a new deploy reuses them.
+- **Muse proxy (Render):** a small FastAPI app (`render_proxy/`) that forwards only the chat-model and SAM calls to Meta's API, because Meta
+  refuses them from Railway. It holds the Meta key; the backend authenticates with a separate shared secret (`MUSE_PROXY_SECRET`). Voice does
+  not go through it. On Render's free plan it sleeps when idle: before a question that needs it, the backend checks it and, if it is asleep,
+  shows "Waking up the AI service…" and waits for it (up to about 90 seconds), so the question does not fail.
 - **Data and sign-in (Supabase):** Postgres with pgvector for the documents, the weather history, centers, contacts, conversations and usage counters, and Supabase Auth for Google and Facebook sign-in.
 - **Cache (Railway Redis):** small cached answers (dashboard, analytics, forecast, photo measurements) and the shared rate limits. Optional: without it everything still works.
 - **Automation (GitHub Actions):** CI on every push, the weather data update four times a day and the Tomorrow.io forecast once a day.
@@ -245,7 +259,7 @@ What is collected and how to have it deleted: the site's `/privacy` and `/data-d
 ## Repository layout
 
 ```
-backend/                 Python app (uv project); Dockerfile builds the Railway image
+backend/                 Python app (uv project); Dockerfile builds the Railway image (see backend/README.md)
   agents/                one module per agent: evacuation, flood risk, route, report, weather, location, flood media ...
                          (reference_data.py: the built-in hotlines and barangay names, generated from the CSVs)
   langgraph_orchestrator/ chat graph, keyword routing, progress events for the stream
@@ -257,9 +271,12 @@ backend/                 Python app (uv project); Dockerfile builds the Railway 
   sql/                   table scripts for Supabase
   tests/                 unit tests (no network, browser or model needed)
 frontend/                Next.js app (React 19, Tailwind 4): dashboard, flood level, evacuation, contacts, satellite, analytics, assistant, privacy
+                         (see frontend/README.md)
   src/app/               one folder per page
   src/components/        ui, shell (frame, menu, cursor), and one folder per page
   src/context  hooks  lib  data/    state (including sign-in), reusable logic, plain functions and API clients, static data
+render_proxy/            the Muse proxy on Render: forwards the chat-model and SAM calls to Meta (see render_proxy/README.md)
+render.yaml              the Render service for the proxy (Singapore, free plan)
 corpus/                  source documents and CSVs (evacuation centers, hotlines, locations)
 datasets/                daily NCR weather CSVs, kept for reference (the backend does not read them; Supabase is the live copy)
 scripts/                 data loading and updates, the Tomorrow.io fetch, the Railway variables helper, run_dev.py
@@ -340,6 +357,32 @@ curl -s localhost:8000/chat -H 'Content-Type: application/json' \
 Optional settings (environment variables): `CORS_ORIGINS`, `CHECKPOINTER` (`postgres` or `memory`), `ENABLE_RAG` (off by default),
 `TRUST_PROXY_HEADERS`, `USER_REQUESTS_PER_DAY` and the other fair-use limits, `UNLIMITED_EMAILS` (tester accounts that skip the per-user limits; see [Sign-in and fair use](#sign-in-and-fair-use)), `CHAT_PER_MINUTE`, `REPORTS_PER_HOUR`, `REQUESTS_PER_HOUR`, `MEDIA_PER_HOUR` (photo checks, each of which makes real SAM API calls),
 `WEATHER_PER_MINUTE`, `ORS_API_KEY`, `STAFF_API_KEY`, `STAFF_PER_MINUTE`, `MEDIA_UPLOAD_DIR`.
+
+### Try the full hybrid RAG pipeline on your own device
+
+The deployed app keeps the document search **off** (`ENABLE_RAG=false`, and `RERANKER_MODEL=none`), because Railway runs on the CPU
+only and the search models would slow every answer down there. Open questions are then answered by the chat model alone and marked
+"General guidance (not from the official documents)". To see the **full hybrid RAG pipeline**, where answers come from the stored flood
+manuals and cite them like `[1]`, run the backend on your own computer:
+
+- **What you need:** a computer whose CPU can run PyTorch and Hugging Face Transformers (any recent laptop or desktop; no GPU needed),
+  with a few GB of free memory (the embedding model alone uses about 1.7 GiB, the reranker adds more), and the backend's `.env` with the
+  Supabase settings (the document chunks are read from the `chunks` table) and `MUSE_API`.
+- **What runs:** the question is searched two ways at once, by meaning (`intfloat/multilingual-e5-large` embeddings, vector search) and by
+  keywords (BM25). The two result lists are merged (Reciprocal Rank Fusion), the best candidates are reordered by a reranker
+  (`BAAI/bge-reranker-v2-m3`), and the top passages go to the chat model, which answers from them and cites its sources.
+
+```bash
+cd backend
+uv sync                                   # installs PyTorch (CPU build), sentence-transformers and the search libraries
+echo "ENABLE_RAG=true" >> .env            # turn the document search on (leave RERANKER_MODEL unset to use the reranker)
+uv run uvicorn main:app --port 8000       # the first start downloads both models, which can take a few minutes
+```
+
+Then ask a preparedness question, for example `"Ano ang dapat gawin kapag may baha?"`, in the assistant (with the frontend running) or
+with the `curl` command above. The answer should cite the stored documents and list its sources. To make it lighter on a slow computer,
+set `RERANKER_MODEL=none` to skip the reranker (vector search and BM25 still run). Your local backend calls Meta directly, so it needs
+no Render proxy.
 
 ### Monitor reports and requests (staff)
 
@@ -437,6 +480,7 @@ GitHub Actions runs them on every push together with the frontend type check and
 |---|---|---|
 | Website | Vercel | Next.js, built from the `frontend` folder |
 | API | Railway | Docker image from `backend/Dockerfile`, CPU only |
+| Muse proxy (chat models and SAM) | Render | `render_proxy/`, defined in `render.yaml`: Singapore, free plan (sleeps when idle; the backend wakes it) |
 | Database and sign-in | Supabase | Postgres with pgvector, Auth (Google and Facebook) |
 | Cache and shared limits | Railway Redis | Optional |
 | Model files | Railway persistent volume | The embedding model is downloaded once and reused by every deploy |
@@ -451,10 +495,14 @@ issue below: Meta's API currently refuses them from Railway). A push to the depl
 Vercel builds the website. The environment variables, the Google and Facebook setup, the per-user API call limits and the CI/CD flow are in
 [docs/deployment_workflow_guide.md](docs/deployment_workflow_guide.md).
 
-### Meta's models are not available from Railway
+### Meta's models from Railway: solved with the Render proxy
 
-**Known issue (found on 4 November 2026).** Meta's API refuses the requests that the backend sends from Railway, so the AI parts of the
-assistant do not work in the deployed app:
+**Status: solved (4 November 2026).** The backend uses **two deployment platforms**: Railway for the API and Render for the Muse proxy
+that carries the chat-model and SAM calls. Since the proxy went live, Railway's logs show no more `model_not_found`, and the proxy logs
+every forwarded call with Meta's answer `200`.
+
+**The problem (found on 4 November 2026).** Meta's API refuses the requests that the backend sends from Railway, so without the proxy the
+AI parts of the assistant do not work in the deployed app:
 
 | What | From Railway | From a local machine (same `MUSE_API` key) |
 |---|---|---|
@@ -469,16 +517,26 @@ assistant do not work in the deployed app:
 - **Cause not confirmed.** Meta may refuse requests from datacenter IP addresses, or the key or account may have an IP or region
   restriction. It needs to be raised with Meta.
 
-**What still works on Railway:** the dashboard, flood level, analytics, evacuation centers, contacts, reports and emergency answers (no model
-needed). A weather question gets an answer written from the PAGASA bulletin and the Open-Meteo forecast without the model (see
+**Without the proxy:** the dashboard, flood level, analytics, evacuation centers, contacts, reports and emergency answers still work (no
+model needed). A weather question gets an answer written from the PAGASA bulletin and the Open-Meteo forecast without the model (see
 `answer_from_data` in `backend/agents/weather_agent.py`). The chat model falls back through the models in order (`MUSE_FALLBACK_MODELS`)
 before giving up. Photo checks and other assistant questions fail with a "try again" reply.
 
-**Fix: the Muse proxy on Render.** Meta accepts the same calls from Render (tested on 4 November 2026 from Render's Singapore region: the
-model list, `muse-wonder-1.0`, `muse-spark-1.2` and SAM 3.1 all answered 200). So the backend stays on Railway, and only its chat-model and
-SAM calls go through a small proxy on Render ([render_proxy/](render_proxy/README.md), set up by `render.yaml`) when `MUSE_PROXY_URL` and
-`MUSE_PROXY_SECRET` are set. The Meta key stays on Render; the backend sends a separate shared secret. Voice keeps calling Meta directly from
-Railway. Setup: "Render: the Muse proxy" in [docs/deployment_workflow_guide.md](docs/deployment_workflow_guide.md).
+**Fix in use: the Muse proxy on Render (two deployment platforms).** Meta accepts the same calls from Render (tested on 4 November 2026 from
+Render's Singapore region: the model list, `muse-wonder-1.0`, `muse-spark-1.2` and SAM 3.1 all answered 200). So the backend stays on
+Railway, and only its chat-model and SAM calls go through a small proxy on Render ([render_proxy/](render_proxy/README.md), set up by
+`render.yaml`) when `MUSE_PROXY_URL` and `MUSE_PROXY_SECRET` are set. The Meta key stays on Render; the backend sends a separate shared
+secret. Voice keeps calling Meta directly from Railway. In production since 4 November 2026: the chat models and SAM answer through it.
+
+```
+Browser ──> Vercel (website) ──> Railway (API) ──── voice ─────────────────────────> Meta API
+                                       └── chat models + SAM ──> Render (Muse proxy) ──> Meta API
+```
+
+The proxy is on Render's free plan, which sleeps after about 15 minutes without calls. Before a question that needs it, the backend
+checks it; if it is asleep, the chat shows "Waking up the AI service, this can take up to a minute…" and waits until it answers (up to about
+90 seconds, `backend/utils/proxy_wakeup.py`). Setup: "Render: the Muse proxy" in
+[docs/deployment_workflow_guide.md](docs/deployment_workflow_guide.md).
 
 **Other workarounds:** run the backend from a local machine (where Meta's API works), for example behind a Cloudflare Tunnel, or test
 another host (Google Cloud Run, Fly.io, a VPS) with one Meta call before moving to it.

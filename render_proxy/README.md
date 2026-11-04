@@ -30,9 +30,15 @@ Browser (Vercel) ──> Railway backend ──── voice (speech-to-text) ─
 Railway keeps its own `MUSE_API` for voice. With `MUSE_PROXY_URL` unset (local work), the backend calls Meta directly
 (`backend/utils/muse_endpoint.py`).
 
-The service is defined in `render.yaml` at the repository root (Singapore, free plan). The free plan sleeps after about
-15 minutes without calls; the first call after that waits while it wakes up, which can be longer than the chat model's
-45-second timeout, so that one question may fail once.
+The service is defined in `render.yaml` at the repository root (Singapore, free plan). So the app uses **two deployment
+platforms**: the API on Railway and this proxy on Render (the website is on Vercel).
+
+**Waking up.** The free plan sleeps after about 15 minutes without calls, and waking takes up to about a minute, longer than
+the chat model's 45-second timeout. So the backend checks `GET /health` before a question that needs the chat model or SAM
+(`backend/utils/proxy_wakeup.py`). If the proxy is asleep, the chat shows "Waking up the AI service, this can take up to a
+minute…" (in English and Filipino) and waits until `/health` answers, up to about 90 seconds, then answers normally.
+After it has answered, it is not checked again for 5 minutes. Questions answered from data (hotlines, flood risk,
+evacuation centers) never wait for it. A paid plan keeps it awake and removes the wait.
 
 ## Run and test locally
 
