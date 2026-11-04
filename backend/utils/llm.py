@@ -62,7 +62,9 @@ class RetryingChatOpenAI(ChatOpenAI):
                     break
                 time.sleep(pause)
                 pause *= 2
-        return self._fallback()._generate(*args, **kwargs)
+        # One plain try on the fallback model. Calling ChatOpenAI's method directly matters: the fallback is a copy of
+        # this class, so its own _generate would retry and fall back again, forever (a RecursionError after minutes).
+        return ChatOpenAI._generate(self._fallback(), *args, **kwargs)
 
     async def _agenerate(self, *args, **kwargs):
         pause = RETRY_PAUSE_SECONDS
@@ -75,10 +77,11 @@ class RetryingChatOpenAI(ChatOpenAI):
                     break
                 await asyncio.sleep(pause)
                 pause *= 2
-        return await self._fallback()._agenerate(*args, **kwargs)
+        # One plain try on the fallback model (see _generate for why ChatOpenAI's method is called directly).
+        return await ChatOpenAI._agenerate(self._fallback(), *args, **kwargs)
 
     def _fallback(self) -> "ChatOpenAI":
-        """The same settings with the fallback model. If this one fails too, its error is raised."""
+        """The same settings with the fallback model. The callers make one plain try with it; if that fails, its error is raised."""
         return self.model_copy(update={"model_name": FALLBACK_MODEL})
 
 

@@ -33,9 +33,11 @@ class RetryTests(unittest.TestCase):
     def run_with(self, outcomes):
         """Call the model with a parent _generate that returns or raises each outcome in turn; returns (result, models used)."""
         used = []
+        self.calls = 0
 
         def fake(instance, *args, **kwargs):
             used.append(instance.model_name)
+            self.calls = len(used)
             outcome = outcomes[len(used) - 1]
             if isinstance(outcome, Exception):
                 raise outcome
@@ -54,6 +56,12 @@ class RetryTests(unittest.TestCase):
         self.assertEqual(result, "answer")
         self.assertEqual(used[-1], llm.FALLBACK_MODEL)
         self.assertEqual(len(used), 4)
+
+    def test_a_failing_fallback_is_tried_once_and_its_error_raised(self):
+        # Before the fix the fallback retried and fell back again until Python's recursion limit (seen in production).
+        with self.assertRaises(NotFoundError):
+            self.run_with([not_found()] * 5)
+        self.assertEqual(self.calls, 4)  # three tries on the main model, one on the fallback
 
     def test_other_errors_are_raised_at_once(self):
         with self.assertRaises(ValueError):

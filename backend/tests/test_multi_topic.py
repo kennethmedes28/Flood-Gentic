@@ -100,6 +100,16 @@ class MultiNodeTests(unittest.TestCase):
             self.ask(self.build(), USER_MESSAGE, "t1", location={"lat": 14.65, "lng": 121.10})
         self.assertIn("(marikina)", self.asked["weather"])
 
+    def test_single_weather_question_gets_the_users_city(self):
+        with self.fake_agents():
+            self.ask(self.build(), "Will it rain in my area today?", "t5", location={"lat": 14.65, "lng": 121.10})
+        self.assertEqual(self.asked["weather"], "Will it rain in my area today? (marikina)")
+
+    def test_city_in_the_question_wins_over_the_saved_city(self):
+        with self.fake_agents():
+            self.ask(self.build(), "Will it rain in Makati today?", "t6", location={"lat": 14.65, "lng": 121.10})
+        self.assertEqual(self.asked["weather"], "Will it rain in Makati today?")
+
     def test_topics_needing_a_location_wait_for_the_city(self):
         with self.fake_agents():
             graph = self.build()  # built inside the patch, because the graph keeps the agents it is built with

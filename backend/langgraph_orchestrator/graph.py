@@ -67,6 +67,7 @@ from agents.flood_types import AgentReply, ChatContext, Location
 from agents.location_agent import (
     ASK_FOR_LOCATION,
     answer_location_message,
+    find_city,
     find_outside_place,
     location_from_coordinates,
     mentions_place,
@@ -467,9 +468,15 @@ def build_graph(
         return state_update(reply)
 
     def weather_with_city(question: str, context: ChatContext) -> AgentReply:
-        """The weather agent reads the city from the question, so add the user's known city to it."""
+        """The weather agent reads the city from the question, so add the user's known city to it.
+
+        "Will it rain in my area?" names no city, and without this the weather agent would answer for its default
+        city (Manila). A city written in the question wins over the saved one, so nothing is added then.
+        """
         city = context.location.city if context.location else None
-        return answer_weather_question(f"{question} ({city})" if city else question, llm)
+        if city and find_city(question) is None:
+            question = f"{question} ({city})"
+        return answer_weather_question(question, llm)
 
     # Which agent answers each topic of a multi-topic message.
     topic_agents = {
@@ -493,7 +500,7 @@ def build_graph(
     graph.add_node(OUTSIDE_NODE, agent_node(answer_outside_coverage))
     graph.add_node(FLOOD_RISK_NODE, agent_node(answer_flood_risk_question))
     graph.add_node(LOCATION_NODE, agent_node(answer_location_message))
-    graph.add_node(WEATHER_NODE, agent_node(lambda question, context: answer_weather_question(question, llm)))
+    graph.add_node(WEATHER_NODE, agent_node(weather_with_city))
     graph.add_node(DOCUMENTS_NODE, agent_node(answer_from_documents))
     graph.add_node(FLOOD_MEDIA_NODE, flood_media_node)
     graph.add_node(MULTI_NODE, multi_node)
