@@ -34,74 +34,16 @@ load_dotenv()
 DOC_ID_RENAMES = {"world-bank": "MMFMP"}
 SOURCE_RENAMES = {"world-bank.pdf": "MMFMP.pdf"}
 
-DATASET_SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS ncr_locations (
-    location_id  integer PRIMARY KEY,
-    latitude     double precision NOT NULL,
-    longitude    double precision NOT NULL,
-    elevation_m  double precision,
-    coord_group  integer,
-    city         text NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS ncr_weather_daily (
-    location_id                        integer NOT NULL REFERENCES ncr_locations (location_id),
-    date                               date    NOT NULL,
-    precipitation_sum_mm               double precision,
-    temperature_2m_max_c               double precision,
-    temperature_2m_min_c               double precision,
-    shortwave_radiation_sum_mjm2       double precision,
-    wind_speed_10m_max_kmh             double precision,
-    wind_gusts_10m_max_kmh             double precision,
-    temperature_2m_max_from_hourly_c   double precision,
-    temperature_2m_min_from_hourly_c   double precision,
-    river_discharge_m3s                double precision,
-    PRIMARY KEY (location_id, date)
-);
-
-CREATE TABLE IF NOT EXISTS ncr_flood_features_daily (
-    location_id               integer NOT NULL REFERENCES ncr_locations (location_id),
-    date                      date    NOT NULL,
-    precipitation_sum_mm      double precision,
-    wind_speed_10m_max_kmh    double precision,
-    wind_gusts_10m_max_kmh    double precision,
-    river_discharge_m3s       double precision,
-    rain_max_1h_mm            double precision,
-    rain_max_3h_mm            double precision,
-    rain_max_6h_mm            double precision,
-    elevation_m               double precision,
-    rain_3d_mm                double precision,
-    rain_7d_mm                double precision,
-    rain_14d_mm               double precision,
-    wet_streak_days           integer,
-    discharge_change_1d_pct   double precision,
-    discharge_max_3d_m3s      double precision,
-    discharge_pctile          double precision,
-    PRIMARY KEY (location_id, date)
-);
-
--- Evacuation centers. location_id is the city's id in ncr_locations (the same for every center of a city),
--- so a center is identified by its city, barangay and name instead.
-CREATE TABLE IF NOT EXISTS evacuation_centers (
-    location_id       integer NOT NULL,
-    city              text    NOT NULL,
-    barangay          text    NOT NULL,
-    name              text    NOT NULL,
-    type              text,
-    status_in_source  text,
-    source            text,
-    latitude          double precision NOT NULL,
-    longitude         double precision NOT NULL,
-    notes             text,
-    UNIQUE (city, barangay, name)
-);
-
-ALTER TABLE ncr_locations            ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ncr_weather_daily        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ncr_flood_features_daily ENABLE ROW LEVEL SECURITY;
-ALTER TABLE evacuation_centers        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE chunks                   ENABLE ROW LEVEL SECURITY;
-"""
+# The table definitions live in backend/sql/ (one file per table). Locations come first because the others point at it.
+DATASET_SCHEMA_FILES = [
+    "006_ncr_locations.sql",
+    "007_ncr_weather_daily.sql",
+    "008_ncr_flood_features_daily.sql",
+    "009_evacuation_centers.sql",
+]
+SQL_DIR = REPO_DIR / "backend" / "sql"
+DATASET_SCHEMA_SQL = "\n".join((SQL_DIR / name).read_text(encoding="utf-8") for name in DATASET_SCHEMA_FILES)
+DATASET_SCHEMA_SQL += "\nALTER TABLE chunks ENABLE ROW LEVEL SECURITY;\n"  # chunks is created by vector_store.ensure_schema
 
 # (table, csv file name). Locations come first because the other two point at it.
 DATASET_TABLES = [
