@@ -407,7 +407,8 @@ with no training, raises it; more than 4 requests stopped paying off:
 SAM is precise (about 97% of what it marks is water) but misses about a quarter of the water. Most photos in that set are aerial, not street-level, so the ranking
 should carry over but the absolute numbers may not.
 
-**Speed.** Median cold time per agent over 5 runs (benchmarked with Muse Spark 1.3 on a laptop on 2026-10-28; the model the app uses is set by `MUSE_CHAT_MODEL`). Agents that do not call the model answer in milliseconds to a few seconds,
+**Speed.** Median cold time per agent over 5 runs (benchmarked with Muse Spark 1.3 on a laptop on 2026-10-28; the app uses `muse-wonder-1.0` first and falls back to the Muse Spark models when it is unavailable; see `MUSE_CHAT_MODEL` and `MUSE_FALLBACK_MODELS` in
+[docs/backend_architecture.md](docs/backend_architecture.md)). Agents that do not call the model answer in milliseconds to a few seconds,
 and the model agents take about 7 seconds at the default reasoning setting:
 
 | Agent | Time | Uses the chat model? |

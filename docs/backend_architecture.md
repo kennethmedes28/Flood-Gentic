@@ -133,8 +133,16 @@ How the API behaves:
 **Open questions.** The document agent never gives the fixed "could not find a reliable answer" text. It always asks the Muse model: sources that fit are cited,
 weak ones are left for the model to judge, and with none (or only noise) the model answers from general knowledge, labelled "General guidance" for preparedness advice.
 The prompt still forbids answering official or time-sensitive facts (warnings, orders, phone numbers, whether a road is safe) from memory. The fixed safe answer remains
-for the weather and flood-risk agents when they have no data at all, so the model never invents the weather. On Railway (CPU only) the model runs at reasoning effort
+for the weather and flood-risk agents when they have no data at all, so the model never invents the weather. When the weather data is there but the
+chat model cannot be reached (for example the API wrongly answers `model_not_found` for every model in the fallback order below), the weather agent
+answers from the data alone, with no model call (`answer_from_data` in `agents/weather_agent.py`): the Open-Meteo rain chance and amount per day for the
+city, and PAGASA's issue time, synopsis and Metro Manila row, in English and Filipino. That answer is not cached, so the next question tries the model again. On Railway (CPU only) the model runs at reasoning effort
 `low` with a 45-second timeout (`MUSE_REASONING_EFFORT`, `utils/llm.py`), and the reranker is off.
+**Model fallback order** (`utils/llm.py`): `muse-wonder-1.0` is tried first (`MUSE_CHAT_MODEL`), and tried again twice when the API answers
+`model_not_found`. If it is still unavailable, `muse-spark-1.3`, `muse-spark-1.2`, `muse-spark-1.3-contributor` and `muse-spark-1.2-contributor` are
+tried once each, in that order, until one answers (`MUSE_FALLBACK_MODELS`, comma-separated, changes the list; empty turns the fallback off).
+Only `model_not_found` (404) and server errors (5xx) move on to the next model; a timeout or lost connection is raised at once, because
+another model would not help and several timeouts in a row would keep the person waiting for minutes.
 The document search itself is off by default too (`ENABLE_RAG=false`): the embedding model is not loaded and no search runs, so the model answers straight away and the progress line reads "Preparing your answer". Set `ENABLE_RAG=true` to bring the search back (the model then cites the matching documents).
 - **Staff access:** the `/staff` endpoints exist only when `STAFF_API_KEY` is set (at least 24 characters). Every call must send
   `Authorization: Bearer <key>`; a missing or wrong key gets the same 401. They share a rate limit (`STAFF_PER_MINUTE`) that applies before the key is checked,
