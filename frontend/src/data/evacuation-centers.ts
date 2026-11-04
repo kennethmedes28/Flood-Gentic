@@ -359,9 +359,9 @@ export const EVACUATION_CENTERS: EvacuationCenter[] = [
     "type": "Permanent evacuation center",
     "status": "Used 2024-2025 (Kristine/habagat)",
     "source": "DSWD/PNA Manila evacuation reports",
-    "lat": 14.5907,
-    "lng": 120.958,
-    "notes": "Coordinates approximate (site/barangay location); confirm before routing"
+    "lat": 14.591004,
+    "lng": 120.958327,
+    "notes": "Coordinates from OpenStreetMap (Amadome; way 458016964)"
   },
   {
     "id": "Manila City|Barangay 649 (Baseco)|Hermenegildo Atienza Elementary School",
@@ -371,9 +371,9 @@ export const EVACUATION_CENTERS: EvacuationCenter[] = [
     "type": "School",
     "status": "Used 2025 (largest Manila EC, 266 families)",
     "source": "PNA 2025 (Manila 6 evacuation centers)",
-    "lat": 14.5939,
-    "lng": 120.9613,
-    "notes": "Coordinates approximate (site/barangay location); confirm before routing"
+    "lat": 14.593866,
+    "lng": 120.961285,
+    "notes": "Coordinates from OpenStreetMap (relation 13378808)"
   },
   {
     "id": "Manila City|Santa Cruz|Pedro Guevara Elementary School",
