@@ -1,5 +1,8 @@
 import { useT } from "@/context/LanguageContext"
 import type { MessageKey } from "@/i18n/messages"
+import type { PhotoAnnotations } from "@/lib/chat-api"
+
+import { AnnotatedPhoto } from "./AnnotatedPhoto"
 
 export type ChatMessage = {
   id: string
@@ -16,6 +19,8 @@ export type ChatMessage = {
   kind: "normal" | "safe" | "blocked" | "error"
   /** A photo the user attached to this message (shown as a small preview). */
   media?: { url: string }
+  /** For an answer about a photo: the photo with the boxes and water SAM found, drawn above the text. */
+  annotated?: { url: string; annotations: PhotoAnnotations }
 }
 
 /** Label and symbol for the special kinds, so they never rely on colour alone. */
@@ -42,6 +47,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
         {message.kind !== "normal" && (
           <p className="mb-1 text-xs font-semibold">{t(KIND_NOTE[message.kind])}</p>
         )}
+        {message.annotated && <AnnotatedPhoto url={message.annotated.url} annotations={message.annotated.annotations} />}
         {message.media && (
           // eslint-disable-next-line @next/next/no-img-element -- a local preview of the user's own file
           <img src={message.media.url} alt={t("assistant.photoAlt")} className={`max-h-48 rounded-xl ${message.text ? "mb-2" : ""}`} />

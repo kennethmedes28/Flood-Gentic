@@ -227,6 +227,7 @@ class ChatState(TypedDict, total=False):
     media: dict | None  # photo attached to the newest message; cleared once it has been checked
     pending_parts: list | None  # topics of a multi-topic message waiting for the user's location
     safe_answer: bool  # True when the newest reply is the fixed "not confident enough" text; reset by every node
+    annotations: dict | None  # boxes and water to draw over the photo of the newest reply; reset by every node
 
 
 def last_question(state: ChatState) -> str:
@@ -312,6 +313,7 @@ def build_graph(
                     "media": None,
                     "pending_parts": None,
                     "safe_answer": False,
+                    "annotations": None,  # so an earlier photo's boxes are never shown with this error
                 }
 
             return state_update(reply)
@@ -327,6 +329,7 @@ def build_graph(
             "media": None,
             "pending_parts": reply.pending_parts,
             "safe_answer": reply.safe_answer,  # set on every reply so a flag never carries over to the next turn
+            "annotations": reply.annotations,  # set on every reply, so an old photo's boxes never show on a later answer
         }
         if reply.location:
             update["location"] = reply.location.to_dict()
@@ -519,6 +522,7 @@ class ChatReply:
     text: str
     safe_answer: bool = False
     blocked: bool = False  # True when the guard stopped the message before the graph ran (see utils/input_guard.py)
+    annotations: dict | None = None  # boxes and water to draw over a checked photo (see video/annotations.py)
 
 
 def prepare_run(question: str, thread_id: str, location: dict | None, media: dict | None) -> tuple[dict, dict]:
@@ -570,4 +574,6 @@ async def ask_reply(
 
     config, graph_input = prepare_run(question, thread_id, location, media)
     result = await graph.ainvoke(graph_input, config)
-    return ChatReply(text=result["messages"][-1].content, safe_answer=bool(result.get("safe_answer")))
+    return ChatReply(
+        text=result["messages"][-1].content, safe_answer=bool(result.get("safe_answer")), annotations=result.get("annotations")
+    )

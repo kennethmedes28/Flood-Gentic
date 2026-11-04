@@ -130,6 +130,8 @@ export function ChatWindow() {
         role: "assistant",
         text: reply.text,
         kind: reply.blocked ? "blocked" : reply.safeAnswer ? "safe" : "normal",
+        // A checked photo comes back with what SAM found: show the same photo with the boxes and water drawn on it.
+        annotated: item && reply.annotations ? { url: item.url, annotations: reply.annotations } : undefined,
       })
     } catch (error) {
       // Our own errors carry a key for the text (shown in the chosen language); a text the backend wrote is shown as it is.

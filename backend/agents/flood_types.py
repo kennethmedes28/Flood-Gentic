@@ -73,3 +73,4 @@ class AgentReply:
     pending_intent: str | None = None  # set when the agent asked a question and wants the answer
     safe_answer: bool = False  # True for the fixed "not confident enough" reply (see safe_answer.py)
     pending_parts: list | None = None  # topics still waiting for the user's location: [[intent, question], ...]
+    annotations: dict | None = None  # boxes and water to draw over a checked photo (see video/annotations.py)

@@ -95,7 +95,9 @@ async def chat(request: Request, body: ChatRequest, graph=Depends(get_graph), us
         if counted:
             await record_usage(request, user, scope)
 
-    return ChatResponse(thread_id=thread_id, reply=reply.text, safe_answer=reply.safe_answer, blocked=reply.blocked)
+    return ChatResponse(
+        thread_id=thread_id, reply=reply.text, safe_answer=reply.safe_answer, blocked=reply.blocked, annotations=reply.annotations
+    )
 
 
 @router.post("/chat/stream", dependencies=[Depends(limit_requests("chat"))])

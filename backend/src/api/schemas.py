@@ -92,6 +92,8 @@ class ChatResponse(BaseModel):
     safe_answer: bool
     # True when the message was stopped before any processing (it held a secret, or tried to change the assistant's rules).
     blocked: bool = False
+    # For a checked photo: the boxes (label, confidence, corners) and the water overlay to draw on it (video/annotations.py).
+    annotations: dict | None = None
 
 
 # --- Places in reports and requests ----------------------------------------------------------

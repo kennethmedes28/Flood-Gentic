@@ -218,19 +218,20 @@ def answer_flood_media_question(
         return AgentReply(text=FAILED_ANSWER)
 
     fixed_report = format_report(report, context)
+    annotations = report.annotations  # the boxes and water drawn over the photo in the reply
     if not question or not question.strip() or llm is None:
-        return AgentReply(text=fixed_report)
+        return AgentReply(text=fixed_report, annotations=annotations)
     if not model_budget.try_use():  # hourly cap on model calls (see utils/call_budget.py): the measurements still answer
-        return AgentReply(text=fixed_report)
+        return AgentReply(text=fixed_report, annotations=annotations)
 
     try:
         answer = answer_with_model(llm, question.strip(), pictures_for_model(media), report, include_people_and_vehicles)
     except Exception as error:  # the model failed or timed out: the measurements are still a useful answer
         logger.error("Answering the question about the picture failed: %s", error)
-        return AgentReply(text=fixed_report)
+        return AgentReply(text=fixed_report, annotations=annotations)
     if not answer:
-        return AgentReply(text=fixed_report)
-    return AgentReply(text=f"{answer}\n\n{ANSWER_HEADING}\n{fixed_report}")
+        return AgentReply(text=fixed_report, annotations=annotations)
+    return AgentReply(text=f"{answer}\n\n{ANSWER_HEADING}\n{fixed_report}", annotations=annotations)
 
 
 def answer_object_search(media: ImageInput, concepts: list[str], api_key: str) -> AgentReply:
@@ -240,7 +241,7 @@ def answer_object_search(media: ImageInput, concepts: list[str], api_key: str) -
     except Exception as error:  # a refused request, a limit, a network problem: the same friendly answer as the flood check
         logger.error("Object search failed for %s: %s", concepts, describe_error(error))
         return AgentReply(text=FAILED_ANSWER)
-    return AgentReply(text=format_object_report(report))
+    return AgentReply(text=format_object_report(report), annotations=report.annotations)
 
 
 def answer_free_question(media: ImageInput, question: str, llm: BaseChatModel) -> AgentReply:

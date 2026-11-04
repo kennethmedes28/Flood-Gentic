@@ -6,7 +6,7 @@ streamed is what the assistant is doing, so the person is not left looking at a 
     {"type": "status", "step": "checking", "label": "Checking your message"}
     {"type": "status", "step": "waking",   "label": "Waking up the AI service ..."}   (only when the Render proxy is asleep)
     {"type": "status", "step": "working",  "label": "Checking flood risk and river flow", "topics": [...]}
-    {"type": "reply",  "thread_id": ..., "reply": ..., "safe_answer": ..., "blocked": ...}
+    {"type": "reply",  "thread_id": ..., "reply": ..., "safe_answer": ..., "blocked": ..., "annotations": ...}
     {"type": "error",  "message": ...}                      (instead of the reply, if something broke)
 
 The step after "checking" is worked out with the same free, keyword-based routing the graph itself
@@ -136,5 +136,6 @@ async def ask_stream(
         "thread_id": thread_id,
         "reply": result["messages"][-1].content,
         "safe_answer": bool(result.get("safe_answer")),
+        "annotations": result.get("annotations"),  # boxes and water for a checked photo, else None (video/annotations.py)
         "blocked": False,
     }

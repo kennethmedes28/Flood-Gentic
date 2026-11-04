@@ -14,6 +14,20 @@ export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:800
 
 export type Coordinates = { lat: number; lng: number }
 
+/** One object SAM found in a checked photo: its name, confidence (0 to 1, or null) and corners in the photo's pixels. */
+export type PhotoBox = { label: string; confidence: number | null; box: [number, number, number, number] }
+
+/**
+ * What to draw over a checked photo (backend video/annotations.py): the photo's size as SAM saw it, a box per object, and the flood
+ * water as a grid (`cells`: base64, one bit per cell, row by row, first cell in the highest bit), or null when there is no water.
+ */
+export type PhotoAnnotations = {
+  width: number
+  height: number
+  boxes: PhotoBox[]
+  water: { rows: number; columns: number; cells: string } | null
+}
+
 export type ChatReply = {
   threadId: string
   /** Plain text. Show it as text, never as HTML. */
@@ -22,6 +36,8 @@ export type ChatReply = {
   safeAnswer: boolean
   /** True when the message was stopped before any processing. */
   blocked: boolean
+  /** For a checked photo: the boxes and water to draw on it. */
+  annotations: PhotoAnnotations | null
 }
 
 /**
@@ -125,13 +141,28 @@ async function postMessage(path: string, options: SendOptions, signal?: AbortSig
 }
 
 /** The reply fields of the backend's answer (snake_case) as a ChatReply. */
-function toReply(data: { thread_id: string; reply: string; safe_answer?: boolean; blocked?: boolean}): ChatReply {
+type ReplyData = { thread_id: string; reply: string; safe_answer?: boolean; blocked?: boolean; annotations?: PhotoAnnotations | null }
+
+function toReply(data: ReplyData): ChatReply {
   return {
     threadId: data.thread_id,
     text: data.reply,
     safeAnswer: Boolean(data.safe_answer),
     blocked: Boolean(data.blocked),
+    annotations: isPhotoAnnotations(data.annotations) ? data.annotations : null,
   }
+}
+
+/** True for annotations with the expected shape, so a malformed answer is ignored instead of breaking the page. */
+function isPhotoAnnotations(value: unknown): value is PhotoAnnotations {
+  if (!value || typeof value !== "object") return false
+  const candidate = value as PhotoAnnotations
+  return (
+    candidate.width > 0 &&
+    candidate.height > 0 &&
+    Array.isArray(candidate.boxes) &&
+    candidate.boxes.every((box) => typeof box.label === "string" && Array.isArray(box.box) && box.box.length === 4)
+  )
 }
 
 /** Send a message and wait for the whole reply (POST /chat). */
@@ -143,7 +174,7 @@ export async function sendChatMessage(options: SendOptions): Promise<ChatReply> 
 /** One line of the stream (POST /chat/stream). */
 type StreamEvent =
   | { type: "status"; label: string; topics?: string[] }
-  | { type: "reply"; thread_id: string; reply: string; safe_answer?: boolean; blocked?: boolean }
+  | ({ type: "reply" } & ReplyData)
   | { type: "error"; message: string }
 
 /**

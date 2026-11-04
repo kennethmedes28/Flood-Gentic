@@ -16,6 +16,7 @@ import re
 import threading
 from dataclasses import dataclass, field
 
+from video.annotations import box_entry, make_annotations
 from video.flood_scene import frame_size_from_output, to_detections
 from video.sam_client import ImageInput, SamClient
 
@@ -87,6 +88,8 @@ class ObjectReport:
     """What SAM found for every name, in the order they were asked."""
 
     counts: list[ObjectCount] = field(default_factory=list)
+    # What the page draws over the photo: a box with confidence for every match counted (see video/annotations.py).
+    annotations: dict | None = None
 
 
 # --- Reading the request ------------------------------------------------------
@@ -191,7 +194,17 @@ async def find_objects_async(media: ImageInput, concepts: list[str], api_key: st
     """Ask SAM for every name at the same time (one request each) and count what it found."""
     async with SamClient(api_key) as sam:
         results = await asyncio.gather(*(sam.segment(concept, media) for concept in concepts))
-    return ObjectReport(counts=[count_detections(concept, result) for concept, result in zip(concepts, results)])
+
+    # The same matches that are counted, as boxes for the page.
+    boxes, frame_size = [], None
+    for concept, result in zip(concepts, results):
+        frame_size = frame_size or frame_size_from_output(result.raw_output)
+        boxes += [box_entry(concept, d.box, d.confidence) for d in to_detections(result, min_confidence=MIN_CONFIDENCE)]
+
+    return ObjectReport(
+        counts=[count_detections(concept, result) for concept, result in zip(concepts, results)],
+        annotations=make_annotations(frame_size, boxes),
+    )
 
 
 def find_objects(media: ImageInput, concepts: list[str], api_key: str) -> ObjectReport:

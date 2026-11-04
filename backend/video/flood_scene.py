@@ -35,6 +35,7 @@ from dataclasses import asdict, dataclass, field, replace
 import numpy as np
 from meta_sam_parser import decode_mask_to_raster
 
+from video.annotations import box_entry, make_annotations
 from video.sam_client import ImageInput, SamClient
 
 WATER_CONCEPT = "flood water"
@@ -98,6 +99,8 @@ class FloodSceneReport:
     vehicles: int
     vehicles_in_water: int
     notes: list[str] = field(default_factory=list)  # things a reader should know about this result
+    # What the page draws over the photo: people and vehicle boxes with confidence, and the water (see video/annotations.py).
+    annotations: dict | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -285,8 +288,13 @@ def build_report(
     elif water_coverage >= SOME_WATER_FROM:
         level = LEVEL_SOME
 
+    # For the page: a box per person and vehicle, and the water grid of the photo (frame 0) as an overlay.
+    boxes = [box_entry(PEOPLE_CONCEPT, d.box, d.confidence) for d in people]
+    boxes += [box_entry(VEHICLE_CONCEPT, d.box, d.confidence) for d in vehicles]
+    annotations = make_annotations(frame_size, boxes, grids.get(0))
+
     return FloodSceneReport(media_kind, frames_checked, water_coverage, peak_coverage, frames_with_water,
-                            level, people_count, people_in_water, vehicle_count, vehicles_in_water, notes)
+                            level, people_count, people_in_water, vehicle_count, vehicles_in_water, notes, annotations)
 
 
 # --- Running it ----------------------------------------------------------------
