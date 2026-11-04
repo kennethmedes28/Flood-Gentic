@@ -13,6 +13,9 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.modules.setdefault("bm25s", types.ModuleType("bm25s"))  # optional search library, not needed here
 
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from langchain_core.runnables import RunnableLambda
+
 from agents import backup_sources, document_agents, flood_risk_agent, weather_agent, web_lookup_agent
 from agents.flood_types import ChatContext, Location
 from agents.safe_answer import SAFE_ANSWER
@@ -109,6 +112,107 @@ class WeatherFallbackTests(unittest.TestCase):
             reply = weather_agent.answer_weather_question("ulan?", FakeLLM())
         web.assert_called_once()
         self.assertTrue(reply.safe_answer)
+
+
+# An Open-Meteo result as fetch_open_meteo returns it, with today and tomorrow.
+OPEN_METEO_RESULT = {
+    "plan": {"city": "marikina"},
+    "weather": {
+        "daily": {
+            "time": ["2026-11-04", "2026-11-05"],
+            "precipitation_probability_max": [70, 20],
+            "precipitation_sum": [5.2, 0.4],
+        },
+        "daily_units": {"precipitation_probability_max": "%", "precipitation_sum": "mm"},
+    },
+    "history": None,
+}
+
+
+def failing_model(_prompt):
+    """Stands in for a chat model whose API call fails (as when the API wrongly says model_not_found)."""
+    raise RuntimeError("Error code: 404 - model_not_found")
+
+
+class WeatherWithoutModelTests(unittest.TestCase):
+    """When the chat model cannot be reached, the weather data is still given, written without the model."""
+
+    def setUp(self):
+        weather_agent.answer_cache = type(weather_agent.answer_cache)(ttl_seconds=60)
+        budget = mock.patch.object(weather_agent, "model_budget")
+        budget.start().try_use.return_value = True
+        self.addCleanup(mock.patch.stopall)
+
+    def ask(self, pages, forecast, llm):
+        with mock.patch.object(weather_agent, "fetch_both_sources", return_value=(pages, forecast)), \
+             mock.patch.object(weather_agent, "search_trusted_sites", return_value=[]):
+            return weather_agent.answer_weather_question("Will it rain in my area today? (marikina)", llm)
+
+    def test_a_failing_model_still_gives_the_forecast_and_the_bulletin(self):
+        reply = self.ask([PAGASA_PAGE], OPEN_METEO_RESULT, RunnableLambda(failing_model))
+        self.assertIn(weather_agent.NO_MODEL_HEADING, reply.text)
+        self.assertIn("Forecast for Marikina", reply.text)
+        self.assertIn("Today / Ngayon (2026-11-04): Chance of rain / Tsansa ng ulan 70%, Rain / Ulan 5.2mm", reply.text)
+        self.assertIn("- 2026-11-05: Chance of rain / Tsansa ng ulan 20%, Rain / Ulan 0.4mm", reply.text)
+        self.assertIn("PAGASA (official):", reply.text)
+        self.assertIn("Source: https://www.pagasa.dost.gov.ph/weather", reply.text)
+        self.assertIn("911", reply.text)
+        self.assertFalse(reply.safe_answer)
+
+    def test_only_the_bulletin_is_given_when_there_is_no_forecast(self):
+        reply = self.ask([PAGASA_PAGE], None, RunnableLambda(failing_model))
+        self.assertNotIn("Forecast for", reply.text)
+        self.assertIn("Rainfall warning bulletin.", reply.text)
+
+    def test_the_answer_without_the_model_is_not_cached(self):
+        self.ask([PAGASA_PAGE], OPEN_METEO_RESULT, RunnableLambda(failing_model))
+        working = FakeListChatModel(responses=["It may rain this afternoon."])
+        reply = self.ask([PAGASA_PAGE], OPEN_METEO_RESULT, working)
+        self.assertEqual(reply.text, "It may rain this afternoon.")
+
+
+# The daily forecast page as fetch_weather_pages returns it: one item per line (copied from a real page, shortened).
+FORECAST_PAGE_TEXT = "\n".join([
+    "Issued at: 4:00 PM, 04 November 2026",
+    "Synopsis",
+    "Northeast Monsoon affecting Northern Luzon. Easterlies affecting the rest of the country.",
+    "Forecast Weather Conditions",
+    "Place", "Weather Condition", "Caused By", "Impacts",
+    "Batanes and Babuyan Islands", "Cloudy skies with light rains", "Northeast Monsoon", "No significant impact",
+    "Metro Manila and the rest of the country",
+    "Partly cloudy to cloudy skies with isolated rainshowers or thunderstorms",
+    "Easterlies",
+    "Possible flash floods or landslides during severe thunderstorms",
+    "Forecast Wind and Coastal Water Conditions",
+    "Place", "Speed", "Direction", "Coastal Water",
+])
+
+
+class ForecastBulletinTests(unittest.TestCase):
+    def test_the_metro_manila_row_issue_time_and_synopsis_are_read(self):
+        bulletin = weather_agent.read_forecast_bulletin(FORECAST_PAGE_TEXT)
+        self.assertEqual(bulletin["issued"], "Issued at: 4:00 PM, 04 November 2026")
+        self.assertTrue(bulletin["synopsis"].startswith("Northeast Monsoon"))
+        self.assertEqual(bulletin["row"]["place"], "Metro Manila and the rest of the country")
+        self.assertEqual(bulletin["row"]["cause"], "Easterlies")
+
+    def test_the_rest_of_the_country_row_is_used_when_metro_manila_is_not_named(self):
+        text = FORECAST_PAGE_TEXT.replace("Metro Manila and the rest of the country", "The rest of the country")
+        self.assertEqual(weather_agent.read_forecast_bulletin(text)["row"]["place"], "The rest of the country")
+
+    def test_an_unknown_layout_is_not_read(self):
+        self.assertIsNone(weather_agent.read_forecast_bulletin("Rainfall warning bulletin. " * 20))
+
+    def test_the_answer_without_the_model_shows_the_metro_manila_row(self):
+        page = {**PAGASA_PAGE, "text": FORECAST_PAGE_TEXT}
+        lines = weather_agent.describe_pagasa([page], "manila", from_web=False)
+        self.assertEqual(lines[0], "PAGASA (official), issued at 4:00 PM, 04 November 2026:")
+        self.assertIn(
+            "- Metro Manila and the rest of the country: Partly cloudy to cloudy skies with isolated rainshowers or thunderstorms "
+            "(caused by: Easterlies). Possible flash floods or landslides during severe thunderstorms.",
+            lines,
+        )
+        self.assertNotIn("Batanes", "\n".join(lines))
 
 
 class PagasaReliabilityTests(unittest.TestCase):

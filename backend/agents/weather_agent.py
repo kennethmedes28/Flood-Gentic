@@ -192,6 +192,143 @@ def format_history(history: list[dict] | None) -> list[str]:
     return lines
 
 
+# --- Answer without the model --------------------------------------------------
+# Used when the chat model cannot be reached (for example the API wrongly answers "model_not_found", or times out).
+# The data is already fetched, so the person still gets it, written by fixed rules: no model writes it, so nothing is
+# invented, and only the numbers and the official text are shown.
+
+NO_MODEL_HEADING = (
+    "The assistant model is not reachable right now, so here is the weather data directly.\n"
+    "Hindi maabot ang assistant model sa ngayon, kaya narito ang datos ng panahon."
+)
+NO_MODEL_FOOTER = (
+    "Check pagasa.dost.gov.ph and your local DRRMO for updates. If you are in danger, call 911.\n"
+    "Tingnan ang pagasa.dost.gov.ph at ang inyong lokal na DRRMO. Kung nasa panganib, tumawag sa 911."
+)
+NO_MODEL_PAGASA_CHARS = 600  # the opening of the bulletin: issue time and synopsis
+
+# The daily Open-Meteo values shown, in this order, with an English / Filipino label.
+DAILY_LABELS = {
+    "precipitation_probability_max": "Chance of rain / Tsansa ng ulan",
+    "precipitation_sum": "Rain / Ulan",
+    "temperature_2m_max": "High / Pinakamainit",
+    "temperature_2m_min": "Low / Pinakamalamig",
+    "wind_speed_10m_max": "Wind / Hangin",
+    "wind_gusts_10m_max": "Gusts / Bugso ng hangin",
+}
+
+
+def describe_forecast(result: dict | None) -> list[str]:
+    """The Open-Meteo daily forecast for the city as short lines, one per day. No lines when there is no forecast."""
+    if not result:
+        return []
+    daily = result["weather"].get("daily", {})
+    units = result["weather"].get("daily_units", {})
+    dates = daily.get("time", [])
+    if not dates:
+        return []
+
+    lines = [f"Forecast for {result['plan']['city'].title()} (Open-Meteo model forecast, not an official warning):"]
+    for index, date in enumerate(dates):
+        values = []
+        for name, label in DAILY_LABELS.items():
+            series = daily.get(name)
+            if series is None or index >= len(series) or series[index] is None:
+                continue
+            values.append(f"{label} {series[index]}{units.get(name, '')}")
+        if not values:
+            continue
+        if index == 0:
+            day = f"Today / Ngayon ({date})"  # Open-Meteo's first day is today in Manila time
+        else:
+            day = date
+        lines.append(f"- {day}: " + ", ".join(values))
+    return lines if len(lines) > 1 else []
+
+
+# Words that mark the Metro Manila row of PAGASA's forecast table. When Metro Manila is not named on its own, it is
+# covered by the row for "the rest of the country" (or "the rest of Luzon").
+METRO_MANILA_WORDS = ("metro manila", "ncr", "national capital region")
+REST_OF_COUNTRY_WORDS = ("rest of the country", "rest of luzon")
+TABLE_HEADER = ["Place", "Weather Condition", "Caused By", "Impacts"]
+
+
+def read_forecast_bulletin(text: str) -> dict | None:
+    """The parts of PAGASA's daily forecast page that matter for Metro Manila, or None when the layout is not recognised.
+
+    The page text comes as one item per line: "Issued at: ...", "Synopsis" and its sentence, then the forecast table as
+    the header (Place, Weather Condition, Caused By, Impacts) followed by four lines per row. Returns
+    ``{"issued": ..., "synopsis": ..., "row": {"place", "condition", "cause", "impacts"} or None}``.
+    """
+    lines = [line.replace("\xa0", " ").strip() for line in text.splitlines()]
+    issued = next((line for line in lines if line.startswith("Issued at:")), None)
+    synopsis = None
+    if "Synopsis" in lines:
+        after = lines.index("Synopsis") + 1
+        synopsis = lines[after] if after < len(lines) else None
+
+    # Find the table header, then read rows of four lines until a line that starts the next section.
+    rows = []
+    for index in range(len(lines) - len(TABLE_HEADER)):
+        if lines[index:index + len(TABLE_HEADER)] == TABLE_HEADER:
+            position = index + len(TABLE_HEADER)
+            while position + 4 <= len(lines) and not lines[position].startswith("Forecast "):
+                place, condition, cause, impacts = lines[position:position + 4]
+                rows.append({"place": place, "condition": condition, "cause": cause, "impacts": impacts})
+                position += 4
+            break
+
+    if issued is None and synopsis is None and not rows:
+        return None
+
+    def first_row_with(words):
+        return next((row for row in rows if any(word in row["place"].lower() for word in words)), None)
+
+    row = first_row_with(METRO_MANILA_WORDS) or first_row_with(REST_OF_COUNTRY_WORDS)
+    return {"issued": issued, "synopsis": synopsis, "row": row}
+
+
+def describe_pagasa(pages: list[dict] | None, city: str | None, from_web: bool) -> list[str]:
+    """The official text that matters for Metro Manila, with its link. No lines when there is none.
+
+    PAGASA's daily forecast page gives its issue time, synopsis and the Metro Manila row of the forecast table. Any other
+    page (a storm bulletin, an advisory, a page from the backup websites) gives its opening lines.
+    """
+    if not pages:
+        return []
+    page = pages[0]
+    bulletin = None if from_web or page.get("page") != "forecast" else read_forecast_bulletin(page["text"])
+
+    if bulletin is None:
+        heading = "From the official websites:" if from_web else "PAGASA (official):"
+        body = shrink_text(page["text"], NO_MODEL_PAGASA_CHARS, [city] if city else None).strip()
+        return [heading, body, f"Source: {page['source']}"]
+
+    heading = "PAGASA (official)"
+    if bulletin["issued"]:
+        heading += ", " + bulletin["issued"].replace("Issued at:", "issued at")  # "PAGASA (official), issued at 4:00 PM, ..."
+    lines = [heading + ":"]
+    if bulletin["synopsis"]:
+        lines.append(f"- Synopsis: {bulletin['synopsis']}")
+    row = bulletin["row"]
+    if row:
+        impacts = row["impacts"].rstrip(".")
+        lines.append(f"- {row['place']}: {row['condition']} (caused by: {row['cause']}). {impacts}.")
+    lines.append(f"Source: {page['source']}")
+    return lines
+
+
+def answer_from_data(pagasa_pages: list[dict] | None, open_meteo_result: dict | None, from_web: bool) -> AgentReply:
+    """The weather answer written from the fetched data alone, for when the chat model cannot be reached."""
+    city = open_meteo_result["plan"]["city"] if open_meteo_result else None
+    sections = [NO_MODEL_HEADING]
+    for lines in (describe_forecast(open_meteo_result), describe_pagasa(pagasa_pages, city, from_web)):
+        if lines:
+            sections.append("\n".join(lines))
+    sections.append(NO_MODEL_FOOTER)
+    return AgentReply(text="\n\n".join(sections))
+
+
 # --- The agent -----------------------------------------------------------------
 
 
@@ -232,13 +369,19 @@ def answer_weather_question(question: str, llm: BaseChatModel) -> AgentReply:
         return AgentReply(text=BUSY_ANSWER)
 
     chain = WEATHER_PROMPT | llm | StrOutputParser()
-    answer = chain.invoke(
-        {
-            "question": question,
-            "pagasa_data": format_pagasa(pagasa_pages, [city] if city else None),
-            "open_meteo_data": format_open_meteo(open_meteo_result),
-        }
-    )
+    try:
+        answer = chain.invoke(
+            {
+                "question": question,
+                "pagasa_data": format_pagasa(pagasa_pages, [city] if city else None),
+                "open_meteo_data": format_open_meteo(open_meteo_result),
+            }
+        )
+    except Exception as error:
+        # The model could not be reached (or failed): the data is already here, so answer from it instead of an
+        # error. Not cached, so the next question tries the model again.
+        logger.error("Weather model call failed, answering from the data alone: %s", error)
+        return answer_from_data(pagasa_pages, open_meteo_result, from_web=used_web)
     if used_web:
         answer = f"{answer}\n\n{WEB_NOTE}"
     answer_cache.set(cache_key, answer)
