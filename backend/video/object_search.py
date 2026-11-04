@@ -105,6 +105,15 @@ def clean_name(piece: str) -> str:
     return FILIPINO_NAMES.get(name, name)
 
 
+def starts_with_request(text: str | None) -> bool:
+    """True when the message starts like an object request ("how many ...", "find ...", "ilan ang ..."), as opposed to a
+    short caption such as "flood check" that only happens to be a few words long."""
+    if not text:
+        return False
+    request = text.strip().lower().strip(" ?!.")
+    return any(request == start or request.startswith(start + " ") for start in REQUEST_STARTS)
+
+
 def object_query_concepts(text: str | None) -> list[str]:
     """The object names in a message, or an empty list when the message is a question rather than an object request.
 

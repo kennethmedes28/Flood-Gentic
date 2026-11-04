@@ -100,6 +100,41 @@ class AgentTests(unittest.TestCase):
         model.invoke.assert_not_called()
         self.assertIn("child: 2", reply.text)
 
+    def test_a_short_flood_caption_gets_the_flood_check_not_an_object_search(self):
+        # Seen in production: "flood check" was sent to SAM as the name of an object.
+        self.flood_check.return_value = flood_media_agent.FloodSceneReport(
+            media_kind="image", frames_checked=1, water_coverage=0.3, peak_water_coverage=0.3, frames_with_water=1.0,
+            level="widespread", people=0, people_in_water=0, vehicles=0, vehicles_in_water=0,
+        )
+        for caption in ["flood check", "baha", "Tubig", "flooded street", "check for flood"]:
+            self.find.reset_mock()
+            reply, model = self.ask(caption)
+            self.find.assert_not_called()
+            model.invoke.assert_not_called()  # the fixed report, no chat model call
+            self.assertIn("30%", reply.text, caption)
+
+    def test_a_request_to_find_something_still_goes_to_the_object_search(self):
+        for caption, names in [("how many people in the flood", ["people"]), ("find the flood water", ["flood water"]), ("red car", ["red car"])]:
+            self.find.reset_mock()
+            self.ask(caption)
+            self.find.assert_called_once_with(self.photo, names, "key")
+
+    def test_the_log_shows_what_caused_a_failed_search(self):
+        try:
+            try:
+                raise RuntimeError("SAM request failed (404): model_not_found")
+            except RuntimeError as inner:
+                raise ValueError("The Responses event source failed during next.") from inner
+        except ValueError as outer:
+            text = flood_media_agent.describe_error(outer)
+        self.assertIn("event source failed", text)
+        self.assertIn("caused by RuntimeError: SAM request failed (404): model_not_found", text)
+
+    def test_flooded_counts_as_a_flood_word(self):
+        self.assertTrue(flood_media_agent.is_flood_question("Is the road flooded?"))
+        self.assertTrue(flood_media_agent.asks_for_flood_check("is it flooded?"))
+        self.assertFalse(flood_media_agent.asks_for_flood_check("what does the sign say?"))
+
     def test_a_failed_search_gives_the_friendly_answer(self):
         self.find.side_effect = RuntimeError("SAM down")
         reply, _ = self.ask("how many trees?")

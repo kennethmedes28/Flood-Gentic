@@ -40,7 +40,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from agents.flood_types import AgentReply, ChatContext
 from src.cache import get_cache
 from video.flood_scene import LEVEL_NONE, LEVEL_SOME, FloodSceneReport, analyze_flood_media
-from video.object_search import find_objects, format_object_report, object_query_concepts
+from video.object_search import find_objects, format_object_report, object_query_concepts, starts_with_request
 from video.sam_client import ImageInput
 from utils.call_budget import model_budget
 from utils.tracing import traced_agent
@@ -88,7 +88,7 @@ Rules:
 # A question that mentions any of these is about flooding, so the automatic flood check (paid SAM requests) runs too. Any other question
 # goes straight to the chat model with the picture. English and Filipino, matched as whole words or word starts.
 FLOOD_QUESTION_WORDS = (
-    "flood", "baha", "bumaha", "binaha", "water", "tubig", "deep", "lalim", "malalim", "tuhod", "baywang", "bewang", "hita", "dibdib", "ankle", "knee", "waist",
+    "flood", "floods", "flooded", "flooding", "baha", "bumaha", "binaha", "water", "tubig", "deep", "lalim", "malalim", "tuhod", "baywang", "bewang", "hita", "dibdib", "ankle", "knee", "waist",
     "pass", "passable", "madaanan", "madadaanan", "daanan", "cross", "tawid", "tumawid", "drive", "magmaneho", "road", "kalsada", "street", "rain", "ulan",
     "walk", "wade", "lusong", "lumusong", "lakad", "maglakad", "travel", "biyahe", "swim", "lunod", "drown", "evacuat", "rescue", "safe", "ligtas", "people", "tao", "person", "car", "cars", "vehicle", "sasakyan", "jeep", "truck", "motor", "storm", "bagyo", "typhoon",
 )
@@ -100,6 +100,39 @@ FREE_QUESTION_BUSY = (
     "I cannot look at pictures right now. Please try again in a little while.\n"
     "Hindi ko matingnan ang mga larawan ngayon. Subukan muli mamaya."
 )
+
+
+# Words that name the flood itself. A short caption made of them ("flood check", "baha", "tubig", "flooded street") asks
+# for the flood check of the photo, not for an object called "flood check" (see ``asks_for_flood_check``).
+FLOOD_CHECK_WORDS = {
+    "flood", "floods", "flooded", "flooding", "floodwater", "baha", "bumaha", "binaha", "water", "tubig", "check", "lubog",
+}
+SHORT_CAPTION_WORDS = 3  # a caption this short is a label for the photo, not a question
+
+
+def asks_for_flood_check(caption: str | None) -> bool:
+    """True for a short caption that only asks for the flood check, such as "flood check", "baha" or "check for flood".
+
+    A request that starts like an object search ("how many people in the flood", "find the flood water") is not one:
+    the person asked to find something, so the object search answers it.
+    """
+    if not caption or starts_with_request(caption):
+        return False
+    words = re.findall(r"[a-zñ]+", caption.lower())
+    return 0 < len(words) <= SHORT_CAPTION_WORDS and any(word in FLOOD_CHECK_WORDS for word in words)
+
+
+def describe_error(error: BaseException) -> str:
+    """The error and what caused it, for the log. The SAM stream library wraps our own error (which carries the HTTP status
+    and the API's message) in a generic "event source failed" one, so the cause is the useful part."""
+    text = f"{type(error).__name__}: {error}"
+    cause = error.__cause__ or error.__context__
+    depth = 0
+    while cause is not None and depth < 3:  # a short chain is enough; avoid a loop on odd chains
+        text += f" <- caused by {type(cause).__name__}: {cause}"
+        cause = cause.__cause__ or cause.__context__
+        depth += 1
+    return text
 
 
 def is_flood_question(question: str) -> bool:
@@ -159,6 +192,12 @@ def answer_flood_media_question(
     if not api_key:
         return AgentReply(text=NO_KEY_ANSWER)
 
+    # A short caption that only asks for the flood check ("flood check", "baha", "tubig") is treated like a photo sent with
+    # no question: the flood check and its fixed report, with no chat model call. Without this, "flood check" would be
+    # read as the name of an object to find.
+    if asks_for_flood_check(question):
+        question = None
+
     # A message that names objects ("human, child, car", "how many trees?", "ilan ang tao?") is a segmentation request:
     # each name goes to SAM as its own request, the way the SAM playground works. No flood check and no chat model.
     concepts = object_query_concepts(question)
@@ -175,7 +214,7 @@ def answer_flood_media_question(
         # SamError (a refused request, a limit), OSError (network problems, unreadable files) and ValueError are the usual
         # ones. The SAM stream library also wraps them in its own error type, so anything else is treated the same way:
         # the person gets the friendly "could not check" answer with the 911 line, not a bare error.
-        logger.error("Flood media check failed: %s", error)
+        logger.error("Flood media check failed: %s", describe_error(error))
         return AgentReply(text=FAILED_ANSWER)
 
     fixed_report = format_report(report, context)
@@ -199,7 +238,7 @@ def answer_object_search(media: ImageInput, concepts: list[str], api_key: str) -
     try:
         report = find_objects(media, concepts, api_key)
     except Exception as error:  # a refused request, a limit, a network problem: the same friendly answer as the flood check
-        logger.error("Object search failed for %s: %s", concepts, error)
+        logger.error("Object search failed for %s: %s", concepts, describe_error(error))
         return AgentReply(text=FAILED_ANSWER)
     return AgentReply(text=format_object_report(report))
 
