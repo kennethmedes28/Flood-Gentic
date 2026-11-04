@@ -36,7 +36,7 @@ async def count_usage(request: Request, user: User | None, photo: bool, emergenc
     if user is None or tracker is None:
         return False
     try:
-        await run_in_threadpool(tracker.count_chat_request, user.id, photo)
+        await run_in_threadpool(tracker.count_chat_request, user.id, photo, user.email)
     except QuotaExceeded as exceeded:
         if emergency is None:
             raise quota_exceeded(exceeded)

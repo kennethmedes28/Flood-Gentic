@@ -136,6 +136,43 @@ class CountingRuleTests(unittest.TestCase):
         self.assertEqual((snapshot["messages_today"], snapshot["photos_today"], snapshot["tokens_this_month"]), (1, 1, 500))
         self.assertEqual((snapshot["messages_limit"], snapshot["photos_limit"]), (20, 3))  # the tight defaults
 
+    def test_an_unlimited_account_skips_its_own_caps_but_is_still_counted(self):
+        usage = tracker(user_requests_per_day=1, user_uploads_per_day=1, user_voice_per_day=1, user_tokens_per_month=10,
+                        unlimited_emails=frozenset({"tester@example.org"}))
+        usage.counters.add("t", TOKENS, "2026-11", 999)  # far over the monthly tokens
+        for _ in range(5):
+            usage.count_chat_request("t", photo=True, email="Tester@Example.org ")  # case and spaces do not matter
+            usage.count_voice_session("t", email="tester@example.org")
+        self.assertEqual(usage.counters.get("t", REQUESTS, "2026-11-03"), 5)
+        self.assertEqual(usage.counters.get("t", UPLOADS, "2026-11-03"), 5)
+        self.assertEqual(usage.counters.get(EVERYONE, REQUESTS, "2026-11-03"), 5)
+        self.assertTrue(usage.snapshot("t", email="tester@example.org")["unlimited"])
+
+    def test_an_unlimited_account_is_still_stopped_by_the_whole_app_cap(self):
+        usage = tracker(everyone_requests_per_day=2, unlimited_emails=frozenset({"tester@example.org"}))
+        usage.count_chat_request("t", photo=False, email="tester@example.org")
+        usage.count_chat_request("t", photo=False, email="tester@example.org")
+        with self.assertRaises(QuotaExceeded):
+            usage.count_chat_request("t", photo=False, email="tester@example.org")
+        self.assertEqual(usage.counters.get("t", REQUESTS, "2026-11-03"), 2)  # the refused one is not counted
+
+    def test_other_accounts_keep_their_limits(self):
+        usage = tracker(user_requests_per_day=1, unlimited_emails=frozenset({"tester@example.org"}))
+        usage.count_chat_request("a", photo=False, email="someone@example.org")
+        with self.assertRaises(QuotaExceeded):
+            usage.count_chat_request("a", photo=False, email="someone@example.org")
+        with self.assertRaises(QuotaExceeded):
+            usage.count_chat_request("a", photo=False)  # no email (for example a Facebook phone account)
+        self.assertFalse(usage.snapshot("a", email="someone@example.org")["unlimited"])
+
+    def test_the_unlimited_list_is_read_from_the_environment(self):
+        from unittest import mock
+        from src.api.settings import unlimited_emails_from_env
+        with mock.patch.dict("os.environ", {"UNLIMITED_EMAILS": " Tester@Example.org, other@example.org ,"}):
+            self.assertEqual(unlimited_emails_from_env(), frozenset({"tester@example.org", "other@example.org"}))
+        with mock.patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(unlimited_emails_from_env(), frozenset())
+
     def test_reset_times(self):
         self.assertEqual(seconds_until_next_day(datetime(2026, 11, 3, 23, 0, tzinfo=MANILA)), 3600)
         self.assertEqual(seconds_until_next_month(datetime(2026, 11, 30, 23, 0, tzinfo=MANILA)), 3600)
@@ -232,6 +269,15 @@ class RouteTests(unittest.TestCase):
             client.post("/chat", json={"message": "hi"}, headers=signed_in())
             body = client.get("/me/usage", headers=signed_in()).json()
         self.assertEqual((body["messages_today"], body["messages_limit"], body["tokens_this_month"]), (1, 20, 50))
+
+    def test_an_unlimited_signed_in_account_is_not_stopped_and_sees_unlimited(self):
+        usage = tracker(user_requests_per_day=1, unlimited_emails=frozenset({"a@example.org"}))  # the fake user's email
+        with make_usage_client(usage) as client:
+            replies = [client.post("/chat", json={"message": f"hi {n}"}, headers=signed_in()) for n in range(3)]
+            body = client.get("/me/usage", headers=signed_in()).json()
+        self.assertEqual([reply.status_code for reply in replies], [200, 200, 200])
+        self.assertTrue(body["unlimited"])
+        self.assertEqual(body["messages_today"], 3)
 
     def test_voice_is_refused_once_the_daily_sessions_are_used(self):
         with make_usage_client(tracker(user_voice_per_day=1)) as client:

@@ -61,7 +61,7 @@ async def authenticate_socket(websocket) -> str | None:
     tracker = getattr(app.state, "usage", None)
     if tracker is not None:
         try:
-            await run_in_threadpool(tracker.count_voice_session, user.id)
+            await run_in_threadpool(tracker.count_voice_session, user.id, user.email)
         except QuotaExceeded:
             return "Daily voice limit reached"
         except Exception:

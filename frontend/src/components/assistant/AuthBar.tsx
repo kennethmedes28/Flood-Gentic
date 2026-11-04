@@ -40,7 +40,9 @@ export function AuthBar({ refreshKey }: { refreshKey: number }) {
           </p>
           {usage && (
             <p className="text-xs">
-              {t("auth.usage", { messages: usage.messagesToday, messagesLimit: usage.messagesLimit, photos: usage.photosToday, photosLimit: usage.photosLimit })}
+              {usage.unlimited
+                ? t("auth.usageUnlimited", { messages: usage.messagesToday, photos: usage.photosToday })
+                : t("auth.usage", { messages: usage.messagesToday, messagesLimit: usage.messagesLimit, photos: usage.photosToday, photosLimit: usage.photosLimit })}
             </p>
           )}
           <p className="text-xs">

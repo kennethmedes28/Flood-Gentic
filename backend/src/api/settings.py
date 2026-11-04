@@ -22,6 +22,8 @@ Variables, all optional:
                          Without it the /staff endpoints do not exist at all
     USER_REQUESTS_PER_DAY, USER_UPLOADS_PER_DAY, USER_VOICE_PER_DAY, USER_TOKENS_PER_MONTH,
     EVERYONE_REQUESTS_PER_DAY, EVERYONE_UPLOADS_PER_DAY
+    UNLIMITED_EMAILS     comma-separated emails of signed-in accounts that skip the per-user caps (for testing); their
+                         use still counts toward the EVERYONE_* caps and the per-minute limits
                          per-user and whole-app spending caps (defaults 20, 3, 8, 150000, 500, 100; see
                          ``src/services/usage.py``). Only signed-in users are counted
     REQUIRE_AUTH         ``true`` (default) means the assistant chat, photo check and voice need a Google or Facebook sign-in
@@ -40,6 +42,12 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 
 from src.services.usage import UsageLimits
+
+
+def unlimited_emails_from_env() -> frozenset[str]:
+    """The accounts in UNLIMITED_EMAILS ("a@b.c, d@e.f"), in lower case, that skip the per-user caps. Empty when not set."""
+    value = os.getenv("UNLIMITED_EMAILS", "")
+    return frozenset(email.strip().lower() for email in value.split(",") if email.strip())
 
 CHECKPOINTER_CHOICES = ("postgres", "memory")
 MIN_STAFF_KEY_CHARS = 24  # a short key can be guessed
@@ -118,5 +126,6 @@ def load_settings() -> Settings:
             user_tokens_per_month=int(os.getenv("USER_TOKENS_PER_MONTH", "150000")),
             everyone_requests_per_day=int(os.getenv("EVERYONE_REQUESTS_PER_DAY", "500")),
             everyone_uploads_per_day=int(os.getenv("EVERYONE_UPLOADS_PER_DAY", "100")),
+            unlimited_emails=unlimited_emails_from_env(),
         ),
     )

@@ -174,6 +174,7 @@ class UsageOut(BaseModel):
     tokens_this_month: int
     tokens_limit: int
     resets_in_seconds: int
+    unlimited: bool = False  # True for an account in UNLIMITED_EMAILS: the per-user limits above do not apply to it
 
 
 class PlaceCenterOut(BaseModel):

@@ -335,7 +335,7 @@ curl -s localhost:8000/chat -H 'Content-Type: application/json' \
 ```
 
 Optional settings (environment variables): `CORS_ORIGINS`, `CHECKPOINTER` (`postgres` or `memory`), `ENABLE_RAG` (off by default),
-`TRUST_PROXY_HEADERS`, `USER_REQUESTS_PER_DAY` and the other fair-use limits (see [Sign-in and fair use](#sign-in-and-fair-use)), `CHAT_PER_MINUTE`, `REPORTS_PER_HOUR`, `REQUESTS_PER_HOUR`, `MEDIA_PER_HOUR` (photo checks, each of which makes real SAM API calls),
+`TRUST_PROXY_HEADERS`, `USER_REQUESTS_PER_DAY` and the other fair-use limits, `UNLIMITED_EMAILS` (tester accounts that skip the per-user limits; see [Sign-in and fair use](#sign-in-and-fair-use)), `CHAT_PER_MINUTE`, `REPORTS_PER_HOUR`, `REQUESTS_PER_HOUR`, `MEDIA_PER_HOUR` (photo checks, each of which makes real SAM API calls),
 `WEATHER_PER_MINUTE`, `ORS_API_KEY`, `STAFF_API_KEY`, `STAFF_PER_MINUTE`, `MEDIA_UPLOAD_DIR`.
 
 ### Monitor reports and requests (staff)

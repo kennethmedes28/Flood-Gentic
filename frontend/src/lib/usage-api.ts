@@ -11,6 +11,8 @@ export type Usage = {
   voiceLimit: number
   tokensThisMonth: number
   tokensLimit: number
+  /** True for a tester account (UNLIMITED_EMAILS on the backend): the per-user limits do not apply. */
+  unlimited: boolean
 }
 
 /** Read the user's usage, or null when it cannot be read (not signed in, backend down): the page just shows nothing. */
@@ -28,6 +30,7 @@ export async function fetchUsage(signal?: AbortSignal): Promise<Usage | null> {
       voiceLimit: body.voice_limit,
       tokensThisMonth: body.tokens_this_month,
       tokensLimit: body.tokens_limit,
+      unlimited: body.unlimited === true,
     }
   } catch {
     return null

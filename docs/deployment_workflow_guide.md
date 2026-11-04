@@ -167,6 +167,12 @@ policies). Code: `src/services/usage.py`, `src/services/usage_meter.py`.
 | Assistant messages, everyone, per day (circuit breaker) | 500 | `EVERYONE_REQUESTS_PER_DAY` |
 | Photo checks, everyone, per day (circuit breaker) | 100 | `EVERYONE_UPLOADS_PER_DAY` |
 
+**Tester accounts.** `UNLIMITED_EMAILS` (comma-separated, for example `UNLIMITED_EMAILS=kennethmedes28@gmail.com`) lists the signed-in
+accounts that skip the per-user limits above, so the app can be tested without running out. The email comes from the Google or
+Facebook sign-in token, which Supabase signs, so it cannot be faked. These accounts are still counted (the assistant page shows
+"unlimited (tester account)" with today's counts), their use still counts toward the "everyone" circuit breakers, and the per-minute
+limits (`CHAT_PER_MINUTE`, `MEDIA_PER_HOUR`) still apply. A Facebook account made with a phone number has no email, so it cannot be listed.
+
 A day is the Manila calendar day and a month is the Manila calendar month. The defaults are the "tight" setting, for a small number of real API calls;
 change a variable and restart to change a limit.
 

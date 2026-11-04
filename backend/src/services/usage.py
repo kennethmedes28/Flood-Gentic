@@ -66,6 +66,9 @@ class UsageLimits:
     user_tokens_per_month: int = 150_000
     everyone_requests_per_day: int = 500
     everyone_uploads_per_day: int = 100
+    # Signed-in accounts (by email, lower case) that skip the per-user caps, for example the developer testing the app.
+    # Their use is still counted, and still counts toward the whole-app daily caps above.
+    unlimited_emails: frozenset[str] = frozenset()
 
 
 class QuotaExceeded(Exception):
@@ -161,17 +164,23 @@ class UsageTracker:
                 self.counters.release(scope, metric, period, 1)
             raise
 
-    def count_chat_request(self, user_id: str, photo: bool) -> None:
+    def is_unlimited(self, email: str | None) -> bool:
+        """True for an account listed in ``UsageLimits.unlimited_emails`` (UNLIMITED_EMAILS), which skips the per-user caps."""
+        return bool(email) and email.strip().lower() in self.limits.unlimited_emails
+
+    def count_chat_request(self, user_id: str, photo: bool, email: str | None = None) -> None:
         """Count one assistant message (and one photo check when ``photo``) for the user and for everyone.
 
         Raises ``QuotaExceeded`` when the monthly tokens, the user's day or the whole app's day is used up; nothing is
-        counted in that case.
+        counted in that case. An unlimited account (see ``is_unlimited``) skips its own caps: its use is still counted,
+        and only the whole app's day can stop it.
         """
         now, limits = self._clock(), self.limits
         day, month = day_of(now), month_of(now)
         next_day = seconds_until_next_day(now)
+        unlimited = self.is_unlimited(email)
 
-        if self.counters.get(user_id, TOKENS, month) >= limits.user_tokens_per_month:
+        if not unlimited and self.counters.get(user_id, TOKENS, month) >= limits.user_tokens_per_month:
             raise QuotaExceeded(
                 "You have used this month's share of the assistant. It starts again on the 1st (Manila time). "
                 "If you are in danger, call 911.\nNaubos mo na ang bahagi mo ngayong buwan. Magsisimula ulit ito sa ika-1. "
@@ -184,6 +193,17 @@ class UsageTracker:
             "Naabot na ng assistant ang limitasyon nito para sa araw na ito. Subukan muli bukas. Kung nasa panganib, tumawag sa 911.",
             next_day,
         )
+        if unlimited:
+            # Only the whole app's caps apply; the account's own counts are kept for information, with no limit.
+            steps = [(EVERYONE, REQUESTS, day, limits.everyone_requests_per_day, everyone_full)]
+            if photo:
+                steps.append((EVERYONE, UPLOADS, day, limits.everyone_uploads_per_day, everyone_full))
+            self._reserve_all(steps)
+            self.counters.add(user_id, REQUESTS, day, 1)
+            if photo:
+                self.counters.add(user_id, UPLOADS, day, 1)
+            return
+
         steps = [
             (user_id, REQUESTS, day, limits.user_requests_per_day, QuotaExceeded(daily_text("assistant messages", limits.user_requests_per_day), next_day)),
             (EVERYONE, REQUESTS, day, limits.everyone_requests_per_day, everyone_full),
@@ -195,9 +215,12 @@ class UsageTracker:
             ]
         self._reserve_all(steps)
 
-    def count_voice_session(self, user_id: str) -> None:
-        """Count one voice session. Raises ``QuotaExceeded`` when the user's day is used up."""
+    def count_voice_session(self, user_id: str, email: str | None = None) -> None:
+        """Count one voice session. Raises ``QuotaExceeded`` when the user's day is used up (never for an unlimited account)."""
         now = self._clock()
+        if self.is_unlimited(email):
+            self.counters.add(user_id, VOICE, day_of(now), 1)
+            return
         error = QuotaExceeded(daily_text("voice sessions", self.limits.user_voice_per_day), seconds_until_next_day(now))
         self._reserve_all([(user_id, VOICE, day_of(now), self.limits.user_voice_per_day, error)])
 
@@ -209,8 +232,8 @@ class UsageTracker:
         if sam_requests > 0:
             self.counters.add(user_id, SAM, day_of(now), sam_requests)
 
-    def snapshot(self, user_id: str) -> dict:
-        """The user's usage against the caps, for showing in the page."""
+    def snapshot(self, user_id: str, email: str | None = None) -> dict:
+        """The user's usage against the caps, for showing in the page (``unlimited`` is True for an unlimited account)."""
         now, limits = self._clock(), self.limits
         day, month = day_of(now), month_of(now)
         return {
@@ -223,4 +246,5 @@ class UsageTracker:
             "tokens_this_month": self.counters.get(user_id, TOKENS, month),
             "tokens_limit": limits.user_tokens_per_month,
             "resets_in_seconds": seconds_until_next_day(now),
+            "unlimited": self.is_unlimited(email),
         }

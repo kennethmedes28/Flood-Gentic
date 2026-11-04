@@ -19,6 +19,6 @@ async def my_usage(request: Request, user: User | None = Depends(optional_user))
     if tracker is None:
         raise HTTPException(status_code=503, detail=DATABASE_UNAVAILABLE)
     try:
-        return UsageOut(**await run_in_threadpool(tracker.snapshot, user.id))
+        return UsageOut(**await run_in_threadpool(tracker.snapshot, user.id, user.email))
     except Exception:
         raise HTTPException(status_code=503, detail=DATABASE_UNAVAILABLE)
