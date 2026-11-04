@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { useEffect, useRef, useState } from "react"
 
 import { HelpDialog } from "@/components/shell/HelpDialog"
+import { MenuHint, useMenuHint } from "@/components/shell/MenuHint"
 import { useHand, type Hand } from "@/context/HandContext"
 import { useIconSize } from "@/context/IconSizeContext"
 import { useLanguage } from "@/context/LanguageContext"
@@ -73,9 +74,16 @@ export function FloatingNav() {
   const [open, setOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const menuButton = useRef<HTMLButtonElement>(null)
-  const { position, handlers, onArrowKey } = useDraggable(buttonSize, () =>
+  const { position, handlers, onArrowKey } = useDraggable(buttonSize, () => toggleMenu())
+
+  // First-time hint: an arrow and a short text pointing at this button. It is shown until the person opens the menu
+  // or presses "Got it", and then never again (see MenuHint.tsx).
+  const { showHint, dismissHint } = useMenuHint()
+
+  function toggleMenu() {
+    dismissHint() // opening the menu shows the person has found the button
     setOpen((current) => !current)
-  )
+  }
 
   // Close the menu with Escape.
   useEffect(() => {
@@ -125,7 +133,7 @@ export function FloatingNav() {
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault()
-            setOpen((current) => !current)
+            toggleMenu()
           } else if (onArrowKey(event.key)) {
             event.preventDefault()
           }
@@ -212,6 +220,10 @@ export function FloatingNav() {
           />
           {handEnabled && <OptionRow label={t("nav.cursorHand")} options={HANDS.map((o) => ({ value: o.value, label: t(o.label) }))} value={hand} onChange={setHand} />}
         </nav>
+      )}
+
+      {showHint && !open && (
+        <MenuHint buttonX={position.x} buttonY={position.y} buttonSize={buttonSize} onDismiss={dismissHint} />
       )}
 
       <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} returnFocusTo={menuButton} />
