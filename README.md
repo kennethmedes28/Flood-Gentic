@@ -15,6 +15,8 @@ avoids flooded streets, hotlines, and weather from PAGASA and Open-Meteo.
 When the data is missing or unreliable, it says so and gives a fixed safety answer. It does not guess.
 
 > **Status: deployed prototype.** The website runs on Vercel, the API on Railway (CPU only) and the data and sign-in on Supabase.
+> **GPUs are not supported on Railway,** so the API runs on the CPU, and the work it does itself is slower than on a local machine with a GPU
+> (see [Deployment](#deployment)).
 > It has a dashboard, a flood level page, evacuation centers, emergency contacts, a PAGASA satellite page, a weather analytics page and the
 > AI Agent Flood Assistant (text, voice and photo). The chat, photo check and voice need a Google or Facebook sign-in, with
 > fair-use limits; everything else, and any emergency message, works without one. See [Architecture](#architecture), [Sign-in and fair use](#sign-in-and-fair-use) and
@@ -216,7 +218,7 @@ gets the "not covered" reply.
 
 ## Sign-in and fair use
 
-The assistant, the photo check and voice cost money to run, so they need a **Google or Facebook sign-in** (through Supabase). The dashboard, flood level,
+The assistant, the photo check and voice make real API calls to the model providers (Muse chat, SAM and speech-to-text), so they need a **Google or Facebook sign-in** (through Supabase). The dashboard, flood level,
 evacuation centers, contacts and analytics pages are public, and **an emergency message is always answered without signing in**: the fixed 911 text and
 the hotlines of your city, with no model call, so nobody in a flood is turned away. A message that hits a limit still gets the emergency answer if it is one.
 
@@ -299,7 +301,7 @@ make frontend            # only the Next.js app
 
 Then open http://localhost:3000. On Windows use `hooks\run_all.bat` (same options; see [docs/frontend_architecture.md](docs/frontend_architecture.md)).
 The script checks the tools and ports, prints the backend's `/health` so a missing database or key is obvious, and stops both programs together.
-Messages sent from the assistant are real calls: the chat model and photo checks use API credit.
+Messages sent from the assistant are real API calls to the providers: the chat model and the photo checks call the Muse API.
 
 ### Run the tests
 
@@ -333,7 +335,7 @@ curl -s localhost:8000/chat -H 'Content-Type: application/json' \
 ```
 
 Optional settings (environment variables): `CORS_ORIGINS`, `CHECKPOINTER` (`postgres` or `memory`), `ENABLE_RAG` (off by default),
-`TRUST_PROXY_HEADERS`, `USER_REQUESTS_PER_DAY` and the other fair-use limits (see [Sign-in and fair use](#sign-in-and-fair-use)), `CHAT_PER_MINUTE`, `REPORTS_PER_HOUR`, `REQUESTS_PER_HOUR`, `MEDIA_PER_HOUR` (photo checks, which cost SAM credit),
+`TRUST_PROXY_HEADERS`, `USER_REQUESTS_PER_DAY` and the other fair-use limits (see [Sign-in and fair use](#sign-in-and-fair-use)), `CHAT_PER_MINUTE`, `REPORTS_PER_HOUR`, `REQUESTS_PER_HOUR`, `MEDIA_PER_HOUR` (photo checks, each of which makes real SAM API calls),
 `WEATHER_PER_MINUTE`, `ORS_API_KEY`, `STAFF_API_KEY`, `STAFF_PER_MINUTE`, `MEDIA_UPLOAD_DIR`.
 
 ### Monitor reports and requests (staff)
@@ -353,9 +355,11 @@ See [docs/backend_architecture.md](docs/backend_architecture.md) section 4.
 
 ### Create the tables
 
-The production database already has `reports` and `requests`. On a new database, run these once, in order, in the Supabase SQL editor: `backend/sql/000_reports.sql`, `001_reports_geo.sql`, `002_requests.sql`, `003_tomorrow_forecast.sql`
-and `004_emergency_contacts.sql`. The `usage_counters` table (`005`) is created by the API itself at start-up, and the forecast and contacts scripts also
-create their own tables if they are missing. Fill the evacuation centers and contacts with `scripts/sync_datasets_to_supabase.py`.
+The production database already has `reports` and `requests`. On a new database, run these once, in order, in the Supabase SQL editor: `backend/sql/000_reports.sql`, `001_reports_geo.sql`, `002_requests.sql`, `003_tomorrow_forecast.sql`,
+`004_emergency_contacts.sql`, `006_ncr_locations.sql`, `007_ncr_weather_daily.sql`, `008_ncr_flood_features_daily.sql` and
+`009_evacuation_centers.sql`. The `usage_counters` table (`005`) is created by the API itself at start-up, and the forecast, contacts and
+dataset scripts also create their own tables if they are missing (`scripts/load_to_supabase.py` runs `006` to `009`). Fill the evacuation
+centers and contacts with `scripts/sync_datasets_to_supabase.py`.
 
 ## Data
 
@@ -433,9 +437,13 @@ GitHub Actions runs them on every push together with the frontend type check and
 | Cache and shared limits | Railway Redis | Optional |
 | Model files | Railway persistent volume | The embedding model is downloaded once and reused by every deploy |
 
-**Railway has no GPU,** so nothing here needs one: the backend image installs CPU-only `torch` and `faiss-cpu`, the only local model is the document-search embedder (about 1.7 GiB of memory
-once loaded), and chat, speech-to-text and photo analysis are Muse API calls. A push to the deployment branch runs the CI checks first; Railway then builds the image and
-Vercel builds the website. The environment variables, the Google and Facebook setup, the spending limits and the CI/CD flow are in
+**Railway does not support GPUs,** so nothing here needs one: the backend image installs CPU-only `torch` and `faiss-cpu`, the only local model is the document-search embedder (about 1.7 GiB of memory
+once loaded), and chat, speech-to-text and photo analysis are Muse API calls.
+
+**CPU hosting is slower than local hosting.** On Railway the document-search embedder runs on the CPU, so turning a question into a search vector takes
+longer than on a local machine with a GPU, and the reranker is turned off because it would be too slow on the CPU. The answers that come from the
+Muse API calls (chat, speech-to-text, photos) are not affected, because those models run at the provider, not on Railway. A push to the deployment branch runs the CI checks first; Railway then builds the image and
+Vercel builds the website. The environment variables, the Google and Facebook setup, the per-user API call limits and the CI/CD flow are in
 [docs/deployment_workflow_guide.md](docs/deployment_workflow_guide.md).
 
 ## Safety
@@ -463,7 +471,7 @@ do not walk or drive through floodwater. Official sources: [pagasa.dost.gov.ph](
 - Community reports are unverified and never override official information.
 - Emergencies are recognised from a list of phrases. If you are in danger, call **911** whatever the assistant says.
 - Messages work best with one clear request and a named place.
-- **Secrets and prompt injection are blocked before anything runs.** A message that contains a password, API key, token or database address, or that tries to change the assistant's rules or asks for its keys, gets a fixed reply. It never reaches the chat model, the database or the saved conversation, so it costs no API credit, and its text is never logged. This is a pattern filter, so unusual disguises can slip through; the real protection is that keys are never placed in a prompt. See `backend/utils/input_guard.py`.
+- **Secrets and prompt injection are blocked before anything runs.** A message that contains a password, API key, token or database address, or that tries to change the assistant's rules or asks for its keys, gets a fixed reply. It never reaches the chat model, the database or the saved conversation, so it makes no API call to the providers, and its text is never logged. This is a pattern filter, so unusual disguises can slip through; the real protection is that keys are never placed in a prompt. See `backend/utils/input_guard.py`.
 
 ## License
 

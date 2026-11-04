@@ -138,7 +138,7 @@ GitHub uses UTC and the Philippines (UTC+8) has no daylight saving:
 
 The workflow picks the end date from the Manila hour: before 03:00 it is yesterday (a late start of the 00:30 run still finalizes the right day),
 otherwise today. Every run fetches the last 7 days again and replaces them, so a partial day is corrected by the next run and made final by the
-00:30 one. A run costs about 34 Open-Meteo calls (17 cities, weather and river), far below the free limits. GitHub can start scheduled runs a few
+00:30 one. A run makes about 34 real Open-Meteo API calls (17 cities, weather and river), far below Open-Meteo's limits. GitHub can start scheduled runs a few
 minutes late. It can also be started by hand with **Run workflow** (`workflow_dispatch`).
 
 Steps: install `pandas`, `httpx`, `psycopg[binary]` and `python-dotenv`; run `update_supabase_from_open_meteo.py` with the end date above and `--refresh-days 7`. A failed attempt is retried twice, two minutes

@@ -120,7 +120,7 @@ How the API behaves:
 - **Errors:** a person in a flood can see them, so each one that is not a plain validation error says what to do next (911, barangay, DRRMO).
   Validation errors list where the problem is and what it is, but never repeat the value that was sent.
 - **Limits:** `/chat`, `/reports`, `/requests` and `/weather/*` are limited per client address (`CHAT_PER_MINUTE`, `REPORTS_PER_HOUR`, `REQUESTS_PER_HOUR`, `WEATHER_PER_MINUTE`).
-  A photo check has its own, lower limit (`MEDIA_PER_HOUR`, default 20), because each one costs paid SAM requests. A request that declares a body over about 2.8 MB
+  A photo check has its own, lower limit (`MEDIA_PER_HOUR`, default 20), because each one makes several real SAM API calls. A request that declares a body over about 2.8 MB
   is refused with 413. The limiter counts in Redis when `REDIS_URL` is set (shared by all replicas), otherwise in the process.
 - **Uploads:** a photo is checked on its first bytes (not on what the browser claims), saved under a random name in `MEDIA_UPLOAD_DIR` with owner-only
   permissions, handed to the chat graph, and deleted as soon as the answer is done, also when the browser disconnects. `src/services/media_upload.py`.
@@ -160,7 +160,7 @@ Request and response bodies are Pydantic models. The chat response is planned to
 
 ## 5. Chat flow (LangGraph)
 
-Each message is routed by keywords (`langgraph_orchestrator/intents.py`), so routing costs nothing and is the same every time.
+Each message is routed by keywords (`langgraph_orchestrator/intents.py`), so routing makes no API call and is the same every time.
 An emergency always wins; then a message with a photo attached goes to the media check; then the specific flood
 services; then preparedness, flood risk and weather. Anything unrecognised goes to the document agent, which answers from stored
 material or says it has no information.
@@ -332,10 +332,10 @@ separate `id` column and no `capacity` column.
 | Table | State |
 |---|---|
 | `chunks` | Created and filled (461 rows, 1024-dimension vectors, HNSW index). One table keyed by `(doc_id, chunk_idx)`; there is no separate `documents` table, so source, type, trust tier, hazard, city and validity live in the `metadata` column |
-| `ncr_locations`, `ncr_weather_daily`, `ncr_flood_features_daily` | Created and filled by `scripts/load_to_supabase.py` and kept current by the daily workflow (not by `sync_datasets_to_supabase.py`) (`docs/dataset_updates.md`) |
-| `evacuation_centers` | Created and filled (102 rows, 17 cities); joins to `ncr_locations` on `location_id`; read by the evacuation and route agents and by `GET /evacuation-centers` |
+| `ncr_locations`, `ncr_weather_daily`, `ncr_flood_features_daily` | Created by `sql/006_ncr_locations.sql`, `007_ncr_weather_daily.sql` and `008_ncr_flood_features_daily.sql`; filled by `scripts/load_to_supabase.py` and kept current by the daily workflow (not by `sync_datasets_to_supabase.py`) (`docs/dataset_updates.md`) |
+| `evacuation_centers` | Created by `sql/009_evacuation_centers.sql` and filled (102 rows, 17 cities); joins to `ncr_locations` on `location_id`; read by the evacuation and route agents and by `GET /evacuation-centers` |
 | `emergency_contacts` | Created by `sql/004_emergency_contacts.sql` and filled by `scripts/sync_datasets_to_supabase.py` from `corpus/ph_emergency_contacts.csv` (numbers exactly as written); read by `GET /places/contacts` |
-| `usage_counters` | Created by `sql/005_usage_counters.sql` (and at start-up). One row per user (or `all`), metric and Manila day or month; the per-user and whole-app spending caps are counted here atomically; read and written by `src/services/usage.py` |
+| `usage_counters` | Created by `sql/005_usage_counters.sql` (and at start-up). One row per user (or `all`), metric and Manila day or month; the per-user and whole-app API call limits are counted here atomically; read and written by `src/services/usage.py` |
 | `tomorrow_forecast` | Created by `sql/003_tomorrow_forecast.sql` (or by `scripts/fetch_tomorrow_forecast.py`). One row per city per Manila day (`(city, fetched_on)` is the primary key) with the hourly and daily forecast as JSON. Written at most once per city per day, never replaced; read by `/weather/*` |
 | `reports` | Created by `sql/000_reports.sql` and `001_reports_geo.sql` (applied to production on 4 November 2026). Queried by the report agent, the route agent and `/reports`. Starts empty |
 | `requests` | Created by `sql/002_requests.sql` (applied to production on 4 November 2026). Written by `POST /requests`. Starts empty |

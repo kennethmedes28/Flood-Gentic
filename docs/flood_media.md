@@ -82,13 +82,13 @@ combines the answers (`video/flood_scene.py`):
 - **A mirrored photo** (`MIRROR_PHOTOS`): the photo is also checked mirrored left to right, and the masks are mirrored back. Photos with an EXIF
   rotation tag are not mirrored, because the two views might not line up.
 - **A vote** (`WATER_VOTES_NEEDED`, 1): a spot is water when at least that many of the requests found it.
-- **Cost:** a photo check is 4 water requests instead of 1; they run at the same time, so a photo took about 1 second longer
+- **API calls:** a photo check is 4 real SAM water requests instead of 1; they run at the same time, so a photo took about 1 second longer
   (4.2 s against 3.0 s).
 
 **How the settings were chosen.** `scripts/evaluate_flood_media.py` scores every combination of phrases ("flood water", "muddy water", "water",
 "flooded road"), mirroring, vote and confidence cut-off against hand-drawn water masks. It used 60 photos of the public "Flood Area Segmentation"
 set (290 flood photos with masks), chose on 30 and checked on the other 30, at 640 px wide as the page sends them. Every SAM answer is saved in
-`evaluation/flood_media/cache/` (not in git, like the photos), so scoring again costs nothing. Overlap (IoU) with the hand-drawn water, on the check half:
+`evaluation/flood_media/cache/` (not in git, like the photos), so scoring again makes no API calls. Overlap (IoU) with the hand-drawn water, on the check half:
 
 | Setting | SAM requests per photo | IoU | Precision | Recall |
 |---|---|---|---|---|
@@ -129,7 +129,7 @@ not just the share of water. `agents/flood_media_agent.py`:
 3. **The reply** is the model's answer, then "Measured by the automatic check:" with the fixed bilingual report and the safety text.
 
 A picture sent without words gets the fixed report only, with no model call. If the model fails, answers nothing, or the hourly model budget
-(`MODEL_CALLS_PER_HOUR`) is used up, the fixed report is given instead. Cost: one model call per question, on top of the SAM requests. The progress line says
+(`MODEL_CALLS_PER_HOUR`) is used up, the fixed report is given instead. API calls: one real model call per question, on top of the SAM requests. The progress line says
 "Looking at your photo to answer your question".
 
 **Tried through the real app** with a street photo and the checkbox off, about 16 seconds each:
@@ -144,7 +144,7 @@ lumusong dito?" was answered in Filipino the same way. The model's answers are n
 A message that names objects is a segmentation request, the way the SAM playground (dev.meta.ai/playground/segmentation) works: "human, child, car",
 "how many trees?", "find the dog", "is there a boat?", "ilan ang tao?". `video/object_search.py` turns the message into short names
 (`object_query_concepts`), sends each to SAM 3.1 as its own request, all at the same time (SAM looks for one phrase per request), and counts the matches
-at 30% confidence or more, by third of the picture. No flood check and no chat model are used, so it costs one SAM request per name (at most 5).
+at 30% confidence or more, by third of the picture. No flood check and no chat model are used, so it makes one real SAM API call per name (at most 5).
 
 Before this, the agent only ever asked SAM for "flood water", "person" and "vehicle", and sent every other question to the chat model, so a
 name such as "child" never reached SAM. A message is an object request when it starts with words such as "how many", "find", "where are" or

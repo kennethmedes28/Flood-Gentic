@@ -154,7 +154,7 @@ corner does the same on touch screens.
   base64 text in the `image` field. The typed text is the caption and may be empty. The backend checks the picture (valid base64, at most 2 MB, really a JPEG, PNG or WebP), saves it under a random
   name in the upload folder, runs the flood media check, and deletes it when the answer is done. The reply comes back in the same
   conversation and the progress line says "Checking your photo for flood water".
-- Each check calls the vision model on the backend and costs API credit. By default only water is checked: 4 SAM requests for a photo (two phrases, on the photo
+- Each check makes real API calls to the vision model (SAM) through the backend. By default only water is checked: 4 SAM requests for a photo (two phrases, on the photo
   and on a mirrored copy; see `docs/flood_media.md` section 9). The "count people and vehicles" checkbox (off by default)
   sends `detailed: true`: 2 more requests. Photo checks
   have their own rate limit (`MEDIA_PER_HOUR`, default 20), and a request to the other chat endpoints that declares a body over about 2.8 MB is refused with 413.
@@ -244,7 +244,7 @@ python scripts/run_dev.py   # the same thing as a Python program, with the same 
 The script (`hooks/`) checks `uv`, `npm`, `curl`, `frontend/node_modules`, free ports and `backend/.env`, tells the frontend where
 the backend is (`NEXT_PUBLIC_API_URL`) and the backend which page may call it (`CORS_ORIGINS`), prints `/health` once the backend
 answers, and stops both with one Ctrl+C. On Windows `scripts/run_dev.py` stops the programs with `taskkill /T /F` and finds `npm.cmd` itself; this part has not been run on a Windows computer yet.
-Messages sent from the page are real calls: the chat model (`MUSE_API`) and photo checks use API credit.
+Messages sent from the page are real API calls to the providers: the chat model (`MUSE_API`) and the photo checks call the Muse API.
 
 ## Live weather (Tomorrow.io, fetched once a day)
 

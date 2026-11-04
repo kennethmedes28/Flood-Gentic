@@ -87,7 +87,10 @@ Tracing records every chat message as a run in LangSmith so slow or failing agen
 
 ## 7. Railway (backend, CPU only)
 
-Railway has no GPU, so the backend runs on CPU. The only models that run inside the backend are the document-search embedder; chat, speech and SAM are Muse API calls. The reranker is turned off in production (`RERANKER_MODEL=none`).
+**Railway does not support GPUs**, so the backend runs on the CPU. The only model that runs inside the backend is the document-search embedder; chat, speech and SAM are Muse API calls. The reranker is turned off in production (`RERANKER_MODEL=none`).
+
+**The CPU is slower than local hosting.** Embedding a question for the document search takes longer on Railway's CPU than on a local machine with a GPU, and the
+reranker is off because it would be too slow there. Work done by the Muse API (chat, speech-to-text, SAM) is not affected: those models run at the provider.
 
 Project `serene-alignment`, environment `production`:
 
@@ -106,7 +109,7 @@ service's root directory and variables are set, that build fails; that is expect
 
 ## 8. Sign-in (Google and Facebook)
 
-The assistant chat, the photo check and voice need a sign-in with a Google or a Facebook account, because they spend Muse credits.
+The assistant chat, the photo check and voice need a sign-in with a Google or a Facebook account, because each one makes real API calls to the Muse API.
 Everything else (dashboard, flood level, evacuation centers, contacts, analytics) is public. An emergency message typed into the assistant is
 answered without signing in (the fixed 911 text and the city's hotlines, no model call), so nobody in a flood is turned away.
 
@@ -115,7 +118,7 @@ answered without signing in (the fixed 911 text and the city's hotlines, no mode
 WebSocket). The backend checks the token itself against the public keys Supabase publishes at
 `<project>/auth/v1/.well-known/jwks.json` (`src/auth.py`), so no secret is shared and Supabase is not called per request. The check does
 not depend on the provider: the page shows one button for each provider that is switched on in Supabase, and the backend treats both alike.
-Any Google or Facebook account may sign in; the per-user limits (section 9) protect the credits. A Facebook account made with a phone number has no email,
+Any Google or Facebook account may sign in; the per-user limits (section 9) keep the number of real API calls in check. A Facebook account made with a phone number has no email,
 so the page shows the person's name instead. Usage is counted by the Supabase user id, never by email. Someone who signs in with Google and with Facebook gets two
 separate accounts, each with its own limits, unless Supabase is set to link accounts that share an email.
 
@@ -149,9 +152,9 @@ The Facebook app ID and secret (`META_OAUTH`, `FACEBOOK_SECRET` in your local `b
 application does not read them, and `scripts/set_railway_variables.py` does not copy them.
 With `REQUIRE_AUTH=true` and no Supabase address the backend refuses to start, with a message that says what to set.
 
-## 9. Spending caps
+## 9. API call limits
 
-Every signed-in user has limits, so a few people cannot use up the Muse credits. The counters are in the Supabase table
+Every signed-in user has limits, so a few people cannot use up the real Muse API calls the project can make. The counters are in the Supabase table
 `usage_counters` (`sql/005_usage_counters.sql`; the backend also creates it at start-up, with row-level security on and no
 policies). Code: `src/services/usage.py`, `src/services/usage_meter.py`.
 
@@ -164,7 +167,7 @@ policies). Code: `src/services/usage.py`, `src/services/usage_meter.py`.
 | Assistant messages, everyone, per day (circuit breaker) | 500 | `EVERYONE_REQUESTS_PER_DAY` |
 | Photo checks, everyone, per day (circuit breaker) | 100 | `EVERYONE_UPLOADS_PER_DAY` |
 
-A day is the Manila calendar day and a month is the Manila calendar month. The defaults are the "tight" setting for a small budget;
+A day is the Manila calendar day and a month is the Manila calendar month. The defaults are the "tight" setting, for a small number of real API calls;
 change a variable and restart to change a limit.
 
 **How it counts.** A message (and a photo) is counted before it is answered, with one atomic statement that only succeeds while the
@@ -207,8 +210,8 @@ docker run --rm -p 8000:8000 --env-file backend/.env -e REQUIRE_AUTH=false flood
 
 **Measured locally** (the image run the way Railway will, with a fresh volume): image 900 MB; the container uses about 1.7 GiB of memory
 with the embedding model loaded; loading the model from the volume cache takes about 16 s and one query embedding 0.46 s; the first
-`/dashboard` call takes about 6 s (it loads the recorded days) and later ones are served from memory. Railway bills memory by use, so the
-loaded embedding model is the main cost of running this service.
+`/dashboard` call takes about 6 s (it loads the recorded days) and later ones are served from memory. The loaded
+embedding model takes most of this service's memory on Railway.
 
 **Variables on the Railway service** (secrets are set from `backend/.env` by `python3 scripts/set_railway_variables.py`, which you run yourself; only what the running API needs is copied):
 

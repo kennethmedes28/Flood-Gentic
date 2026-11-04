@@ -103,7 +103,7 @@ Only the weather and documents agents call the model, so only they are a fair co
 
 ### Reasoning effort matters more than the model
 
-Muse is a reasoning model, so much of its time is hidden thinking that is billed as output.
+Muse is a reasoning model, so much of its time is hidden thinking that the API counts as output tokens.
 `reasoning_effort="minimal"` cut output tokens by roughly 4 to 5 times (3 runs per cell, so noisy):
 
 | Agent | Model | default total | minimal total | default tokens | minimal tokens |
@@ -142,7 +142,7 @@ and 45 s the second time; that is a one-off cost, not per question.
 
 1. For chat latency, set `reasoning_effort="minimal"` on the weather and documents agents; it is the largest
    lever (about 2 to 4 times faster in these runs). Check answer quality at that setting before adopting it.
-2. Choose between 1.2 Contributor and 1.3 on answer quality and per-token cost, not latency; latency is
+2. Choose between 1.2 Contributor and 1.3 on answer quality and how many tokens each API call uses, not latency; latency is
    about equal here.
 3. Investigate the reranker (device, number of candidates, chunk length) before enabling it in production.
 4. Fix the "emergency" keyword misrouting for preparedness questions.

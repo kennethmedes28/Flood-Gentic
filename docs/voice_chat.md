@@ -42,7 +42,7 @@ Server to browser (JSON):
 | `{"type": "final", "text": ..., "turnId": ...}` | One finished question |
 | `{"type": "error", "message": ...}` | Something failed (key missing, Meta unavailable, time limit). The socket then closes |
 
-A bad `mode` or `rate` closes the socket with code 1008. One connection is cut off after 120 seconds (`MAX_SESSION_SECONDS`) to cap cost.
+A bad `mode` or `rate` closes the socket with code 1008. One connection is cut off after 120 seconds (`MAX_SESSION_SECONDS`) to limit how long one real speech-to-text API session runs.
 
 ## 3. Code
 
@@ -77,7 +77,7 @@ Tested: the browser pipeline against a stand-in server that follows section 2 an
 - Realtime: `wss://api.meta.ai/v1/asr/realtime`. The first message is a JSON handshake containing `Bearer <key>`, the model, `audioEncoding` (`PCM_16KHZ` or `PCM_24KHZ`), `mode` and optional `languageBias` / `keywords`. Audio goes as binary frames; `{"type": "endStream"}` ends the whole session and the server closes with code 1000.
 - File upload (not used yet): `POST https://api.meta.ai/v1/asr/transcribe`, multipart with a JSON `request` part and a WAV `audio` part. WAV must be mono 16-bit PCM at 16 or 24 kHz, up to 10 minutes and 32 MB.
 - 25 languages with code-switching; Tagalog is the only Filipino-related entry, so mixed Filipino-English accuracy on place names must be tested.
-- Price: $0.18 per hour of audio. Limits per tenant: 256 concurrent streams and 16,000 streams per hour; a stream that falls more than 5 seconds behind real time is rejected.
+- Usage: every session is a real API call to Meta's speech-to-text service, metered by the length of the audio. Limits per tenant: 256 concurrent streams and 16,000 streams per hour; a stream that falls more than 5 seconds behind real time is rejected.
 - Only silence has been sent in tests so far. The handshake, audio, end of stream and clean close work with the project key; real speech has not been measured.
 
 ## 5. Safety rules for voice
