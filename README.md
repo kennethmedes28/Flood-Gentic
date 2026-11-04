@@ -17,6 +17,9 @@ When the data is missing or unreliable, it says so and gives a fixed safety answ
 > **Status: deployed prototype.** The website runs on Vercel, the API on Railway (CPU only) and the data and sign-in on Supabase.
 > **GPUs are not supported on Railway,** so the API runs on the CPU, and the work it does itself is slower than on a local machine with a GPU
 > (see [Deployment](#deployment)).
+> **Known issue: Meta's models are not available from Railway.** Since 4 November 2026 Meta's API answers `model_not_found` to every chat model
+> and fails every SAM photo request sent from the Railway server, while the same key works from a local machine (see
+> [Meta's models are not available from Railway](#metas-models-are-not-available-from-railway)).
 > It has a dashboard, a flood level page, evacuation centers, emergency contacts, a PAGASA satellite page, a weather analytics page and the
 > AI Agent Flood Assistant (text, voice and photo). The chat, photo check and voice need a Google or Facebook sign-in, with
 > fair-use limits; everything else, and any emergency message, works without one. See [Architecture](#architecture), [Sign-in and fair use](#sign-in-and-fair-use) and
@@ -443,9 +446,36 @@ once loaded), and chat, speech-to-text and photo analysis are Muse API calls.
 
 **CPU hosting is slower than local hosting.** On Railway the document-search embedder runs on the CPU, so turning a question into a search vector takes
 longer than on a local machine with a GPU, and the reranker is turned off because it would be too slow on the CPU. The answers that come from the
-Muse API calls (chat, speech-to-text, photos) are not affected, because those models run at the provider, not on Railway. A push to the deployment branch runs the CI checks first; Railway then builds the image and
+Muse API calls (chat, speech-to-text, photos) are not slowed down, because those models run at the provider, not on Railway (but see the known
+issue below: Meta's API currently refuses them from Railway). A push to the deployment branch runs the CI checks first; Railway then builds the image and
 Vercel builds the website. The environment variables, the Google and Facebook setup, the per-user API call limits and the CI/CD flow are in
 [docs/deployment_workflow_guide.md](docs/deployment_workflow_guide.md).
+
+### Meta's models are not available from Railway
+
+**Known issue (found on 4 November 2026).** Meta's API refuses the requests that the backend sends from Railway, so the AI parts of the
+assistant do not work in the deployed app:
+
+| What | From Railway | From a local machine (same `MUSE_API` key) |
+|---|---|---|
+| Chat models (`muse-wonder-1.0`, `muse-spark-1.3`, `muse-spark-1.2` and the two `-contributor` models) | `404 model_not_found` for every model | All answer |
+| SAM 3.1 (photo flood check and object search) | Every request fails | Works |
+| Speech-to-text (voice) | Not tested yet | Works |
+
+- **Not a code or settings problem.** Railway and the local `.env` use the same key (checked by fingerprint) and the same model settings, and
+  Meta's model list for that key includes every model above.
+- **Not the region.** It failed with the backend in Singapore (`asia-southeast1`) and again after moving it to US West (`us-west2`).
+  Railway's DNS resolves `api.meta.ai` normally, so the requests do reach Meta.
+- **Cause not confirmed.** Meta may refuse requests from datacenter IP addresses, or the key or account may have an IP or region
+  restriction. It needs to be raised with Meta.
+
+**What still works on Railway:** the dashboard, flood level, analytics, evacuation centers, contacts, reports and emergency answers (no model
+needed). A weather question gets an answer written from the PAGASA bulletin and the Open-Meteo forecast without the model (see
+`answer_from_data` in `backend/agents/weather_agent.py`). The chat model falls back through the models in order (`MUSE_FALLBACK_MODELS`)
+before giving up. Photo checks and other assistant questions fail with a "try again" reply.
+
+**Workarounds:** run the backend from a local machine (where Meta's API works), for example behind a Cloudflare Tunnel, or test another host
+(Google Cloud Run, Fly.io, Render, a VPS) with one Meta call before moving to it, because those also use datacenter IP addresses.
 
 ## Safety
 
