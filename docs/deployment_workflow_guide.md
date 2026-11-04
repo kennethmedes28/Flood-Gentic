@@ -115,6 +115,32 @@ settings from section 2 are still to be added before the first deploy.
 Adding or changing a volume makes Railway start a deployment of the service. Until the Dockerfile is in place and the
 service's root directory and variables are set, that build fails; that is expected.
 
+### Render: the Muse proxy
+
+Meta's API refuses the backend's chat-model and SAM calls from Railway but accepts them from Render (see the known issue above). The
+backend therefore stays on Railway, and those two kinds of calls go through `muse-proxy`, a small FastAPI app on Render
+(`render_proxy/`, defined in `render.yaml`: Singapore, free plan, built from the `render-deployment` branch until it is merged).
+Voice is not proxied: it works from Railway.
+
+| Service | Variable | Value |
+|---|---|---|
+| Render `muse-proxy` | `MUSE_API` | Meta's API key (only here for chat and SAM) |
+| Render `muse-proxy` | `MUSE_PROXY_SECRET` | A long random secret |
+| Railway `Flood-Gentic` | `MUSE_PROXY_URL` | `https://muse-proxy.onrender.com` (the proxy's address) |
+| Railway `Flood-Gentic` | `MUSE_PROXY_SECRET` | The same secret |
+
+Railway keeps `MUSE_API` for voice. Without `MUSE_PROXY_URL` the backend calls Meta directly (`backend/utils/muse_endpoint.py`), so local work
+needs no proxy. The proxy forwards only `POST /v1/chat/completions` and `POST /v1/responses`, checks the secret before calling Meta, and logs
+only the path, status and time. `GET /health` shows whether its key and secret are set.
+
+**Setting it up:** create the service from the Blueprint (Render dashboard > New > Blueprint, this repository), enter `MUSE_API` and
+`MUSE_PROXY_SECRET` when asked, wait for `/health` to answer, then set the two variables on Railway, which redeploys the backend. To go back
+to calling Meta directly, remove `MUSE_PROXY_URL` from Railway.
+
+**Free plan:** the service sleeps after about 15 minutes without calls. The first call after that waits while it wakes up, which can take
+longer than the chat model's 45-second timeout, so that one question may fail once (weather questions still get the data-only answer).
+Move it to a paid plan before real use to avoid this.
+
 ## 8. Sign-in (Google and Facebook)
 
 The assistant chat, the photo check and voice need a sign-in with a Google or a Facebook account, because each one makes real API calls to the Muse API.

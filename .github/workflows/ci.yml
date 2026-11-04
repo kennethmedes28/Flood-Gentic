@@ -5,9 +5,9 @@ name: CI
 # production branch protected) so a deploy only goes out when these checks are green. See docs/deployment_workflow_guide.md.
 on:
   push:
-    branches: [deployment, main]
+    branches: [deployment, main, render-deployment]
   pull_request:
-    branches: [deployment, main]
+    branches: [deployment, main, render-deployment]
   workflow_dispatch:
 
 # The jobs only read the repository.
@@ -44,6 +44,25 @@ jobs:
       # The built-in hotline list and the frontend's copies must match the CSV files they are made from.
       - name: Check the generated data is current
         run: uv run --no-dev --python 3.11 python ../scripts/export_frontend_data.py --check
+
+  render_proxy:
+    name: Muse proxy tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: render_proxy
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: render_proxy/requirements.txt
+
+      # The proxy's own pinned packages only; Meta's API is faked, so no secrets and no network.
+      - name: Run the tests
+        run: uv run --no-project --python 3.11 --with-requirements requirements.txt --with pytest python -m pytest tests -q
 
   frontend:
     name: Frontend type check and build

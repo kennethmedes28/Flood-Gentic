@@ -474,8 +474,14 @@ needed). A weather question gets an answer written from the PAGASA bulletin and 
 `answer_from_data` in `backend/agents/weather_agent.py`). The chat model falls back through the models in order (`MUSE_FALLBACK_MODELS`)
 before giving up. Photo checks and other assistant questions fail with a "try again" reply.
 
-**Workarounds:** run the backend from a local machine (where Meta's API works), for example behind a Cloudflare Tunnel, or test another host
-(Google Cloud Run, Fly.io, Render, a VPS) with one Meta call before moving to it, because those also use datacenter IP addresses.
+**Fix: the Muse proxy on Render.** Meta accepts the same calls from Render (tested on 4 November 2026 from Render's Singapore region: the
+model list, `muse-wonder-1.0`, `muse-spark-1.2` and SAM 3.1 all answered 200). So the backend stays on Railway, and only its chat-model and
+SAM calls go through a small proxy on Render ([render_proxy/](render_proxy/README.md), set up by `render.yaml`) when `MUSE_PROXY_URL` and
+`MUSE_PROXY_SECRET` are set. The Meta key stays on Render; the backend sends a separate shared secret. Voice keeps calling Meta directly from
+Railway. Setup: "Render: the Muse proxy" in [docs/deployment_workflow_guide.md](docs/deployment_workflow_guide.md).
+
+**Other workarounds:** run the backend from a local machine (where Meta's API works), for example behind a Cloudflare Tunnel, or test
+another host (Google Cloud Run, Fly.io, a VPS) with one Meta call before moving to it.
 
 ## Safety
 

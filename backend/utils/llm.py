@@ -37,8 +37,9 @@ from langchain_openai import ChatOpenAI
 from openai import InternalServerError, NotFoundError
 
 from src.services.usage_meter import TokenCounter
+from utils.muse_endpoint import META_API_URL, muse_endpoint
 
-BASE_URL = "https://api.meta.ai/v1"
+BASE_URL = META_API_URL  # used when MUSE_PROXY_URL is not set (see utils/muse_endpoint.py)
 DEFAULT_MODEL = "muse-wonder-1.0"
 DEFAULT_REASONING_EFFORT = "low"  # the server has no GPU, and "low" is several times faster than "high" (docs/agent_benchmarks.md)
 REQUEST_TIMEOUT_SECONDS = 45.0  # a stalled call fails with the "try again" reply instead of leaving the page waiting
@@ -139,15 +140,19 @@ def fallback_models_from_env() -> tuple[str, ...]:
 
 
 def build_main_llm(api_key: str | None = None) -> RetryingChatOpenAI:
-    """Build the chat model used by the weather and document agents."""
+    """Build the chat model used by the weather and document agents.
+
+    It talks to Meta directly, or to the Muse proxy on Render when MUSE_PROXY_URL is set (see utils/muse_endpoint.py).
+    """
     api_key = api_key or os.getenv("MUSE_API")
     if not api_key:
         raise RuntimeError("MUSE_API is not set")
+    base_url, key = muse_endpoint(api_key)
 
     return RetryingChatOpenAI(
         model=os.getenv("MUSE_CHAT_MODEL", DEFAULT_MODEL),
-        base_url=BASE_URL,
-        api_key=api_key,
+        base_url=base_url,
+        api_key=key,
         reasoning_effort=os.getenv("MUSE_REASONING_EFFORT", DEFAULT_REASONING_EFFORT),
         timeout=REQUEST_TIMEOUT_SECONDS,
         fallback_models=fallback_models_from_env(),

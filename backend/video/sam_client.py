@@ -28,8 +28,9 @@ from meta_sam_parser import (
 )
 
 from src.services.usage_meter import add_sam_request
+from utils.muse_endpoint import META_API_URL, muse_endpoint
 
-BASE_URL = "https://api.meta.ai/v1"
+BASE_URL = META_API_URL  # used when MUSE_PROXY_URL is not set (see utils/muse_endpoint.py)
 MODEL = "sam-3.1"
 REQUEST_TIMEOUT_SECONDS = 300.0  # a request streams for a while
 MAX_IMAGE_BYTES = 20 * 1024 * 1024  # guard for what we are willing to base64-encode ourselves
@@ -82,7 +83,11 @@ class SamError(RuntimeError):
 class SamClient:
     """Async client for ``sam-3.1``. Use it in an ``async with`` block."""
 
-    def __init__(self, api_key: str, base_url: str = BASE_URL):
+    def __init__(self, api_key: str, base_url: str | None = None):
+        """``api_key`` is the Meta key. Without ``base_url`` the calls go to Meta, or to the Muse proxy on Render when
+        MUSE_PROXY_URL is set (then the proxy's shared secret is sent instead of the key; see utils/muse_endpoint.py)."""
+        if base_url is None:
+            base_url, api_key = muse_endpoint(api_key)
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._http = httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS)
