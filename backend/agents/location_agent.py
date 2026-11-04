@@ -92,12 +92,22 @@ ASK_FOR_LOCATION = (
 )
 
 # Asked once when only a city is known. The examples are written so the reply is recognised as a place.
+# ``{place}`` is the second example (see ``ask_for_place``).
 ASK_FOR_PLACE = (
     "I found {city}, but not exactly where you are. Reply with your barangay or subdivision, "
-    "for example \"Brgy. Tambo, {city}\" or \"Gentry Manor, {city}\", or share your location pin.\n"
+    "for example \"Brgy. Tambo, {city}\" or \"{place}, {city}\", or share your location pin.\n"
     "Nakita ko ang {city}, pero hindi pa kung nasaan kayo. Ibigay ang barangay o subdivision, "
-    "halimbawa \"Brgy. Tambo, {city}\" o \"Gentry Manor, {city}\", o ibahagi ang location pin."
+    "halimbawa \"Brgy. Tambo, {city}\" o \"{place}, {city}\", o ibahagi ang location pin."
 )
+# The second example per city key. Parañaque gets "Tambo" (a barangay there, also understood without "Brgy.").
+PLACE_EXAMPLES = {"paranaque": "Tambo"}
+DEFAULT_PLACE_EXAMPLE = "Gentry Manor"
+
+
+def ask_for_place(city: str) -> str:
+    """The "where exactly are you?" question for a city key such as "paranaque", with that city's examples."""
+    example = PLACE_EXAMPLES.get(city, DEFAULT_PLACE_EXAMPLE)
+    return ASK_FOR_PLACE.format(city=city.title(), place=example)
 
 COORDINATES_PATTERN = re.compile(r"(-?\d{1,2}\.\d{3,})\s*[,;\s]\s*(-?\d{2,3}\.\d{3,})")
 BARANGAY_PATTERN = re.compile(

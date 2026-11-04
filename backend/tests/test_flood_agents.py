@@ -154,6 +154,16 @@ class LocationTests(unittest.TestCase):
         self.assertIsNone(location_agent.find_coordinates("10.3157, 123.8854"))
 
 
+
+class PlaceExampleTests(unittest.TestCase):
+    def test_paranaque_gets_tambo_as_its_examples(self):
+        text = location_agent.ask_for_place("paranaque")
+        self.assertIn('"Tambo, Paranaque"', text)
+        self.assertNotIn("Gentry Manor", text)
+
+    def test_other_cities_keep_the_default_example(self):
+        self.assertIn('"Gentry Manor, Marikina"', location_agent.ask_for_place("marikina"))
+
 class FloodRiskTests(unittest.TestCase):
     def assess(self, rain, pagasa=""):
         return flood_risk_agent.assess_flood_risk("marikina", pagasa, now=NOW, rain=rain, river={"daily": {"river_discharge": [1.0]}})

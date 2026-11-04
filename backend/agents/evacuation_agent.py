@@ -18,7 +18,7 @@ from agents.flood_zones import collect_zones
 from langgraph_orchestrator.intents import EMERGENCY, EVACUATION, classify_intent
 from agents.location_agent import (
     ASK_FOR_LOCATION,
-    ASK_FOR_PLACE,
+    ask_for_place,
     describe_precision,
     nearest_city,
     resolve_location,
@@ -151,7 +151,7 @@ def answer_evacuation_question(question: str, context: ChatContext) -> AgentRepl
         return AgentReply(text=safety_first(question, context) + ASK_FOR_LOCATION, pending_intent="evacuation")
     if should_ask_for_place(question, found, context):
         return AgentReply(
-            text=ASK_FOR_PLACE.format(city=origin.city.title()), location=origin, pending_intent="evacuation"
+            text=ask_for_place(origin.city), location=origin, pending_intent="evacuation"
         )
     if context.get_connection is None:
         return AgentReply(text=NO_DATABASE_ANSWER, location=origin)
